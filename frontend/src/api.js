@@ -1,5 +1,5 @@
 // API base URL - can be overridden with VITE_API_BASE environment variable
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 /**
  * Upload a PDF file to the backend
