@@ -3,6 +3,9 @@ import ReactDOM from 'react-dom/client'
 import Home from './pages/Home.jsx'
 import QuestionBank from './pages/QuestionBank.jsx'
 
+// Determine backend base URL from Vite env or default to localhost
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
 // Simple router using hash-based navigation
 function App() {
   const [page, setPage] = React.useState(window.location.hash.slice(1) || 'home');
@@ -22,9 +25,27 @@ function App() {
         color: 'white',
         padding: '1rem',
         display: 'flex',
-        gap: '1rem'
+        gap: '1rem',
+        alignItems: 'center'
       }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Caliber</h1>
+
+        {/* Temporary API docs link immediately to the right of the title */}
+        <a
+          href={`${API_BASE}/docs`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: '#fff',
+            marginLeft: '0.5rem',
+            textDecoration: 'none',
+            fontSize: '0.9rem',
+            opacity: 0.95
+          }}
+        >
+          API Docs
+        </a>
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem' }}>
           <a
             href="#home"
