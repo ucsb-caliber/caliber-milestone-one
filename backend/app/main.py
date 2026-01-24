@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
 from .models import Question
-from .schemas import QuestionResponse, UploadResponse, QuestionListResponse
-from .crud import create_question, get_question, get_questions, get_questions_count
+from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate
+from .crud import create_question, get_question, get_questions, get_questions_count, update_question, delete_question
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 
 load_dotenv()
@@ -130,6 +130,53 @@ def get_question_by_id(
     return question
 
 
+@app.post("/api/questions", response_model=QuestionResponse, status_code=201)
+def create_new_question(
+    question_data: QuestionCreate,
+    session: Session = Depends(get_session)
+):
+    """Create a new question."""
+    question = create_question(
+        session=session,
+        text=question_data.text,
+        tags=question_data.tags,
+        keywords=question_data.keywords,
+        source_pdf=question_data.source_pdf
+    )
+    return question
+
+
+@app.put("/api/questions/{question_id}", response_model=QuestionResponse)
+def update_existing_question(
+    question_id: int,
+    question_data: QuestionUpdate,
+    session: Session = Depends(get_session)
+):
+    """Update an existing question."""
+    question = update_question(
+        session=session,
+        question_id=question_id,
+        text=question_data.text,
+        tags=question_data.tags,
+        keywords=question_data.keywords,
+        source_pdf=question_data.source_pdf
+    )
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return question
+
+
+@app.delete("/api/questions/{question_id}", status_code=204)
+def delete_existing_question(
+    question_id: int,
+    session: Session = Depends(get_session)
+):
+    """Delete a question."""
+    success = delete_question(session, question_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+
 @app.get("/")
 def root():
     """Root endpoint."""
@@ -139,6 +186,9 @@ def root():
         "endpoints": [
             "/api/upload-pdf",
             "/api/questions",
-            "/api/questions/{id}"
+            "/api/questions/{question_id}",
+            "POST /api/questions",
+            "PUT /api/questions/{question_id}",
+            "DELETE /api/questions/{question_id}"
         ]
     }
