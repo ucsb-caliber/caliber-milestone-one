@@ -175,7 +175,6 @@ def delete_existing_question(
     success = delete_question(session, question_id)
     if not success:
         raise HTTPException(status_code=404, detail="Question not found")
-    return None
 
 
 @app.get("/")
@@ -187,9 +186,9 @@ def root():
         "endpoints": [
             "/api/upload-pdf",
             "/api/questions",
-            "/api/questions/{id}",
+            "/api/questions/{question_id}",
             "POST /api/questions",
-            "PUT /api/questions/{id}",
-            "DELETE /api/questions/{id}"
+            "PUT /api/questions/{question_id}",
+            "DELETE /api/questions/{question_id}"
         ]
     }
