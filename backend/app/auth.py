@@ -2,19 +2,31 @@ import os
 from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from supabase import create_client, Client
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize Supabase client
+# Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-    raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables")
+# Lazy-load supabase client
+_supabase_client = None
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+def get_supabase_client():
+    """Get or create the Supabase client instance."""
+    global _supabase_client
+    
+    if _supabase_client is None:
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+            raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables")
+        
+        from supabase import create_client
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    return _supabase_client
+
 
 # Security scheme for Bearer token
 security = HTTPBearer()
@@ -36,6 +48,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     token = credentials.credentials
     
     try:
+        # Get Supabase client
+        supabase = get_supabase_client()
+        
         # Verify the JWT token with Supabase
         user = supabase.auth.get_user(token)
         
@@ -66,6 +81,7 @@ def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depe
     
     try:
         token = credentials.credentials
+        supabase = get_supabase_client()
         user = supabase.auth.get_user(token)
         
         if user and user.user:
