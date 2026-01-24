@@ -10,4 +10,5 @@ class Question(SQLModel, table=True):
     tags: str = Field(default="")  # Stored as comma-separated string
     keywords: str = Field(default="")  # Stored as comma-separated string
     source_pdf: Optional[str] = Field(default=None)  # Original PDF filename
+    user_id: str = Field(index=True)  # Supabase user ID
     created_at: datetime = Field(default_factory=datetime.utcnow)

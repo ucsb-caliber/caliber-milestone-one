@@ -10,6 +10,7 @@ from .models import Question
 from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate
 from .crud import create_question, get_question, get_questions, get_questions_count, update_question, delete_question
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
+from .auth import get_current_user
 
 load_dotenv()
 
@@ -38,7 +39,7 @@ def on_startup():
     create_db_and_tables()
 
 
-def process_pdf_background(filename: str, file_content: bytes):
+def process_pdf_background(filename: str, file_content: bytes, user_id: str):
     """
     Background task to process PDF and create question records.
     
@@ -60,10 +61,11 @@ def process_pdf_background(filename: str, file_content: bytes):
                     text=q_dict["text"],
                     tags=q_dict["tags"],
                     keywords=q_dict["keywords"],
-                    source_pdf=filename
+                    source_pdf=filename,
+                    user_id=user_id
                 )
         
-        print(f"Successfully processed {filename}: created {len(question_dicts)} questions")
+        print(f"Successfully processed {filename}: created {len(question_dicts)} questions for user {user_id}")
     except Exception as e:
         print(f"Error processing PDF {filename}: {e}")
 
@@ -71,15 +73,16 @@ def process_pdf_background(filename: str, file_content: bytes):
 @app.post("/api/upload-pdf", response_model=UploadResponse)
 async def upload_pdf(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user)
 ):
     """
-    Upload a PDF file for processing.
+    Upload a PDF file for processing. Requires authentication.
     
     The file is saved and a background task is queued to:
     1. Extract text from the PDF
     2. Send to agent pipeline (stubbed)
-    3. Store questions in the database
+    3. Store questions in the database associated with the user
     """
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
@@ -92,8 +95,8 @@ async def upload_pdf(
     with open(file_path, "wb") as f:
         f.write(file_content)
     
-    # Queue background processing
-    background_tasks.add_task(process_pdf_background, file.filename, file_content)
+    # Queue background processing with user_id
+    background_tasks.add_task(process_pdf_background, file.filename, file_content, user_id)
     
     return UploadResponse(
         status="queued",
@@ -106,11 +109,12 @@ async def upload_pdf(
 def list_questions(
     skip: int = 0,
     limit: int = 100,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
 ):
-    """Get a list of all questions."""
-    questions = get_questions(session, skip=skip, limit=limit)
-    total = get_questions_count(session)
+    """Get a list of questions for the authenticated user."""
+    questions = get_questions(session, user_id=user_id, skip=skip, limit=limit)
+    total = get_questions_count(session, user_id=user_id)
     
     return QuestionListResponse(
         questions=questions,
@@ -121,10 +125,11 @@ def list_questions(
 @app.get("/api/questions/{question_id}", response_model=QuestionResponse)
 def get_question_by_id(
     question_id: int,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
 ):
-    """Get a specific question by ID."""
-    question = get_question(session, question_id)
+    """Get a specific question by ID. Only accessible by the question owner."""
+    question = get_question(session, question_id, user_id=user_id)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     return question
@@ -133,15 +138,17 @@ def get_question_by_id(
 @app.post("/api/questions", response_model=QuestionResponse, status_code=201)
 def create_new_question(
     question_data: QuestionCreate,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
 ):
-    """Create a new question."""
+    """Create a new question for the authenticated user."""
     question = create_question(
         session=session,
         text=question_data.text,
         tags=question_data.tags,
         keywords=question_data.keywords,
-        source_pdf=question_data.source_pdf
+        source_pdf=question_data.source_pdf,
+        user_id=user_id
     )
     return question
 
@@ -150,12 +157,14 @@ def create_new_question(
 def update_existing_question(
     question_id: int,
     question_data: QuestionUpdate,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
 ):
-    """Update an existing question."""
+    """Update an existing question. Only accessible by the question owner."""
     question = update_question(
         session=session,
         question_id=question_id,
+        user_id=user_id,
         text=question_data.text,
         tags=question_data.tags,
         keywords=question_data.keywords,
@@ -169,12 +178,22 @@ def update_existing_question(
 @app.delete("/api/questions/{question_id}", status_code=204)
 def delete_existing_question(
     question_id: int,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
 ):
-    """Delete a question."""
-    success = delete_question(session, question_id)
+    """Delete a question. Only accessible by the question owner."""
+    success = delete_question(session, question_id, user_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Question not found")
+
+
+@app.get("/api/user")
+def get_user_info(user_id: str = Depends(get_current_user)):
+    """Get information about the authenticated user."""
+    return {
+        "user_id": user_id,
+        "authenticated": True
+    }
 
 
 @app.get("/")
@@ -189,6 +208,7 @@ def root():
             "/api/questions/{question_id}",
             "POST /api/questions",
             "PUT /api/questions/{question_id}",
-            "DELETE /api/questions/{question_id}"
+            "DELETE /api/questions/{question_id}",
+            "/api/user"
         ]
     }
