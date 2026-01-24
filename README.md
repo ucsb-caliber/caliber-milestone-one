@@ -66,9 +66,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit your `.env` file and add:
-- Replace `[PASSWORD]` in `DATABASE_URL` with your Supabase database password
-- Replace `[YOUR_SUPABASE_ANON_KEY]` with your Supabase anon key from step 2 above
+Edit your `.env` file and replace the placeholders:
+- Replace `your-project-id` in `DATABASE_URL` with your actual Supabase project details
+- Replace `your-password` in `DATABASE_URL` with your Supabase database password
+- Replace `your-project-id.supabase.co` in `SUPABASE_URL` with your actual Supabase URL
+- Replace `your-anon-key-here` in `SUPABASE_ANON_KEY` with your Supabase anon key from step 2 above
 
 ```bash
 uvicorn app.main:app --reload --port 8000
@@ -84,8 +86,9 @@ npm install
 cp .env.example .env
 ```
 
-Edit your frontend `.env` file and add:
-- Replace `[YOUR_SUPABASE_ANON_KEY]` with your Supabase anon key
+Edit your frontend `.env` file and replace the placeholders:
+- Replace `your-project-id.supabase.co` with your actual Supabase URL
+- Replace `your-anon-key-here` with your Supabase anon key
 
 ```bash
 npm run dev

@@ -78,7 +78,7 @@ export default function Auth() {
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={loading}
-            minLength={6}
+            minLength={8}
             style={{
               width: '100%',
               padding: '0.5rem',
@@ -87,6 +87,9 @@ export default function Auth() {
               fontSize: '1rem'
             }}
           />
+          <small style={{ color: '#666', fontSize: '0.85rem' }}>
+            Minimum 8 characters
+          </small>
         </div>
 
         <button

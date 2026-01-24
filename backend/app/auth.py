@@ -63,7 +63,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         
         return user.user.id
         
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
     except Exception as e:
+        # Log the actual error for debugging while returning generic message to client
+        import logging
+        logging.error(f"Authentication error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
