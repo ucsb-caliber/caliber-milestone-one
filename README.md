@@ -12,8 +12,11 @@ This prototype demonstrates:
 
 ### Backend (FastAPI)
 - **POST /api/upload-pdf**: Accepts multipart PDF uploads, saves file to UPLOAD_DIR, and schedules a background task to process the PDF and create Question records
-- **GET /api/questions**: List all questions
+- **GET /api/questions**: List all questions (supports optional `skip` and `limit` query parameters)
 - **GET /api/questions/{id}**: Get a specific question by ID
+- **POST /api/questions**: Create a new question using individual form fields (`text` required, `tags`, `keywords`, and `source_pdf` optional)
+- **PUT /api/questions/{id}**: Update an existing question
+- **DELETE /api/questions/{id}**: Delete a question
 - Uses SQLModel with SQLite (default) for easy local development
 - Can be switched to PostgreSQL via DATABASE_URL in .env
 - Uses PyPDF2 to extract text from PDFs
@@ -55,10 +58,29 @@ The frontend will be available at http://localhost:5173
 
 ## Usage
 
+### Upload PDF
 1. Navigate to http://localhost:5173
 2. Upload a PDF file using the Home page
 3. The backend returns `{status: 'queued'}` and processes the PDF in the background
 4. Visit the Question Bank page to view parsed questions (click Refresh if needed)
+
+### Create Questions Manually
+You can also create questions directly using the API with individual form fields:
+
+```bash
+# Create a question with all fields
+curl -X POST http://localhost:8000/api/questions \
+  -F "text=What is the capital of France?" \
+  -F "tags=geography,europe" \
+  -F "keywords=capital,france,paris" \
+  -F "source_pdf=sample.pdf"
+
+# Create a question with only required field
+curl -X POST http://localhost:8000/api/questions \
+  -F "text=What is the largest planet in our solar system?"
+```
+
+The create question endpoint now accepts individual form parameters similar to GET endpoints, making it easier to test and use from tools like curl or Postman.
 
 ## Stubbed Agent Pipeline
 
