@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -68,7 +69,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise
     except Exception as e:
         # Log the actual error for debugging while returning generic message to client
-        import logging
         logging.error(f"Authentication error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
