@@ -13,13 +13,14 @@ This prototype demonstrates:
 ## Architecture
 
 ### Backend (FastAPI)
-- **Authentication**: JWT token-based authentication using Supabase
-- **POST /api/upload-pdf**: Accepts authenticated multipart PDF uploads, saves file to UPLOAD_DIR, and schedules a background task to process the PDF and create Question records associated with the user
-- **GET /api/questions**: List all questions for the authenticated user
-- **GET /api/questions/{id}**: Get a specific question by ID (only if owned by the user)
-- **GET /api/user**: Get authenticated user information
-- Uses SQLModel with PostgreSQL (Supabase) for production-ready data storage
-- Can be switched to SQLite via DATABASE_URL in .env for local development
+- **POST /api/upload-pdf**: Accepts multipart PDF uploads, saves file to UPLOAD_DIR, and schedules a background task to process the PDF and create Question records
+- **GET /api/questions**: List all questions (supports optional `skip` and `limit` query parameters)
+- **GET /api/questions/{id}**: Get a specific question by ID
+- **POST /api/questions**: Create a new question using individual form fields (`text` required, `tags`, `keywords`, and `source_pdf` optional)
+- **PUT /api/questions/{id}**: Update an existing question
+- **DELETE /api/questions/{id}**: Delete a question
+- Uses SQLModel with SQLite (default) for easy local development
+- Can be switched to PostgreSQL via DATABASE_URL in .env
 - Uses PyPDF2 to extract text from PDFs
 - Implements `send_to_agent_pipeline` as a stub that splits text into chunks and returns question dictionaries
 - Background processing uses FastAPI BackgroundTasks
@@ -98,6 +99,7 @@ The frontend will be available at http://localhost:5173
 
 ## Usage
 
+### Upload PDF
 1. Navigate to http://localhost:5173
 2. **Sign up** with your email and password (or **sign in** if you already have an account)
 3. After signing in, you'll be redirected to the Home page
@@ -131,6 +133,24 @@ The frontend will be available at http://localhost:5173
 3. The token is automatically stored in local storage
 4. All API requests include the token in the Authorization header
 5. Backend validates the token with Supabase on each request
+
+### Create Questions Manually
+You can also create questions directly using the API with individual form fields:
+
+```bash
+# Create a question with all fields
+curl -X POST http://localhost:8000/api/questions \
+  -F "text=What is the capital of France?" \
+  -F "tags=geography,europe" \
+  -F "keywords=capital,france,paris" \
+  -F "source_pdf=sample.pdf"
+
+# Create a question with only required field
+curl -X POST http://localhost:8000/api/questions \
+  -F "text=What is the largest planet in our solar system?"
+```
+
+The create question endpoint now accepts individual form parameters similar to GET endpoints, making it easier to test and use from tools like curl or Postman.
 
 ## Stubbed Agent Pipeline
 

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks
+from typing import Optional
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 from dotenv import load_dotenv
@@ -137,18 +138,19 @@ def get_question_by_id(
 
 @app.post("/api/questions", response_model=QuestionResponse, status_code=201)
 def create_new_question(
-    question_data: QuestionCreate,
-    session: Session = Depends(get_session),
-    user_id: str = Depends(get_current_user)
+    text: str = Form(...),
+    tags: str = Form(""),
+    keywords: str = Form(""),
+    source_pdf: Optional[str] = Form(None),
+    session: Session = Depends(get_session)
 ):
-    """Create a new question for the authenticated user."""
+    """Create a new question using form parameters."""
     question = create_question(
         session=session,
-        text=question_data.text,
-        tags=question_data.tags,
-        keywords=question_data.keywords,
-        source_pdf=question_data.source_pdf,
-        user_id=user_id
+        text=text,
+        tags=tags,
+        keywords=keywords,
+        source_pdf=source_pdf
     )
     return question
 
