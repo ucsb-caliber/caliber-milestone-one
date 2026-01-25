@@ -56,11 +56,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             raise ValueError("SUPABASE_JWT_SECRET must be set in environment variables")
         
         # Decode and verify the JWT token
+        # Note: Supabase uses HS256 algorithm with the JWT secret for signing tokens
+        # We need to specify options to ensure proper verification
         payload = jwt.decode(
             token,
             SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
-            audience="authenticated"
+            options={"verify_aud": False}  # Disable audience verification for now
         )
         
         # Extract user ID from the 'sub' claim

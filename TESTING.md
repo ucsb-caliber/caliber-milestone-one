@@ -184,10 +184,17 @@ You should see:
 **Solution**: Make sure you created `frontend/.env` and added your credentials
 
 ### Backend auth fails
-**Error**: `Invalid authentication credentials`
+**Error**: `Invalid authentication credentials` or `Invalid token: The specified alg value is not allowed`
 **Solution**: 
+- **Check JWT Secret**: The most common issue is using the wrong JWT secret
+  - Go to Supabase Dashboard → Settings → API
+  - Scroll down to **JWT Settings**
+  - Copy the **JWT Secret** (NOT the service_role key, NOT the anon key)
+  - Paste it exactly into `backend/.env` as `SUPABASE_JWT_SECRET=...`
 - Verify `SUPABASE_URL` and `SUPABASE_ANON_KEY` match in both backend and frontend
 - Make sure you copied the full anon key (starts with `eyJhbGc`)
+- Restart the backend server after changing .env
+- **Important**: The JWT Secret is different from the anon key. Don't confuse them!
 
 ### Database connection fails
 **Error**: `could not connect to server`
