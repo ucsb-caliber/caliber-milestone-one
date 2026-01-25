@@ -1,20 +1,24 @@
 import os
 import logging
 import jwt
+import requests
 from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
+from jwt import PyJWKClient
+from urllib.parse import urljoin
 
 load_dotenv()
 
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")  # Optional, for legacy projects
 
 # Lazy-load supabase client
 _supabase_client = None
+_jwks_client = None
 
 
 def get_supabase_client():
@@ -31,6 +35,21 @@ def get_supabase_client():
     return _supabase_client
 
 
+def get_jwks_client():
+    """Get or create the JWKS client for verifying Supabase JWTs."""
+    global _jwks_client
+    
+    if _jwks_client is None:
+        if not SUPABASE_URL:
+            raise ValueError("SUPABASE_URL must be set in environment variables")
+        
+        # Supabase JWKS endpoint is at /auth/v1/jwks
+        jwks_url = urljoin(SUPABASE_URL, "/auth/v1/.well-known/jwks.json")
+        _jwks_client = PyJWKClient(jwks_url)
+    
+    return _jwks_client
+
+
 # Security scheme for Bearer token
 security = HTTPBearer()
 
@@ -38,6 +57,10 @@ security = HTTPBearer()
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """
     Verify the JWT token and return the user ID.
+    
+    Supports both:
+    - Modern Supabase projects using asymmetric JWKS (RS256/ES256)  
+    - Legacy Supabase projects using shared secret (HS256)
     
     Args:
         credentials: The HTTP Authorization credentials containing the Bearer token
@@ -51,19 +74,46 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     token = credentials.credentials
     
     try:
-        # Verify JWT token using the JWT secret
-        if not SUPABASE_JWT_SECRET:
-            raise ValueError("SUPABASE_JWT_SECRET must be set in environment variables")
+        # First, try to decode the token header to see what algorithm it uses
+        unverified_header = jwt.get_unverified_header(token)
+        algorithm = unverified_header.get("alg", "")
         
-        # Decode and verify the JWT token
-        # Note: Supabase uses HS256 algorithm with the JWT secret for signing tokens
-        # We need to specify options to ensure proper verification
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False}  # Disable audience verification for now
-        )
+        # Modern Supabase uses RS256 or ES256 with JWKS
+        if algorithm in ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]:
+            logging.info(f"Verifying token with JWKS (algorithm: {algorithm})")
+            
+            # Get the signing key from JWKS
+            jwks_client = get_jwks_client()
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            
+            # Decode and verify with the public key
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=[algorithm],
+                options={"verify_aud": False}  # Supabase doesn't always set audience
+            )
+        
+        # Legacy Supabase uses HS256 with shared secret
+        elif algorithm in ["HS256", "HS384", "HS512"]:
+            logging.info(f"Verifying token with JWT secret (algorithm: {algorithm})")
+            
+            if not SUPABASE_JWT_SECRET:
+                raise ValueError(
+                    "Token uses HS256 algorithm but SUPABASE_JWT_SECRET is not set. "
+                    "For legacy Supabase projects, add SUPABASE_JWT_SECRET to your .env file."
+                )
+            
+            # Decode and verify with shared secret
+            payload = jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=[algorithm],
+                options={"verify_aud": False}
+            )
+        
+        else:
+            raise jwt.InvalidTokenError(f"Unsupported algorithm: {algorithm}")
         
         # Extract user ID from the 'sub' claim
         user_id = payload.get("sub")

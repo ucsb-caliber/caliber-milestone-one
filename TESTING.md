@@ -27,7 +27,7 @@ Once your project is ready:
 2. Copy the following values:
    - **Project URL** (e.g., `https://abcdefghijklm.supabase.co`)
    - **anon public key** (long string starting with `eyJhbGc...`)
-   - **JWT Secret** (scroll down to "JWT Settings" section, copy the secret)
+   - **Note**: You do NOT need the JWT Secret for modern projects (they use JWKS)
 3. Go to **Settings** → **Database**
    - Note your database password (or reset if you forgot)
 
@@ -47,7 +47,10 @@ Edit `backend/.env` and replace:
 DATABASE_URL=postgresql://postgres.yourprojectref:YOUR_PASSWORD@aws-0-us-west-1.pooler.supabase.com:5432/postgres
 SUPABASE_URL=https://yourprojectref.supabase.co
 SUPABASE_ANON_KEY=eyJhbGc...your-actual-anon-key...
-SUPABASE_JWT_SECRET=your-jwt-secret-from-settings...
+
+# SUPABASE_JWT_SECRET is NOT needed for modern projects
+# Only uncomment if you have a legacy project (pre-2024)
+# SUPABASE_JWT_SECRET=your-jwt-secret-from-settings...
 ```
 
 **Important**: 
@@ -186,15 +189,19 @@ You should see:
 ### Backend auth fails
 **Error**: `Invalid authentication credentials` or `Invalid token: The specified alg value is not allowed`
 **Solution**: 
-- **Check JWT Secret**: The most common issue is using the wrong JWT secret
-  - Go to Supabase Dashboard → Settings → API
-  - Scroll down to **JWT Settings**
+- **Modern Supabase Projects (2024+)**: You don't need JWT Secret! The backend now uses JWKS automatically.
+  - Just make sure `SUPABASE_URL` and `SUPABASE_ANON_KEY` are set correctly
+  - Remove or comment out `SUPABASE_JWT_SECRET` from your `.env` file
+  - Restart backend after changing .env
+  
+- **Legacy Supabase Projects (pre-2024)**: If your project uses HS256 algorithm:
+  - Go to Supabase Dashboard → Settings → API → JWT Settings
   - Copy the **JWT Secret** (NOT the service_role key, NOT the anon key)
-  - Paste it exactly into `backend/.env` as `SUPABASE_JWT_SECRET=...`
+  - Uncomment and set in `backend/.env`: `SUPABASE_JWT_SECRET=...`
+  - Restart backend
+
 - Verify `SUPABASE_URL` and `SUPABASE_ANON_KEY` match in both backend and frontend
 - Make sure you copied the full anon key (starts with `eyJhbGc`)
-- Restart the backend server after changing .env
-- **Important**: The JWT Secret is different from the anon key. Don't confuse them!
 
 ### Database connection fails
 **Error**: `could not connect to server`
