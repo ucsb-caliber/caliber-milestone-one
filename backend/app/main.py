@@ -1,16 +1,16 @@
 import os
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlmodel import Session, select, func
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
-from .models import Question
-from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate
-from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question
+from .models import Question, User
+from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate
+from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -248,12 +248,78 @@ def delete_existing_question(
 
 
 @app.get("/api/user")
-def get_user_info(user_id: str = Depends(get_current_user)):
-    """Get information about the authenticated user."""
+def get_user_info(
+    user_id: str = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Get information about the authenticated user including admin and teacher status."""
+    # User should exist since get_current_user creates it, but use get_or_create for safety
+    user = get_or_create_user(session, user_id)
     return {
         "user_id": user_id,
-        "authenticated": True
+        "authenticated": True,
+        "admin": user.admin,
+        "teacher": user.teacher
     }
+
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+def get_user_by_id(
+    user_id: str,
+    session: Session = Depends(get_session),
+    current_user_id: str = Depends(get_current_user)
+):
+    """
+    Get user information by user_id. Requires authentication.
+    Users can only view their own information unless they are an admin.
+    """
+    # Check if user is trying to view their own info or if they're an admin
+    if current_user_id != user_id:
+        current_user = get_user_by_user_id(session, current_user_id)
+        if not current_user or not current_user.admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to view other users' information"
+            )
+    
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: str,
+    user_data: UserUpdate,
+    session: Session = Depends(get_session),
+    current_user_id: str = Depends(get_current_user)
+):
+    """
+    Update user admin/teacher status. Requires authentication and admin privileges.
+    Only admin users can update user roles.
+    """
+    # Check if the current user is an admin
+    current_user = get_user_by_user_id(session, current_user_id)
+    if not current_user or not current_user.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can update user roles"
+        )
+    
+    # Ensure target user exists (create if they haven't logged in yet)
+    target_user = get_or_create_user(session, user_id)
+    
+    # Update the roles
+    user = update_user_roles(
+        session=session,
+        user_id=user_id,
+        admin=user_data.admin,
+        teacher=user_data.teacher
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @app.get("/")
@@ -269,6 +335,8 @@ def root():
             "POST /api/questions",
             "PUT /api/questions/{question_id}",
             "DELETE /api/questions/{question_id}",
-            "/api/user"
+            "/api/user",
+            "GET /api/users/{user_id}",
+            "PUT /api/users/{user_id}"
         ]
     }

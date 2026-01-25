@@ -3,6 +3,25 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class UserResponse(BaseModel):
+    """Schema for user response."""
+    id: int
+    user_id: str
+    admin: bool
+    teacher: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    """Schema for updating user admin/teacher status."""
+    admin: Optional[bool] = None
+    teacher: Optional[bool] = None
+
+
 class QuestionCreate(BaseModel):
     """Schema for creating a new question."""
     text: str

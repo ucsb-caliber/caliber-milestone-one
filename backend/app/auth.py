@@ -8,7 +8,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from jwt import PyJWKClient
 from urllib.parse import urljoin
+from sqlmodel import Session
 from .test_auth import get_mock_user_id
+from .database import engine
+from .crud import get_or_create_user
 
 load_dotenv()
 
@@ -172,6 +175,8 @@ async def get_current_user(
     This allows Swagger UI to work automatically when users are logged in via the frontend,
     as both run on localhost and can share cookies.
     
+    Also ensures a User record exists in the database for the authenticated user.
+    
     Args:
         request: The FastAPI request object to access cookies
         credentials: Optional HTTP Authorization credentials containing the Bearer token
@@ -201,7 +206,13 @@ async def get_current_user(
         )
     
     # Verify the token using the common verification function
-    return verify_jwt_token(token)
+    user_id = verify_jwt_token(token)
+    
+    # Ensure user record exists in database
+    with Session(engine) as session:
+        get_or_create_user(session, user_id)
+    
+    return user_id
 
 
 async def get_optional_user(

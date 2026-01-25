@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 from typing import List, Optional
-from .models import Question
+from datetime import datetime
+from .models import Question, User
 
 
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
@@ -93,3 +94,45 @@ def delete_question(session: Session, question_id: int, user_id: str) -> bool:
     session.delete(question)
     session.commit()
     return True
+
+
+# User CRUD operations
+
+def get_or_create_user(session: Session, user_id: str) -> User:
+    """Get a user by user_id or create if it doesn't exist."""
+    statement = select(User).where(User.user_id == user_id)
+    user = session.exec(statement).first()
+    
+    if not user:
+        user = User(user_id=user_id, admin=False, teacher=False)
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    
+    return user
+
+
+def get_user_by_user_id(session: Session, user_id: str) -> Optional[User]:
+    """Get a user by their Supabase user_id."""
+    statement = select(User).where(User.user_id == user_id)
+    return session.exec(statement).first()
+
+
+def update_user_roles(session: Session, user_id: str, admin: Optional[bool] = None, 
+                      teacher: Optional[bool] = None) -> Optional[User]:
+    """Update user admin/teacher status."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        return None
+    
+    if admin is not None:
+        user.admin = admin
+    if teacher is not None:
+        user.teacher = teacher
+    
+    user.updated_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
