@@ -46,18 +46,6 @@ You need:
 2. Supabase project URL and anonymous key (anon key)
 3. Supabase database password (from your project settings)
 
-### Supabase Setup
-
-1. Go to [https://supabase.com](https://supabase.com) and create a new project
-2. In your Supabase project settings:
-   - Navigate to **Settings** → **API**
-   - Copy your **Project URL** (e.g., `https://xxxxx.supabase.co`)
-   - Copy your **anon/public key** (looks like `eyJhbGc...`)
-   - **Note**: Modern projects don't need JWT Secret (uses JWKS automatically)
-3. Enable email authentication:
-   - Navigate to **Authentication** → **Providers**
-   - Ensure **Email** is enabled (it should be by default)
-
 ### Backend Setup
 
 ```bash
@@ -80,7 +68,7 @@ Edit your `.env` file and replace the placeholders:
 alembic upgrade head
 ```
 
-This will add the `user_id` column to your database tables. See `backend/MIGRATIONS.md` for more details.
+See `backend/MIGRATIONS.md` for more details on how to use alembic.
 
 **Start the backend server:**
 ```bash
