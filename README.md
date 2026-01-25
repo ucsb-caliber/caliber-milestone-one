@@ -75,6 +75,14 @@ Edit your `.env` file and replace the placeholders:
 - Replace `your-anon-key-here` in `SUPABASE_ANON_KEY` with your Supabase anon key from step 2 above
 - **SUPABASE_JWT_SECRET**: Not needed for modern projects! Only set if you have a legacy project.
 
+**Run database migrations** (first time setup):
+```bash
+alembic upgrade head
+```
+
+This will add the `user_id` column to your database tables. See `backend/MIGRATIONS.md` for more details.
+
+**Start the backend server:**
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```

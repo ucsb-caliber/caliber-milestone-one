@@ -57,6 +57,13 @@ SUPABASE_ANON_KEY=eyJhbGc...your-actual-anon-key...
 - Get the full DATABASE_URL from Supabase: **Settings** → **Database** → **Connection string** → **URI** (Connection pooling mode)
 - Copy it exactly and just replace `[YOUR-PASSWORD]` with your database password
 
+**Run database migrations** (first time only):
+```bash
+alembic upgrade head
+```
+
+This creates the `user_id` column in your database. See `backend/MIGRATIONS.md` for details.
+
 ## Step 4: Configure Frontend
 
 ```bash
