@@ -7,6 +7,16 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
  * Get authentication headers with the current user's token
  */
 async function getAuthHeaders() {
+  // Check if we're in test mode
+  const isTestMode = localStorage.getItem('test-mode') === 'true';
+  
+  if (isTestMode) {
+    // Use test token
+    return {
+      'Authorization': 'Bearer test-token-1',
+    };
+  }
+
   const { data: { session } } = await supabase.auth.getSession();
   
   if (!session?.access_token) {
