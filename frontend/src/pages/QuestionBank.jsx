@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
+import { useAuth } from '../AuthContext';
 
 // Color palettes for keyword and tag bubbles
 const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
@@ -9,6 +10,7 @@ const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
 
 export default function QuestionBank() {
+  const { user } = useAuth();
   const [myQuestions, setMyQuestions] = useState([]);
   const [allQuestions, setAllQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +51,7 @@ export default function QuestionBank() {
     }
   };
 
-  const renderQuestionCard = (question) => {
+  const renderQuestionCard = (question, showDeleteButton = true) => {
     let answerChoices = [];
     try {
       answerChoices = JSON.parse(question.answer_choices || '[]');
@@ -182,24 +184,26 @@ export default function QuestionBank() {
           </div>
         )}
 
-        {/* Delete button in bottom corner */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
-          <button
-            onClick={() => setDeleteConfirm(question.id)}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#dc3545',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: 'bold'
-            }}
-          >
-            Delete
-          </button>
-        </div>
+        {/* Delete button in bottom corner - only show if permitted */}
+        {showDeleteButton && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+            <button
+              onClick={() => setDeleteConfirm(question.id)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 'bold'
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -370,9 +374,9 @@ export default function QuestionBank() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '1.5rem 2rem'
+                  gap: '1.5rem 2.5rem'
                 }}>
-                  {myQuestions.map(renderQuestionCard)}
+                  {myQuestions.map(question => renderQuestionCard(question, true))}
                 </div>
               )
             )}
@@ -418,9 +422,13 @@ export default function QuestionBank() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '1.5rem 2rem'
+                  gap: '1.5rem 2.5rem'
                 }}>
-                  {allQuestions.map(renderQuestionCard)}
+                  {allQuestions.map(question => {
+                    // Only show delete button if this question belongs to the current user
+                    const canDelete = user && question.user_id === user.id;
+                    return renderQuestionCard(question, canDelete);
+                  })}
                 </div>
               )
             )}
