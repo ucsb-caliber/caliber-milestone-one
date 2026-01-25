@@ -28,7 +28,7 @@ app = FastAPI(
     Most endpoints require authentication via Supabase JWT token.
     
     **To use the API docs:**
-    1. Sign up/login via the frontend (http://localhost:5173)
+    1. Sign up/login via the frontend application
     2. Open browser DevTools → Application → Local Storage
     3. Find the Supabase session and copy the `access_token`
     4. Click the "Authorize" button (🔓) at the top right
