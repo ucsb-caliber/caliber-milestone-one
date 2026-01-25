@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
 from sqlmodel import Session
 from dotenv import load_dotenv
 
@@ -15,7 +16,28 @@ from .auth import get_current_user
 
 load_dotenv()
 
-app = FastAPI(title="Caliber Milestone One API", version="1.0.0")
+# Define security scheme for OpenAPI docs
+security = HTTPBearer()
+
+app = FastAPI(
+    title="Caliber Milestone One API",
+    version="1.0.0",
+    description="""
+    ## Authentication Required
+    
+    Most endpoints require authentication via Supabase JWT token.
+    
+    **To use the API docs:**
+    1. Sign up/login via the frontend (http://localhost:5173)
+    2. Open browser DevTools → Application → Local Storage
+    3. Find the Supabase session and copy the `access_token`
+    4. Click the "Authorize" button (🔓) at the top right
+    5. Enter: `Bearer YOUR_ACCESS_TOKEN`
+    6. Click "Authorize" and close the dialog
+    
+    Now you can test authenticated endpoints in the docs.
+    """,
+)
 
 # Configure CORS to allow frontend at localhost:5173
 app.add_middleware(
@@ -142,15 +164,17 @@ def create_new_question(
     tags: str = Form(""),
     keywords: str = Form(""),
     source_pdf: Optional[str] = Form(None),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
 ):
-    """Create a new question using form parameters."""
+    """Create a new question using form parameters. Requires authentication."""
     question = create_question(
         session=session,
         text=text,
         tags=tags,
         keywords=keywords,
-        source_pdf=source_pdf
+        source_pdf=source_pdf,
+        user_id=user_id
     )
     return question
 

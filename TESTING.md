@@ -281,6 +281,33 @@ You should see:
    curl -H "Authorization: Bearer YOUR_TOKEN_HERE" http://localhost:8000/api/questions
    ```
 
+## Using the FastAPI Docs (Swagger UI)
+
+The FastAPI documentation interface at http://localhost:8000/docs now requires authentication for most endpoints.
+
+**To authenticate in Swagger UI:**
+
+1. **Get your access token**:
+   - Login to the frontend at http://localhost:5173
+   - Open browser DevTools (F12)
+   - Go to **Application** → **Local Storage** → `http://localhost:5173`
+   - Find the entry starting with `sb-` (Supabase session)
+   - Expand it and copy the `access_token` value (long string starting with `eyJ...`)
+
+2. **Authorize in Swagger**:
+   - Open http://localhost:8000/docs
+   - Click the **"Authorize"** button (🔓 icon) at the top right
+   - In the "Value" field, enter: `Bearer YOUR_ACCESS_TOKEN`
+   - Click **"Authorize"**
+   - Click **"Close"**
+
+3. **Test endpoints**:
+   - Now you can test any endpoint in the docs
+   - The Authorization header will be automatically included
+   - Try `GET /api/questions` or `POST /api/upload-pdf`
+
+**Note**: The access token expires after 1 hour. If you get 403 errors, get a fresh token and re-authorize.
+
 ## Advanced Testing (Optional)
 
 ### Test Password Requirements
@@ -297,6 +324,15 @@ You should see:
 - Sign in as different users in each
 - Upload different PDFs
 - Verify data isolation
+
+### Test API Endpoints Directly
+Once authenticated in Swagger UI, test:
+- `GET /api/questions` - List your questions
+- `GET /api/questions/{id}` - Get specific question
+- `POST /api/questions` - Create question manually
+- `PUT /api/questions/{id}` - Update question
+- `DELETE /api/questions/{id}` - Delete question
+- `GET /api/user` - Get user info
 
 ## Success!
 
