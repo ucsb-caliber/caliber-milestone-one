@@ -253,12 +253,13 @@ def get_user_info(
     session: Session = Depends(get_session)
 ):
     """Get information about the authenticated user including admin and teacher status."""
-    user = get_user_by_user_id(session, user_id)
+    # User should exist since get_current_user creates it, but use get_or_create for safety
+    user = get_or_create_user(session, user_id)
     return {
         "user_id": user_id,
         "authenticated": True,
-        "admin": user.admin if user else False,
-        "teacher": user.teacher if user else False
+        "admin": user.admin,
+        "teacher": user.teacher
     }
 
 
@@ -306,6 +307,10 @@ def update_user(
             detail="Only admin users can update user roles"
         )
     
+    # Ensure target user exists (create if they haven't logged in yet)
+    target_user = get_or_create_user(session, user_id)
+    
+    # Update the roles
     user = update_user_roles(
         session=session,
         user_id=user_id,
