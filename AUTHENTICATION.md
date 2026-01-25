@@ -65,6 +65,7 @@ This document describes the Supabase authentication implementation for the Calib
 - **Backend `.env.example`**:
   - `SUPABASE_URL`: Your Supabase project URL
   - `SUPABASE_ANON_KEY`: Your Supabase anonymous/public key
+  - `SUPABASE_JWT_SECRET`: Your Supabase JWT secret (for server-side token verification)
   - `DATABASE_URL`: PostgreSQL connection string
 
 - **Frontend `.env.example`**:
@@ -84,7 +85,7 @@ This document describes the Supabase authentication implementation for the Calib
 ### Prerequisites
 1. Create a Supabase account at https://supabase.com
 2. Create a new Supabase project
-3. Note your Project URL and anon key from Settings → API
+3. Note your Project URL, anon key, and JWT secret from Settings → API
 
 ### Backend Setup
 ```bash

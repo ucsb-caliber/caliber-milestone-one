@@ -53,6 +53,7 @@ You need:
    - Navigate to **Settings** → **API**
    - Copy your **Project URL** (e.g., `https://xxxxx.supabase.co`)
    - Copy your **anon/public key** (looks like `eyJhbGc...`)
+   - Scroll down to **JWT Settings** and copy your **JWT Secret**
 3. Enable email authentication:
    - Navigate to **Authentication** → **Providers**
    - Ensure **Email** is enabled (it should be by default)
@@ -72,6 +73,7 @@ Edit your `.env` file and replace the placeholders:
 - Replace `your-password` in `DATABASE_URL` with your Supabase database password
 - Replace `your-project-id.supabase.co` in `SUPABASE_URL` with your actual Supabase URL
 - Replace `your-anon-key-here` in `SUPABASE_ANON_KEY` with your Supabase anon key from step 2 above
+- Replace `your-jwt-secret-here` in `SUPABASE_JWT_SECRET` with your JWT secret from step 2 above
 
 ```bash
 uvicorn app.main:app --reload --port 8000

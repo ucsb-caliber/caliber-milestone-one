@@ -10,6 +10,7 @@ load_dotenv()
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 # Lazy-load supabase client
 _supabase_client = None
@@ -49,24 +50,46 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     token = credentials.credentials
     
     try:
-        # Get Supabase client
-        supabase = get_supabase_client()
+        # Verify JWT token using the JWT secret
+        import jwt
         
-        # Verify the JWT token with Supabase
-        user = supabase.auth.get_user(token)
+        if not SUPABASE_JWT_SECRET:
+            raise ValueError("SUPABASE_JWT_SECRET must be set in environment variables")
         
-        if not user or not user.user:
+        # Decode and verify the JWT token
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+        
+        # Extract user ID from the 'sub' claim
+        user_id = payload.get("sub")
+        if not user_id:
+            logging.warning("Token verification failed: No 'sub' claim in token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        return user.user.id
+        return user_id
         
-    except HTTPException:
-        # Re-raise HTTPExceptions as-is
-        raise
+    except jwt.ExpiredSignatureError:
+        logging.warning("Token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError as e:
+        logging.error(f"Invalid token: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except Exception as e:
         # Log the actual error for debugging while returning generic message to client
         logging.error(f"Authentication error: {type(e).__name__}: {str(e)}")

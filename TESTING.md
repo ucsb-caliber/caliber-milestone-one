@@ -27,6 +27,7 @@ Once your project is ready:
 2. Copy the following values:
    - **Project URL** (e.g., `https://abcdefghijklm.supabase.co`)
    - **anon public key** (long string starting with `eyJhbGc...`)
+   - **JWT Secret** (scroll down to "JWT Settings" section, copy the secret)
 3. Go to **Settings** → **Database**
    - Note your database password (or reset if you forgot)
 
@@ -46,6 +47,7 @@ Edit `backend/.env` and replace:
 DATABASE_URL=postgresql://postgres.yourprojectref:YOUR_PASSWORD@aws-0-us-west-1.pooler.supabase.com:5432/postgres
 SUPABASE_URL=https://yourprojectref.supabase.co
 SUPABASE_ANON_KEY=eyJhbGc...your-actual-anon-key...
+SUPABASE_JWT_SECRET=your-jwt-secret-from-settings...
 ```
 
 **Important**: 
