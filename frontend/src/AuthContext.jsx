@@ -17,12 +17,17 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   // Helper function to set access token as a cookie
-  const setAccessTokenCookie = (accessToken) => {
+  const setAccessTokenCookie = (accessToken, expiresAt) => {
     if (accessToken) {
-      // Set cookie with SameSite=Lax to allow localhost subdomain sharing
-      // Expires in 7 days to match typical Supabase token lifetime
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7);
+      // Set cookie to expire at the same time as the token (or 1 hour if no expiry provided)
+      let expiryDate;
+      if (expiresAt) {
+        expiryDate = new Date(expiresAt * 1000); // Convert Unix timestamp to Date
+      } else {
+        // Default to 1 hour from now (typical Supabase token lifetime)
+        expiryDate = new Date();
+        expiryDate.setHours(expiryDate.getHours() + 1);
+      }
       document.cookie = `access_token=${accessToken}; path=/; expires=${expiryDate.toUTCString()}; SameSite=Lax`;
     } else {
       // Clear the cookie
@@ -35,7 +40,7 @@ export const AuthProvider = ({ children }) => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      setAccessTokenCookie(session?.access_token);
+      setAccessTokenCookie(session?.access_token, session?.expires_at);
       setLoading(false);
     });
 
@@ -43,7 +48,7 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      setAccessTokenCookie(session?.access_token);
+      setAccessTokenCookie(session?.access_token, session?.expires_at);
       setLoading(false);
     });
 

@@ -196,22 +196,30 @@ async def get_current_user(
     return verify_jwt_token(token)
 
 
-def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[str]:
+async def get_optional_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> Optional[str]:
     """
     Optional authentication - returns user ID if authenticated, None otherwise.
     Useful for endpoints that work differently for authenticated vs anonymous users.
+    
+    Checks both Bearer token and cookie authentication, same as get_current_user.
     """
-    if not credentials:
+    token = None
+    
+    # Try to get token from Authorization header first
+    if credentials:
+        token = credentials.credentials
+    
+    # If not in header, try to get from cookie
+    if not token:
+        token = request.cookies.get("access_token")
+    
+    if not token:
         return None
     
     try:
-        token = credentials.credentials
-        supabase = get_supabase_client()
-        user = supabase.auth.get_user(token)
-        
-        if user and user.user:
-            return user.user.id
-        return None
-        
+        return verify_jwt_token(token)
     except Exception:
         return None
