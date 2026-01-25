@@ -103,10 +103,8 @@ export default function CreateQuestion() {
         correct_answer: ''
       });
 
-      // Redirect to question bank after 2 seconds
-      setTimeout(() => {
-        window.location.hash = 'questions';
-      }, 2000);
+      // Redirect to question bank
+      window.location.hash = 'questions';
     } catch (err) {
       setError(err.message || 'Failed to create question');
     } finally {
