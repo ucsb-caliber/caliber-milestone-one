@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
 
+// Color palettes for keyword and tag bubbles
+const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
+const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
+
+// Sort function for newest-first ordering
+const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+
 export default function QuestionBank() {
   const [myQuestions, setMyQuestions] = useState([]);
   const [allQuestions, setAllQuestions] = useState([]);
@@ -19,7 +26,6 @@ export default function QuestionBank() {
         getAllQuestions()
       ]);
       // Sort questions by created_at descending (newest first)
-      const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
       setMyQuestions((myData.questions || []).sort(sortByNewest));
       setAllQuestions((allData.questions || []).sort(sortByNewest));
     } catch (err) {
@@ -54,10 +60,6 @@ export default function QuestionBank() {
     // Split keywords and tags into arrays
     const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
     const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-
-    // Color palette for bubbles
-    const keywordColors = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
-    const tagColors = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
     return (
       <div
@@ -97,7 +99,7 @@ export default function QuestionBank() {
                 <span
                   key={index}
                   style={{
-                    background: keywordColors[index % keywordColors.length],
+                    background: KEYWORD_COLORS[index % KEYWORD_COLORS.length],
                     color: '#333',
                     padding: '0.2rem 0.6rem',
                     borderRadius: '12px',
@@ -118,7 +120,7 @@ export default function QuestionBank() {
                 <span
                   key={index}
                   style={{
-                    background: tagColors[index % tagColors.length],
+                    background: TAG_COLORS[index % TAG_COLORS.length],
                     color: '#333',
                     padding: '0.2rem 0.6rem',
                     borderRadius: '12px',
@@ -368,8 +370,7 @@ export default function QuestionBank() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '1.5rem',
-                  rowGap: '2rem'
+                  gap: '1.5rem 2rem'
                 }}>
                   {myQuestions.map(renderQuestionCard)}
                 </div>
@@ -417,8 +418,7 @@ export default function QuestionBank() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '1.5rem',
-                  rowGap: '2rem'
+                  gap: '1.5rem 2rem'
                 }}>
                   {allQuestions.map(renderQuestionCard)}
                 </div>
