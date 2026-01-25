@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import Home from './pages/Home.jsx'
 import QuestionBank from './pages/QuestionBank.jsx'
+import CreateQuestion from './pages/CreateQuestion.jsx'
 import Auth from './pages/Auth.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 
@@ -134,6 +135,11 @@ function App() {
             {page === 'questions' && (
               <ProtectedRoute>
                 <QuestionBank />
+              </ProtectedRoute>
+            )}
+            {page === 'create-question' && (
+              <ProtectedRoute>
+                <CreateQuestion />
               </ProtectedRoute>
             )}
           </>

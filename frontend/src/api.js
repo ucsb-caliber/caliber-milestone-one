@@ -84,6 +84,38 @@ export async function getQuestions() {
 }
 
 /**
+ * Fetch all questions from all users
+ */
+export async function getAllQuestions() {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/questions/all`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to fetch all questions';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Fetch a single question by ID
  */
 export async function getQuestion(id) {
@@ -98,4 +130,75 @@ export async function getQuestion(id) {
   }
 
   return response.json();
+}
+
+/**
+ * Create a new question
+ */
+export async function createQuestion(questionData) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const formData = new FormData();
+    formData.append('text', questionData.text);
+    formData.append('tags', questionData.tags || '');
+    formData.append('keywords', questionData.keywords || '');
+    formData.append('course', questionData.course || '');
+    formData.append('answer_choices', questionData.answer_choices || '[]');
+    formData.append('correct_answer', questionData.correct_answer || '');
+    if (questionData.source_pdf) {
+      formData.append('source_pdf', questionData.source_pdf);
+    }
+
+    const response = await fetch(`${API_BASE}/api/questions`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create question');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete a question by ID
+ */
+export async function deleteQuestion(id) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to delete question';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return true;
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
 }

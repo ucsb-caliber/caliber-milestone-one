@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from .database import create_db_and_tables, get_session, engine
 from .models import Question
 from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate
-from .crud import create_question, get_question, get_questions, get_questions_count, update_question, delete_question
+from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -152,6 +152,23 @@ def list_questions(
     )
 
 
+@app.get("/api/questions/all", response_model=QuestionListResponse)
+def list_all_questions(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Get all questions from all users. Requires authentication."""
+    questions = get_all_questions(session, skip=skip, limit=limit)
+    total = get_questions_count(session)
+    
+    return QuestionListResponse(
+        questions=questions,
+        total=total
+    )
+
+
 @app.get("/api/questions/{question_id}", response_model=QuestionResponse)
 def get_question_by_id(
     question_id: int,
@@ -170,6 +187,9 @@ def create_new_question(
     text: str = Form(...),
     tags: str = Form(""),
     keywords: str = Form(""),
+    course: str = Form(""),
+    answer_choices: str = Form("[]"),
+    correct_answer: str = Form(""),
     source_pdf: Optional[str] = Form(None),
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
@@ -180,6 +200,9 @@ def create_new_question(
         text=text,
         tags=tags,
         keywords=keywords,
+        course=course,
+        answer_choices=answer_choices,
+        correct_answer=correct_answer,
         source_pdf=source_pdf,
         user_id=user_id
     )
@@ -201,6 +224,9 @@ def update_existing_question(
         text=question_data.text,
         tags=question_data.tags,
         keywords=question_data.keywords,
+        course=question_data.course,
+        answer_choices=question_data.answer_choices,
+        correct_answer=question_data.correct_answer,
         source_pdf=question_data.source_pdf
     )
     if not question:
