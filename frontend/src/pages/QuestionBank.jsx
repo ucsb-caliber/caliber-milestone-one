@@ -209,7 +209,7 @@ export default function QuestionBank() {
   };
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '1.5rem' }}>
       {/* Header with Create button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2 style={{ margin: 0 }}>Question Bank</h2>
@@ -374,7 +374,7 @@ export default function QuestionBank() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '1.5rem 2.5rem'
+                  gap: '4rem 1.5rem'
                 }}>
                   {myQuestions.map(question => renderQuestionCard(question, true))}
                 </div>
@@ -422,7 +422,7 @@ export default function QuestionBank() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '1.5rem 2.5rem'
+                  gap: '4rem 1.5rem'
                 }}>
                   {allQuestions.map(question => {
                     // Only show delete button if this question belongs to the current user
