@@ -1,5 +1,6 @@
 import os
 import logging
+import jwt
 from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -51,8 +52,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     
     try:
         # Verify JWT token using the JWT secret
-        import jwt
-        
         if not SUPABASE_JWT_SECRET:
             raise ValueError("SUPABASE_JWT_SECRET must be set in environment variables")
         
