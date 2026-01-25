@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlmodel import Session, select, func
@@ -254,15 +254,11 @@ def get_user_info(
 ):
     """Get information about the authenticated user including admin and teacher status."""
     user = get_user_by_user_id(session, user_id)
-    if not user:
-        # This shouldn't happen since get_current_user creates the user, but handle it just in case
-        user = get_or_create_user(session, user_id)
-    
     return {
         "user_id": user_id,
         "authenticated": True,
-        "admin": user.admin,
-        "teacher": user.teacher
+        "admin": user.admin if user else False,
+        "teacher": user.teacher if user else False
     }
 
 
@@ -272,7 +268,19 @@ def get_user_by_id(
     session: Session = Depends(get_session),
     current_user_id: str = Depends(get_current_user)
 ):
-    """Get user information by user_id. Requires authentication."""
+    """
+    Get user information by user_id. Requires authentication.
+    Users can only view their own information unless they are an admin.
+    """
+    # Check if user is trying to view their own info or if they're an admin
+    if current_user_id != user_id:
+        current_user = get_user_by_user_id(session, current_user_id)
+        if not current_user or not current_user.admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to view other users' information"
+            )
+    
     user = get_user_by_user_id(session, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -286,7 +294,18 @@ def update_user(
     session: Session = Depends(get_session),
     current_user_id: str = Depends(get_current_user)
 ):
-    """Update user admin/teacher status. Requires authentication."""
+    """
+    Update user admin/teacher status. Requires authentication and admin privileges.
+    Only admin users can update user roles.
+    """
+    # Check if the current user is an admin
+    current_user = get_user_by_user_id(session, current_user_id)
+    if not current_user or not current_user.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can update user roles"
+        )
+    
     user = update_user_roles(
         session=session,
         user_id=user_id,

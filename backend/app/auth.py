@@ -8,7 +8,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from jwt import PyJWKClient
 from urllib.parse import urljoin
+from sqlmodel import Session
 from .test_auth import get_mock_user_id
+from .database import engine
+from .crud import get_or_create_user
 
 load_dotenv()
 
@@ -206,10 +209,6 @@ async def get_current_user(
     user_id = verify_jwt_token(token)
     
     # Ensure user record exists in database
-    from .database import engine
-    from .crud import get_or_create_user
-    from sqlmodel import Session
-    
     with Session(engine) as session:
         get_or_create_user(session, user_id)
     
