@@ -76,7 +76,7 @@ export default function CreateQuestion() {
       return;
     }
 
-    if (!validAnswers.includes(formData.correct_answer)) {
+    if (!formData.answer_choices.some(choice => choice.trim() === formData.correct_answer)) {
       setError('Correct answer must be one of the answer choices');
       setLoading(false);
       return;

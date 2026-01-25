@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
@@ -161,8 +161,8 @@ def list_all_questions(
 ):
     """Get all questions from all users. Requires authentication."""
     questions = get_all_questions(session, skip=skip, limit=limit)
-    # Get total count of all questions (not filtered by user)
-    total = len(list(session.exec(select(Question)).all()))
+    # Get total count of all questions efficiently
+    total = session.exec(select(func.count(Question.id))).one()
     
     return QuestionListResponse(
         questions=questions,
