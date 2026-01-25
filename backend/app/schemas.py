@@ -26,6 +26,7 @@ class QuestionResponse(BaseModel):
     tags: str
     keywords: str
     source_pdf: Optional[str]
+    user_id: str
     created_at: datetime
 
     class Config:

@@ -3,13 +3,14 @@ from typing import List, Optional
 from .models import Question
 
 
-def create_question(session: Session, text: str, tags: str, keywords: str, source_pdf: Optional[str] = None) -> Question:
+def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, source_pdf: Optional[str] = None) -> Question:
     """Create a new question in the database."""
     question = Question(
         text=text,
         tags=tags,
         keywords=keywords,
-        source_pdf=source_pdf
+        source_pdf=source_pdf,
+        user_id=user_id
     )
     session.add(question)
     session.commit()
@@ -17,29 +18,37 @@ def create_question(session: Session, text: str, tags: str, keywords: str, sourc
     return question
 
 
-def get_question(session: Session, question_id: int) -> Optional[Question]:
-    """Get a question by ID."""
-    return session.get(Question, question_id)
+def get_question(session: Session, question_id: int, user_id: Optional[str] = None) -> Optional[Question]:
+    """Get a question by ID. Optionally filter by user_id."""
+    question = session.get(Question, question_id)
+    if question and user_id and question.user_id != user_id:
+        return None
+    return question
 
 
-def get_questions(session: Session, skip: int = 0, limit: int = 100) -> List[Question]:
-    """Get a list of questions."""
-    statement = select(Question).offset(skip).limit(limit)
+def get_questions(session: Session, user_id: Optional[str] = None, skip: int = 0, limit: int = 100) -> List[Question]:
+    """Get a list of questions. Optionally filter by user_id."""
+    statement = select(Question)
+    if user_id:
+        statement = statement.where(Question.user_id == user_id)
+    statement = statement.offset(skip).limit(limit)
     return list(session.exec(statement).all())
 
 
-def get_questions_count(session: Session) -> int:
-    """Get total count of questions."""
+def get_questions_count(session: Session, user_id: Optional[str] = None) -> int:
+    """Get total count of questions. Optionally filter by user_id."""
     statement = select(Question)
+    if user_id:
+        statement = statement.where(Question.user_id == user_id)
     return len(list(session.exec(statement).all()))
 
 
-def update_question(session: Session, question_id: int, text: Optional[str] = None, 
+def update_question(session: Session, question_id: int, user_id: str, text: Optional[str] = None, 
                    tags: Optional[str] = None, keywords: Optional[str] = None, 
                    source_pdf: Optional[str] = None) -> Optional[Question]:
-    """Update an existing question in the database."""
+    """Update an existing question in the database. Only the owner can update."""
     question = session.get(Question, question_id)
-    if not question:
+    if not question or question.user_id != user_id:
         return None
     
     if text is not None:
@@ -57,10 +66,10 @@ def update_question(session: Session, question_id: int, text: Optional[str] = No
     return question
 
 
-def delete_question(session: Session, question_id: int) -> bool:
-    """Delete a question from the database."""
+def delete_question(session: Session, question_id: int, user_id: str) -> bool:
+    """Delete a question from the database. Only the owner can delete."""
     question = session.get(Question, question_id)
-    if not question:
+    if not question or question.user_id != user_id:
         return False
     
     session.delete(question)

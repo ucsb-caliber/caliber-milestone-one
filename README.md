@@ -1,12 +1,14 @@
 # Caliber - Milestone One Prototype
 
-A minimal fullstack application for PDF upload, background parsing (with stubbed agent pipeline), and a question bank UI.
+A minimal fullstack application for PDF upload, background parsing (with stubbed agent pipeline), and a question bank UI with **Supabase authentication**.
 
 ## Overview
 
 This prototype demonstrates:
-- **Frontend**: React + Vite UI with Home (PDF upload) and Question Bank pages
-- **Backend**: FastAPI API that accepts PDF uploads, extracts text, runs a stubbed "agent pipeline" in a background task to parse questions, and stores them in a SQLite database using SQLModel
+- **Authentication**: Supabase-powered user authentication with sign up, sign in, and sign out
+- **Frontend**: React + Vite UI with protected Home (PDF upload) and Question Bank pages
+- **Backend**: FastAPI API that accepts authenticated PDF uploads, extracts text, runs a stubbed "agent pipeline" in a background task to parse questions, and stores them in a PostgreSQL database using SQLModel
+- **User Data Isolation**: All user data (PDFs, questions) is stored per user and only accessible by the owner
 
 ## Architecture
 
@@ -23,14 +25,38 @@ This prototype demonstrates:
 - Implements `send_to_agent_pipeline` as a stub that splits text into chunks and returns question dictionaries
 - Background processing uses FastAPI BackgroundTasks
 - CORS enabled for http://localhost:5173
+- All API endpoints (except root) require authentication
 
 ### Frontend (React + Vite)
-- Home page with upload form (POSTs PDF to backend)
-- Question Bank page that fetches /api/questions and displays stored questions
-- API helper with configurable API_BASE (default: http://localhost:8000)
+- **Authentication Flow**: Users must sign in or sign up before accessing the app
+- **Protected Routes**: Home and Question Bank pages require authentication
+- **Auth Context**: Global authentication state management with React Context
+- Home page with upload form (POSTs PDF to backend with auth token)
+- Question Bank page that fetches /api/questions with auth token and displays user's questions
+- API helper with automatic auth token injection
 - Simple hash-based navigation between pages
+- Sign out functionality in navigation bar
 
 ## Quick Start
+
+### Prerequisites
+
+You need:
+1. A Supabase account and project (free tier works fine)
+2. Supabase project URL and anonymous key (anon key)
+3. Supabase database password (from your project settings)
+
+### Supabase Setup
+
+1. Go to [https://supabase.com](https://supabase.com) and create a new project
+2. In your Supabase project settings:
+   - Navigate to **Settings** → **API**
+   - Copy your **Project URL** (e.g., `https://xxxxx.supabase.co`)
+   - Copy your **anon/public key** (looks like `eyJhbGc...`)
+   - **Note**: Modern projects don't need JWT Secret (uses JWKS automatically)
+3. Enable email authentication:
+   - Navigate to **Authentication** → **Providers**
+   - Ensure **Email** is enabled (it should be by default)
 
 ### Backend Setup
 
@@ -40,7 +66,24 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
-# Replace PASSWORD in the DATABASE_URL variable in your .env file.
+```
+
+Edit your `.env` file and replace the placeholders:
+- Replace `your-project-id` in `DATABASE_URL` with your actual Supabase project details
+- Replace `your-password` in `DATABASE_URL` with your Supabase database password
+- Replace `your-project-id.supabase.co` in `SUPABASE_URL` with your actual Supabase URL
+- Replace `your-anon-key-here` in `SUPABASE_ANON_KEY` with your Supabase anon key from step 2 above
+- **SUPABASE_JWT_SECRET**: Not needed for modern projects! Only set if you have a legacy project.
+
+**Run database migrations** (first time setup):
+```bash
+alembic upgrade head
+```
+
+This will add the `user_id` column to your database tables. See `backend/MIGRATIONS.md` for more details.
+
+**Start the backend server:**
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -51,6 +94,14 @@ The backend will be available at http://localhost:8000
 ```bash
 cd frontend
 npm install
+cp .env.example .env
+```
+
+Edit your frontend `.env` file and replace the placeholders:
+- Replace `your-project-id.supabase.co` with your actual Supabase URL
+- Replace `your-anon-key-here` with your Supabase anon key
+
+```bash
 npm run dev
 ```
 
@@ -60,9 +111,38 @@ The frontend will be available at http://localhost:5173
 
 ### Upload PDF
 1. Navigate to http://localhost:5173
-2. Upload a PDF file using the Home page
-3. The backend returns `{status: 'queued'}` and processes the PDF in the background
-4. Visit the Question Bank page to view parsed questions (click Refresh if needed)
+2. **Sign up** with your email and password (or **sign in** if you already have an account)
+3. After signing in, you'll be redirected to the Home page
+4. Upload a PDF file using the Home page
+5. The backend returns `{status: 'queued'}` and processes the PDF in the background
+6. Visit the Question Bank page to view your parsed questions (click Refresh if needed)
+7. All your data (PDFs and questions) is stored under your user ID
+8. Sign out when done using the button in the navigation bar
+
+## Authentication
+
+### How It Works
+
+- **Supabase Authentication**: The app uses Supabase's built-in authentication system
+- **JWT Tokens**: Upon sign in, Supabase provides a JWT token that's automatically included in all API requests
+- **Protected Routes**: All backend API endpoints (except root) require authentication
+- **User Data Isolation**: Each user can only access their own questions and uploads
+- **Automatic Token Refresh**: The Supabase client handles token refresh automatically
+
+### User Sign Up Flow
+
+1. User enters email and password
+2. Supabase creates the user account
+3. Supabase sends a confirmation email (if email confirmation is enabled)
+4. User can sign in immediately
+
+### User Sign In Flow
+
+1. User enters email and password
+2. Supabase validates credentials and returns a session with JWT token
+3. The token is automatically stored in local storage
+4. All API requests include the token in the Authorization header
+5. Backend validates the token with Supabase on each request
 
 ### Create Questions Manually
 You can also create questions directly using the API with individual form fields:
@@ -100,28 +180,39 @@ Replace this stub with your AGI pipeline that:
 
 ## Database Options
 
-### SQLite (Default)
-Zero-friction local testing. Database file stored at `backend/data/questionbank.db`.
+### PostgreSQL with Supabase (Recommended)
+The application is configured to use Supabase's PostgreSQL database by default. This provides:
+- Production-ready relational database
+- Automatic backups
+- Connection pooling
+- Easy scaling
 
-### PostgreSQL
-To use PostgreSQL instead:
-1. Set `DATABASE_URL` in `backend/.env`:
+Set `DATABASE_URL` in `backend/.env` using the connection string from your Supabase project.
+
+### SQLite (Local Development Only)
+For local testing without Supabase, you can use SQLite:
+1. Comment out the PostgreSQL DATABASE_URL in `backend/.env`
+2. Uncomment the SQLite DATABASE_URL:
    ```
-   DATABASE_URL=postgresql://user:password@localhost/dbname
+   DATABASE_URL=sqlite:///./data/questionbank.db
    ```
-2. Ensure PostgreSQL is running
-3. Restart the backend
+3. **Note**: SQLite is for local development only. Use PostgreSQL for production.
 
-## Cloudflare Zero Trust Integration
+## Authentication vs Cloudflare Zero Trust
 
-The repository supports Cloudflare Zero Trust integration for production deployments, though it's not enforced by default for local development.
+This application now uses **Supabase Authentication** for user management. Supabase provides:
+- Built-in user sign up and sign in
+- JWT-based authentication
+- Email verification
+- Password reset functionality
+- Social auth providers (optional)
 
-**To enable Cloudflare Access:**
-1. Configure Cloudflare Access policies for your application
-2. Add Cloudflare Access headers validation middleware to the backend
-3. Configure your frontend to work with CF Access authentication
+**Cloudflare Zero Trust** is a separate, optional layer that can be added for:
+- Network-level access control
+- Corporate SSO integration
+- Additional security policies
 
-Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com/cloudflare-one/) for setup details.
+Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com/cloudflare-one/) if you want to add this additional layer.
 
 ## Project Structure
 
@@ -131,57 +222,73 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── main.py          # FastAPI app and endpoints
+│   │   ├── auth.py          # Supabase authentication utilities
 │   │   ├── database.py      # Database connection and session
-│   │   ├── models.py        # SQLModel database models
+│   │   ├── models.py        # SQLModel database models (includes user_id)
 │   │   ├── schemas.py       # Pydantic response schemas
-│   │   ├── crud.py          # Database operations
+│   │   ├── crud.py          # Database operations (user-filtered)
 │   │   └── utils.py         # PDF processing and stubbed agent pipeline
-│   ├── data/                # SQLite database (gitignored)
+│   ├── data/                # SQLite database (gitignored, for local dev)
 │   ├── uploads/             # Uploaded PDFs (gitignored)
 │   ├── requirements.txt     # Python dependencies
 │   └── .env.example         # Environment variables template
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── Home.jsx           # PDF upload page
-│   │   │   └── QuestionBank.jsx   # Questions list page
-│   │   ├── main.jsx         # App entry point with routing
-│   │   └── api.js           # API helper functions
+│   │   │   ├── Home.jsx           # PDF upload page (protected)
+│   │   │   ├── QuestionBank.jsx   # Questions list page (protected)
+│   │   │   └── Auth.jsx           # Login/signup page
+│   │   ├── main.jsx         # App entry point with routing and auth
+│   │   ├── AuthContext.jsx  # Authentication state management
+│   │   ├── supabaseClient.js # Supabase client configuration
+│   │   └── api.js           # API helper functions with auth
 │   ├── index.html
 │   ├── vite.config.js
-│   └── package.json
+│   ├── package.json
+│   └── .env.example         # Frontend environment variables
 ├── .gitignore
 └── README.md
 ```
 
 ## Testing
 
-**Upload a PDF:**
+**Authentication and Upload Flow:**
 1. Start both backend and frontend
 2. Navigate to http://localhost:5173
-3. Upload a PDF file
-4. Check backend logs to see processing status
-5. Visit Question Bank page to see extracted questions
+3. **Sign up** with a new account or **sign in** with existing credentials
+4. Once authenticated, upload a PDF file
+5. Check backend logs to see processing status
+6. Visit Question Bank page to see your extracted questions
+7. Sign out and sign back in to verify your data persists
 
 **Expected behavior:**
+- Users must authenticate before accessing any features
 - Upload returns immediately with `{status: 'queued'}`
-- Backend processes PDF in background
+- Backend processes PDF in background and associates questions with user
 - Questions appear in the database and Question Bank UI
+- Each user can only see their own questions
+- Data is isolated per user account
 
 ## Development Notes
 
-- The backend defaults to SQLite for zero-friction local testing
+- **Authentication**: All endpoints (except root) require valid JWT tokens from Supabase
+- **User Data Isolation**: Questions are automatically filtered by user_id
 - Background processing may take a few seconds depending on PDF size
 - The stubbed agent pipeline is intentionally simple - replace it with your AI pipeline
 - CORS is configured for localhost:5173 - update for production domains
 - All uploaded PDFs are stored in `backend/uploads/` (gitignored)
+- User sessions are stored in browser local storage
+- The Supabase client automatically handles token refresh
 
 ## Future Enhancements
 
 - Replace stubbed agent pipeline with actual AGI implementation
-- Add authentication and user management
-- Implement vector search with embeddings
+- Implement vector search with embeddings (pgvector)
 - Add question filtering and search functionality
-- Deploy to production with Cloudflare Zero Trust
+- Add password reset functionality
+- Add social authentication providers (Google, GitHub, etc.)
+- Implement user profile management
+- Add file upload limits per user
+- Deploy to production with Cloudflare Zero Trust as additional security layer
 - Add unit and integration tests
 - Implement proper error handling and logging
