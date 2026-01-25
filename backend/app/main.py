@@ -27,15 +27,22 @@ app = FastAPI(
     
     Most endpoints require authentication via Supabase JWT token.
     
-    **To use the API docs:**
+    ### Using Swagger UI (Easy - Recommended)
+    
+    **If you're logged in via the frontend**, Swagger UI works automatically! Just:
+    1. Make sure you're logged in at http://localhost:5173
+    2. Come back to this page and try any endpoint
+    3. Authentication happens automatically via cookies ✨
+    
+    ### Manual Token Authentication (Alternative)
+    
+    If automatic cookie auth doesn't work, you can manually provide a token:
     1. Sign up/login via the frontend application
     2. Open browser DevTools → Application → Local Storage
     3. Find the Supabase session and copy the `access_token`
     4. Click the "Authorize" button (🔓) at the top right
     5. Enter: `Bearer YOUR_ACCESS_TOKEN`
     6. Click "Authorize" and close the dialog
-    
-    Now you can test authenticated endpoints in the docs.
     """,
 )
 

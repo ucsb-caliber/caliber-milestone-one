@@ -16,11 +16,26 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Helper function to set access token as a cookie
+  const setAccessTokenCookie = (accessToken) => {
+    if (accessToken) {
+      // Set cookie with SameSite=Lax to allow localhost subdomain sharing
+      // Expires in 7 days to match typical Supabase token lifetime
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+      document.cookie = `access_token=${accessToken}; path=/; expires=${expiryDate.toUTCString()}; SameSite=Lax`;
+    } else {
+      // Clear the cookie
+      document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    }
+  };
+
   useEffect(() => {
     // Check active sessions and sets the user
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setAccessTokenCookie(session?.access_token);
       setLoading(false);
     });
 
@@ -28,6 +43,7 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setAccessTokenCookie(session?.access_token);
       setLoading(false);
     });
 
@@ -40,6 +56,7 @@ export const AuthProvider = ({ children }) => {
       password,
     });
     if (error) throw error;
+    // Cookie will be set by onAuthStateChange listener
     return data;
   };
 
@@ -49,12 +66,14 @@ export const AuthProvider = ({ children }) => {
       password,
     });
     if (error) throw error;
+    // Cookie will be set by onAuthStateChange listener
     return data;
   };
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    // Cookie will be cleared by onAuthStateChange listener
   };
 
   const value = {

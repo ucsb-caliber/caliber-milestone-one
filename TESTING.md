@@ -283,9 +283,24 @@ You should see:
 
 ## Using the FastAPI Docs (Swagger UI)
 
-The FastAPI documentation interface at http://localhost:8000/docs now requires authentication for most endpoints.
+The FastAPI documentation interface at http://localhost:8000/docs now supports **automatic authentication via cookies**!
 
-**To authenticate in Swagger UI:**
+### Easy Method (Recommended) - Automatic Cookie Authentication
+
+1. **Just log in via the frontend**:
+   - Visit http://localhost:5173 and sign in
+   - That's it! The authentication cookie is now set
+
+2. **Use Swagger UI**:
+   - Open http://localhost:8000/docs
+   - Try any endpoint - authentication happens automatically! ✨
+   - No need to copy tokens or click "Authorize"
+
+Both the frontend (port 5173) and backend docs (port 8000) run on localhost, so they can share authentication cookies. Once you're logged in via the frontend, Swagger UI just works!
+
+### Manual Method (Alternative) - If Cookie Auth Doesn't Work
+
+If you prefer or if automatic auth isn't working:
 
 1. **Get your access token**:
    - Login to the frontend at http://localhost:5173
@@ -306,7 +321,7 @@ The FastAPI documentation interface at http://localhost:8000/docs now requires a
    - The Authorization header will be automatically included
    - Try `GET /api/questions` or `POST /api/upload-pdf`
 
-**Note**: The access token expires after 1 hour. If you get 403 errors, get a fresh token and re-authorize.
+**Note**: The access token expires after 1 hour. If you get 401 errors, simply refresh your login in the frontend (cookie auth will update automatically) or get a fresh token and re-authorize.
 
 ## Advanced Testing (Optional)
 

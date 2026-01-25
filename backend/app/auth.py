@@ -3,7 +3,7 @@ import logging
 import jwt
 import requests
 from typing import Optional
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Request, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from jwt import PyJWKClient
@@ -50,20 +50,20 @@ def get_jwks_client():
     return _jwks_client
 
 
-# Security scheme for Bearer token
-security = HTTPBearer()
+# Security scheme for Bearer token (optional to allow cookie auth)
+security = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+def verify_jwt_token(token: str) -> str:
     """
-    Verify the JWT token and return the user ID.
+    Verify a JWT token and return the user ID.
     
     Supports both:
     - Modern Supabase projects using asymmetric JWKS (RS256/ES256)  
     - Legacy Supabase projects using shared secret (HS256)
     
     Args:
-        credentials: The HTTP Authorization credentials containing the Bearer token
+        token: The JWT token string
         
     Returns:
         str: The user ID from the validated token
@@ -71,7 +71,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     Raises:
         HTTPException: If the token is invalid or expired
     """
-    token = credentials.credentials
     
     try:
         # First, try to decode the token header to see what algorithm it uses
@@ -149,6 +148,52 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+async def get_current_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> str:
+    """
+    Verify the JWT token from either Bearer header or cookie and return the user ID.
+    
+    Checks authentication in this order:
+    1. Authorization: Bearer header
+    2. access_token cookie (set by frontend after Supabase login)
+    
+    This allows Swagger UI to work automatically when users are logged in via the frontend,
+    as both run on localhost and can share cookies.
+    
+    Args:
+        request: The FastAPI request object to access cookies
+        credentials: Optional HTTP Authorization credentials containing the Bearer token
+        
+    Returns:
+        str: The user ID from the validated token
+        
+    Raises:
+        HTTPException: If no valid token is found or token is invalid
+    """
+    token = None
+    
+    # Try to get token from Authorization header first
+    if credentials:
+        token = credentials.credentials
+    
+    # If not in header, try to get from cookie
+    if not token:
+        # Try to get the access_token from cookies
+        token = request.cookies.get("access_token")
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify the token using the common verification function
+    return verify_jwt_token(token)
 
 
 def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[str]:
