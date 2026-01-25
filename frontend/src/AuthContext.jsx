@@ -3,6 +3,11 @@ import { supabase } from './supabaseClient';
 
 const AuthContext = createContext({});
 
+// Helper function to check if test mode is enabled
+function isTestModeEnabled() {
+  return localStorage.getItem('test-mode') === 'true';
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -35,7 +40,35 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check if test mode should be enabled (check for URL param or localStorage)
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('test-mode') === 'true') {
+      localStorage.setItem('test-mode', 'true');
+      // Initialize with test user 1
+      const testUser = {
+        id: 'test-user-1',
+        email: 'test-user-1@example.com'
+      };
+      setUser(testUser);
+      setAccessTokenCookie('test-token-1');
+      setLoading(false);
+      return;
+    }
+
+    if (isTestModeEnabled()) {
+      // Restore test session
+      const testUser = {
+        id: 'test-user-1',
+        email: 'test-user-1@example.com'
+      };
+      setUser(testUser);
+      setAccessTokenCookie('test-token-1');
+      setLoading(false);
+      return;
+    }
+
+    // Normal Supabase authentication
     // Check active sessions and sets the user
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -52,7 +85,7 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => subscription?.unsubscribe?.();
   }, []);
 
   const signUp = async (email, password) => {
@@ -76,6 +109,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
+    if (isTestModeEnabled()) {
+      localStorage.removeItem('test-mode');
+      setUser(null);
+      setAccessTokenCookie(null);
+      return;
+    }
+    
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     // Cookie will be cleared by onAuthStateChange listener

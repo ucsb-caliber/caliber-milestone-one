@@ -8,6 +8,9 @@ class QuestionCreate(BaseModel):
     text: str
     tags: str = ""
     keywords: str = ""
+    course: str = ""
+    answer_choices: str = "[]"  # JSON string of answer choices
+    correct_answer: str = ""
     source_pdf: Optional[str] = None
 
 
@@ -16,6 +19,9 @@ class QuestionUpdate(BaseModel):
     text: Optional[str] = None
     tags: Optional[str] = None
     keywords: Optional[str] = None
+    course: Optional[str] = None
+    answer_choices: Optional[str] = None
+    correct_answer: Optional[str] = None
     source_pdf: Optional[str] = None
 
 
@@ -25,6 +31,9 @@ class QuestionResponse(BaseModel):
     text: str
     tags: str
     keywords: str
+    course: str
+    answer_choices: str
+    correct_answer: str
     source_pdf: Optional[str]
     user_id: str
     created_at: datetime

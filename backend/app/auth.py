@@ -8,6 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from jwt import PyJWKClient
 from urllib.parse import urljoin
+from .test_auth import get_mock_user_id
 
 load_dotenv()
 
@@ -58,7 +59,8 @@ def verify_jwt_token(token: str) -> str:
     """
     Verify a JWT token and return the user ID.
     
-    Supports both:
+    Supports:
+    - Test tokens for development (e.g., "test-token-1")
     - Modern Supabase projects using asymmetric JWKS (RS256/ES256)  
     - Legacy Supabase projects using shared secret (HS256)
     
@@ -71,6 +73,12 @@ def verify_jwt_token(token: str) -> str:
     Raises:
         HTTPException: If the token is invalid or expired
     """
+    
+    # Check for test tokens first (for development/testing)
+    mock_user = get_mock_user_id(token)
+    if mock_user:
+        logging.info(f"Using mock authentication for test token")
+        return mock_user
     
     try:
         # First, try to decode the token header to see what algorithm it uses
