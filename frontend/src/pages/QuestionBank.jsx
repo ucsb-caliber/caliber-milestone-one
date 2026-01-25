@@ -7,6 +7,8 @@ export default function QuestionBank() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
+  const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -16,8 +18,10 @@ export default function QuestionBank() {
         getQuestions(),
         getAllQuestions()
       ]);
-      setMyQuestions(myData.questions || []);
-      setAllQuestions(allData.questions || []);
+      // Sort questions by created_at descending (newest first)
+      const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+      setMyQuestions((myData.questions || []).sort(sortByNewest));
+      setAllQuestions((allData.questions || []).sort(sortByNewest));
     } catch (err) {
       setError(err.message || 'Failed to load questions');
     } finally {
@@ -46,6 +50,14 @@ export default function QuestionBank() {
     } catch (e) {
       answerChoices = [];
     }
+
+    // Split keywords and tags into arrays
+    const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
+    const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    // Color palette for bubbles
+    const keywordColors = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
+    const tagColors = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
     return (
       <div
@@ -78,14 +90,46 @@ export default function QuestionBank() {
               </span>
             </div>
           )}
-          {question.keywords && (
-            <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>
-              <strong>Keywords:</strong> {question.keywords}
+          {keywords.length > 0 && (
+            <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+              <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
+              {keywords.map((keyword, index) => (
+                <span
+                  key={index}
+                  style={{
+                    background: keywordColors[index % keywordColors.length],
+                    color: '#333',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '12px',
+                    fontSize: '0.7rem',
+                    fontWeight: '500',
+                    border: '1px solid rgba(0,0,0,0.1)'
+                  }}
+                >
+                  {keyword}
+                </span>
+              ))}
             </div>
           )}
-          {question.tags && (
-            <div style={{ fontSize: '0.75rem', color: '#666' }}>
-              <strong>Tags:</strong> {question.tags}
+          {tags.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+              <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Tags:</strong>
+              {tags.map((tag, index) => (
+                <span
+                  key={index}
+                  style={{
+                    background: tagColors[index % tagColors.length],
+                    color: '#333',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '12px',
+                    fontSize: '0.7rem',
+                    fontWeight: '500',
+                    border: '1px solid rgba(0,0,0,0.1)'
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
             </div>
           )}
         </div>
@@ -271,78 +315,114 @@ export default function QuestionBank() {
       {!loading && (
         <>
           {/* My Questions Section */}
-          <div style={{ marginBottom: '3rem' }}>
-            <h3 style={{ 
-              marginBottom: '1rem',
-              paddingBottom: '0.5rem',
-              borderBottom: '2px solid #007bff',
-              color: '#333'
-            }}>
+          <div style={{ marginBottom: '4rem' }}>
+            <h3 
+              onClick={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
+              style={{ 
+                marginBottom: '1rem',
+                paddingBottom: '0.5rem',
+                borderBottom: '2px solid #007bff',
+                color: '#333',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                userSelect: 'none'
+              }}
+            >
+              <span style={{ 
+                transition: 'transform 0.2s',
+                transform: myQuestionsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                display: 'inline-block'
+              }}>
+                ▼
+              </span>
               My Questions ({myQuestions.length})
             </h3>
-            {myQuestions.length === 0 ? (
-              <div style={{
-                padding: '2rem',
-                background: '#f8f9fa',
-                borderRadius: '4px',
-                textAlign: 'center',
-                color: '#666'
-              }}>
-                <p>You haven't created any questions yet.</p>
-                <button
-                  onClick={() => window.location.hash = 'create-question'}
-                  style={{
-                    marginTop: '1rem',
-                    padding: '0.5rem 1rem',
-                    background: '#28a745',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Create Your First Question
-                </button>
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                gap: '1.5rem'
-              }}>
-                {myQuestions.map(renderQuestionCard)}
-              </div>
+            {!myQuestionsCollapsed && (
+              myQuestions.length === 0 ? (
+                <div style={{
+                  padding: '2rem',
+                  background: '#f8f9fa',
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                  color: '#666'
+                }}>
+                  <p>You haven't created any questions yet.</p>
+                  <button
+                    onClick={() => window.location.hash = 'create-question'}
+                    style={{
+                      marginTop: '1rem',
+                      padding: '0.5rem 1rem',
+                      background: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Create Your First Question
+                  </button>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                  gap: '1.5rem',
+                  rowGap: '2rem'
+                }}>
+                  {myQuestions.map(renderQuestionCard)}
+                </div>
+              )
             )}
           </div>
 
           {/* All Questions Section */}
           <div>
-            <h3 style={{ 
-              marginBottom: '1rem',
-              paddingBottom: '0.5rem',
-              borderBottom: '2px solid #28a745',
-              color: '#333'
-            }}>
+            <h3 
+              onClick={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
+              style={{ 
+                marginBottom: '1rem',
+                paddingBottom: '0.5rem',
+                borderBottom: '2px solid #28a745',
+                color: '#333',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                userSelect: 'none'
+              }}
+            >
+              <span style={{ 
+                transition: 'transform 0.2s',
+                transform: allQuestionsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                display: 'inline-block'
+              }}>
+                ▼
+              </span>
               All Questions ({allQuestions.length})
             </h3>
-            {allQuestions.length === 0 ? (
-              <div style={{
-                padding: '2rem',
-                background: '#f8f9fa',
-                borderRadius: '4px',
-                textAlign: 'center',
-                color: '#666'
-              }}>
-                <p>No questions found in the system.</p>
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                gap: '1.5rem'
-              }}>
-                {allQuestions.map(renderQuestionCard)}
-              </div>
+            {!allQuestionsCollapsed && (
+              allQuestions.length === 0 ? (
+                <div style={{
+                  padding: '2rem',
+                  background: '#f8f9fa',
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                  color: '#666'
+                }}>
+                  <p>No questions found in the system.</p>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                  gap: '1.5rem',
+                  rowGap: '2rem'
+                }}>
+                  {allQuestions.map(renderQuestionCard)}
+                </div>
+              )
             )}
           </div>
         </>
