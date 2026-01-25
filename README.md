@@ -39,13 +39,6 @@ This prototype demonstrates:
 
 ## Quick Start
 
-### Prerequisites
-
-You need:
-1. A Supabase account and project (free tier works fine)
-2. Supabase project URL and anonymous key (anon key)
-3. Supabase database password (from your project settings)
-
 ### Backend Setup
 
 ```bash
