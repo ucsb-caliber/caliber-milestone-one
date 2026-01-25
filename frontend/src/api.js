@@ -25,37 +25,62 @@ export async function uploadPDF(file) {
   const formData = new FormData();
   formData.append('file', file);
   
-  const headers = await getAuthHeaders();
+  try {
+    const headers = await getAuthHeaders();
 
-  const response = await fetch(`${API_BASE}/api/upload-pdf`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+    const response = await fetch(`${API_BASE}/api/upload-pdf`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Upload failed');
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Upload failed');
+    }
+
+    return response.json();
+  } catch (error) {
+    // Provide more helpful error messages
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
   }
-
-  return response.json();
 }
 
 /**
  * Fetch all questions from the backend
  */
 export async function getQuestions() {
-  const headers = await getAuthHeaders();
-  
-  const response = await fetch(`${API_BASE}/api/questions`, {
-    headers,
-  });
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/questions`, {
+      headers,
+    });
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch questions');
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to fetch questions';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        // If response is not JSON, use the text
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    // Provide more helpful error messages
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
   }
-
-  return response.json();
 }
 
 /**

@@ -202,6 +202,34 @@ You should see:
 - Check backend terminal for processing logs
 - Click "Refresh" in Question Bank
 
+### "Failed to fetch" error
+**Error**: Generic "failed to fetch" or "Failed to fetch questions"
+**Solution**: 
+1. **Check backend is running**: 
+   - Look for the terminal running `uvicorn app.main:app --reload`
+   - Should see: `INFO: Uvicorn running on http://127.0.0.1:8000`
+   - If not running, start it with: `cd backend && uvicorn app.main:app --reload --port 8000`
+
+2. **Verify backend is accessible**:
+   - Open http://localhost:8000 in your browser
+   - Should see JSON response with API info
+   - If you get "connection refused", backend isn't running
+
+3. **Check for CORS errors in browser console**:
+   - Press F12 → Console tab
+   - Look for red CORS errors
+   - If you see CORS errors, verify backend is running on port 8000
+
+4. **Verify JWT secret is set**:
+   - Check `backend/.env` has `SUPABASE_JWT_SECRET=...`
+   - The JWT secret must match your Supabase project
+   - Get it from: Supabase Dashboard → Settings → API → JWT Settings
+
+5. **Check backend logs for errors**:
+   - Look at the terminal running the backend
+   - Any Python errors or authentication failures will show here
+   - Common: `ValueError: SUPABASE_JWT_SECRET must be set`
+
 ## Debugging Tips
 
 1. **Check Backend Logs**: The backend terminal shows all authentication attempts and errors
@@ -217,6 +245,20 @@ You should see:
    cat .env
    ```
 4. **Test API Endpoint**: Visit http://localhost:8000/docs to see API documentation
+5. **Test Backend Health**: 
+   ```bash
+   curl http://localhost:8000
+   # Should return: {"message":"Caliber Milestone One API",...}
+   ```
+6. **Test with authentication**:
+   ```bash
+   # Get your token from browser console:
+   # Open http://localhost:5173, press F12, go to Console, type:
+   # (await supabase.auth.getSession()).data.session.access_token
+   
+   # Then test API with token:
+   curl -H "Authorization: Bearer YOUR_TOKEN_HERE" http://localhost:8000/api/questions
+   ```
 
 ## Advanced Testing (Optional)
 
