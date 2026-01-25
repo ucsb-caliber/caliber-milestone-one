@@ -8,9 +8,9 @@ from sqlmodel import Session, select, func
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
-from .models import Question
-from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate
-from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question
+from .models import Question, User
+from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate
+from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -248,12 +248,54 @@ def delete_existing_question(
 
 
 @app.get("/api/user")
-def get_user_info(user_id: str = Depends(get_current_user)):
-    """Get information about the authenticated user."""
+def get_user_info(
+    user_id: str = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Get information about the authenticated user including admin and teacher status."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        # This shouldn't happen since get_current_user creates the user, but handle it just in case
+        user = get_or_create_user(session, user_id)
+    
     return {
         "user_id": user_id,
-        "authenticated": True
+        "authenticated": True,
+        "admin": user.admin,
+        "teacher": user.teacher
     }
+
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+def get_user_by_id(
+    user_id: str,
+    session: Session = Depends(get_session),
+    current_user_id: str = Depends(get_current_user)
+):
+    """Get user information by user_id. Requires authentication."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: str,
+    user_data: UserUpdate,
+    session: Session = Depends(get_session),
+    current_user_id: str = Depends(get_current_user)
+):
+    """Update user admin/teacher status. Requires authentication."""
+    user = update_user_roles(
+        session=session,
+        user_id=user_id,
+        admin=user_data.admin,
+        teacher=user_data.teacher
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @app.get("/")
@@ -269,6 +311,8 @@ def root():
             "POST /api/questions",
             "PUT /api/questions/{question_id}",
             "DELETE /api/questions/{question_id}",
-            "/api/user"
+            "/api/user",
+            "GET /api/users/{user_id}",
+            "PUT /api/users/{user_id}"
         ]
     }
