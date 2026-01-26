@@ -31,7 +31,6 @@ function ProtectedRoute({ children }) {
 
 // Simple router using hash-based navigation
 function App() {
-  //const [page, setPage] = React.useState(window.location.hash.slice(1) || 'home');
 
   const getPageFromHash = () => {
   const hash = window.location.hash.slice(1);
@@ -46,12 +45,9 @@ function App() {
   React.useEffect(() => {
     const handleHashChange = () => {
       setPage(getPageFromHash());
-      //setPage(window.location.hash.slice(1) || 'home');
     };
      window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-    //window.addEventListener('hashchange', handleHashChange);
-    //return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const handleSignOut = async () => {

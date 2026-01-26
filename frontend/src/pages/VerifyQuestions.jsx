@@ -28,8 +28,6 @@ const VerifyQuestions = () => {
     };
 
     fetchDrafts();
-    //const interval = setInterval(fetchDrafts, 3000); // Poll for background results
-    //return () => clearInterval(interval);
   }, [sourceFile]);
 
 
