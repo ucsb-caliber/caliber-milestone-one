@@ -7,6 +7,7 @@ from .models import Question, User
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
                    course: str = "", answer_choices: str = "[]", correct_answer: str = "",
                    source_pdf: Optional[str] = None, is_verified: bool = False) -> Question:
+    """Create and persist a new question, optionally marking it as verified."""
     question = Question(
         text=text,
         tags=tags,
