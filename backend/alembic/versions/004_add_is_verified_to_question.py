@@ -19,7 +19,7 @@ depends_on = None
 def upgrade() -> None:
     """Add is_verified column to question table."""
     # Add is_verified column with default value of false
-    op.add_column('question', sa.Column('is_verified', sa.Boolean(), nullable=False, server_default='false'))
+    op.add_column('question', sa.Column('is_verified', sa.Boolean(), nullable=False, server_default=sa.text('false')))
 
 
 def downgrade() -> None:
