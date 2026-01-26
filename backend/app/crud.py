@@ -91,7 +91,7 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
     if source_pdf is not None:
         question.source_pdf = source_pdf
     if is_verified is not None:
-        question.is_verified = is_verified #question becomes verified
+        question.is_verified = is_verified # question becomes verified
     
     session.add(question)
     session.commit()

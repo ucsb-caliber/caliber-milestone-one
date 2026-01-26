@@ -7,6 +7,7 @@ import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { loadProfilePrefs } from './profilePrefs.js'
+import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -32,16 +33,28 @@ function ProtectedRoute({ children }) {
 
 // Simple router using hash-based navigation
 function App() {
-  const [page, setPage] = React.useState(window.location.hash.slice(1) || 'home');
+  //const [page, setPage] = React.useState(window.location.hash.slice(1) || 'home');
+
+  const getPageFromHash = () => {
+  const hash = window.location.hash.slice(1);
+  return hash.split('?')[0] || 'home';
+  };
+
+  const [page, setPage] = React.useState(getPageFromHash());
+
+
   const { user, signOut, loading } = useAuth();
   const profilePrefs = React.useMemo(() => loadProfilePrefs(user), [user?.id]);
 
   React.useEffect(() => {
     const handleHashChange = () => {
-      setPage(window.location.hash.slice(1) || 'home');
+      setPage(getPageFromHash());
+      //setPage(window.location.hash.slice(1) || 'home');
     };
-    window.addEventListener('hashchange', handleHashChange);
+     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
+    //window.addEventListener('hashchange', handleHashChange);
+    //return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const handleSignOut = async () => {
@@ -190,6 +203,11 @@ function App() {
             {page === 'profile' && (
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            )}
+            {page === 'verify' && (
+              <ProtectedRoute>
+                <VerifyQuestions />
               </ProtectedRoute>
             )}
           </>
