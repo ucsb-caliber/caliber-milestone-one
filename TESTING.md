@@ -36,7 +36,7 @@ Once your project is ready:
 ```bash
 cd backend
 python -m venv .venv
-source .venv/Scripts/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
