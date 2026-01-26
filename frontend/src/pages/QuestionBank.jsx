@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
+import { getQuestions, getAllQuestions, deleteQuestion, updateQuestion } from '../api';
 import { useAuth } from '../AuthContext';
 
 // Color palettes for keyword and tag bubbles
@@ -18,6 +18,10 @@ export default function QuestionBank() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [editForm, setEditForm] = useState({ text: '', tags: '', keywords: '', source_pdf: '' });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -51,6 +55,50 @@ export default function QuestionBank() {
     }
   };
 
+  const openEditModal = (question) => {
+    setEditingQuestion(question);
+    setEditForm({
+      text: question.text || '',
+      tags: question.tags || '',
+      keywords: question.keywords || '',
+      source_pdf: question.source_pdf || ''
+    });
+    setSaveError('');
+  };
+
+  const closeEditModal = () => {
+    setEditingQuestion(null);
+    setEditForm({ text: '', tags: '', keywords: '', source_pdf: '' });
+    setSaveError('');
+  };
+
+  const handleEditFormChange = (field, value) => {
+    setEditForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingQuestion) return;
+    
+    setSaving(true);
+    setSaveError('');
+    
+    try {
+      await updateQuestion(editingQuestion.id, {
+        text: editForm.text || null,
+        tags: editForm.tags || null,
+        keywords: editForm.keywords || null,
+        source_pdf: editForm.source_pdf || null
+      });
+      
+      closeEditModal();
+      await loadQuestions();
+    } catch (err) {
+      setSaveError(err.message || 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const renderQuestionCard = (question, showDeleteButton = true) => {
     let answerChoices = [];
     try {
@@ -62,6 +110,7 @@ export default function QuestionBank() {
     // Split keywords and tags into arrays
     const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
     const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+    const canEdit = user && question.user_id === user.id;
 
     return (
       <div
@@ -184,9 +233,42 @@ export default function QuestionBank() {
           </div>
         )}
 
-        {/* Delete button in bottom corner - only show if permitted */}
-        {showDeleteButton && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+        {/* Action buttons */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', gap: '0.5rem' }}>
+          {canEdit && (
+            <button
+              onClick={() => openEditModal(question)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: 'transparent',
+                color: '#007bff',
+                border: '1px solid #007bff',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#007bff';
+                e.currentTarget.style.color = 'white';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#007bff';
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              Edit
+            </button>
+          )}
+          {showDeleteButton && (
             <button
               onClick={() => setDeleteConfirm(question.id)}
               style={{
@@ -202,8 +284,8 @@ export default function QuestionBank() {
             >
               Delete
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   };
@@ -435,6 +517,237 @@ export default function QuestionBank() {
           </div>
         </>
       )}
+
+      {/* Edit Modal */}
+      {editingQuestion && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            backdropFilter: 'blur(4px)'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeEditModal();
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              width: '90%',
+              maxWidth: '550px',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#333' }}>
+                Edit Question #{editingQuestion.id}
+              </h3>
+              <button
+                onClick={closeEditModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: '#999',
+                  padding: '0.25rem',
+                  lineHeight: 1
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {saveError && (
+              <div style={{
+                padding: '0.75rem',
+                background: '#f8d7da',
+                border: '1px solid #f5c6cb',
+                borderRadius: '6px',
+                color: '#721c24',
+                marginBottom: '1rem',
+                fontSize: '0.875rem'
+              }}>
+                {saveError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: '500', color: '#444', fontSize: '0.875rem' }}>
+                  Question Text
+                </label>
+                <textarea
+                  value={editForm.text}
+                  onChange={(e) => handleEditFormChange('text', e.target.value)}
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '6px',
+                    fontSize: '0.95rem',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    lineHeight: 1.5,
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#007bff'}
+                  onBlur={(e) => e.target.style.borderColor = '#ddd'}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: '500', color: '#444', fontSize: '0.875rem' }}>
+                  Tags
+                </label>
+                <input
+                  type="text"
+                  value={editForm.tags}
+                  onChange={(e) => handleEditFormChange('tags', e.target.value)}
+                  placeholder="e.g., math, algebra, calculus"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '6px',
+                    fontSize: '0.95rem',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#007bff'}
+                  onBlur={(e) => e.target.style.borderColor = '#ddd'}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: '500', color: '#444', fontSize: '0.875rem' }}>
+                  Keywords
+                </label>
+                <input
+                  type="text"
+                  value={editForm.keywords}
+                  onChange={(e) => handleEditFormChange('keywords', e.target.value)}
+                  placeholder="e.g., derivative, integration"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '6px',
+                    fontSize: '0.95rem',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#007bff'}
+                  onBlur={(e) => e.target.style.borderColor = '#ddd'}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: '500', color: '#444', fontSize: '0.875rem' }}>
+                  Source PDF
+                </label>
+                <input
+                  type="text"
+                  value={editForm.source_pdf}
+                  onChange={(e) => handleEditFormChange('source_pdf', e.target.value)}
+                  placeholder="e.g., chapter1.pdf"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '6px',
+                    fontSize: '0.95rem',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#007bff'}
+                  onBlur={(e) => e.target.style.borderColor = '#ddd'}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={closeEditModal}
+                disabled={saving}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  background: '#f8f9fa',
+                  color: '#666',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  background: saving ? '#6c757d' : '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {saving ? (
+                  <>
+                    <span style={{
+                      display: 'inline-block',
+                      width: '14px',
+                      height: '14px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: 'white',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite'
+                    }} />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>
+        {`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
     </div>
   );
 }
