@@ -13,6 +13,18 @@ cd backend
 alembic upgrade head
 ```
 
+If you get a DUPLICATE COLUMN error, it just means our database already has the newest columns, and you just need to run:
+
+```bash
+alembic stamp <name of newest migration file>
+alembic upgrade head
+```
+For example: 
+```bash
+alembic stamp 004_add_is_verified_to_question
+alembic upgrade head
+```
+
 ### Check Current Migration Status
 
 ```bash

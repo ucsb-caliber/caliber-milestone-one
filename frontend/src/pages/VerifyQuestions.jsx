@@ -104,14 +104,14 @@ const VerifyQuestions = () => {
     );
   }
 
-  // Handle empty state (questions still being generated)
+  // Handle empty state when no pending questions are available (or still generating)
   if (questions.length === 0) {
     return (
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>No Questions Yet</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>No Pending Questions Found</h1>
         <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-          Questions from <strong>{sourceFile}</strong> are still being generated. 
-          This may take a few moments.
+          There are no pending questions for <strong>{sourceFile}</strong> at the moment. If you just uploaded this file,
+          questions may still be generating. You can retry or return to the question bank below.
         </p>
         <button
           onClick={() => window.location.reload()}

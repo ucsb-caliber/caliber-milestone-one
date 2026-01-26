@@ -33,7 +33,7 @@ export default function Home() {
       const result = await uploadPDF(file);
       if (result.status === "queued") {
       // This changes the hash, which triggers your useEffect in main.jsx to change the 'page' state
-        window.location.hash = `verify?file=${result.filename}`;
+        window.location.hash = `verify?file=${encodeURIComponent(result.filename)}`;
       }
       setMessage(`Success! ${result.message}`);
       setFile(null);
