@@ -52,11 +52,17 @@ def get_questions(session: Session, user_id: Optional[str] = None,
     return list(session.exec(statement).all())
 
 
-def get_questions_count(session: Session, user_id: Optional[str] = None) -> int:
-    """Get total count of questions. Optionally filter by user_id."""
+def get_questions_count(session: Session, user_id: Optional[str] = None,
+                       verified_only: Optional[bool] = None,
+                       source_pdf: Optional[str] = None) -> int:
+    """Get total count of questions with optional filters."""
     statement = select(Question)
     if user_id:
         statement = statement.where(Question.user_id == user_id)
+    if verified_only is not None:
+        statement = statement.where(Question.is_verified == verified_only)
+    if source_pdf:
+        statement = statement.where(Question.source_pdf == source_pdf)
     return len(list(session.exec(statement).all()))
 
 
