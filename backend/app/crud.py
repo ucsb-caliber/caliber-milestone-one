@@ -6,8 +6,7 @@ from .models import Question, User
 
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
                    course: str = "", answer_choices: str = "[]", correct_answer: str = "",
-                   source_pdf: Optional[str] = None, is_verified: bool = False) -> Question:
-    """Create a new question in the database. Default verified status is False."""
+                   source_pdf: Optional[str] = None) -> Question:
     question = Question(
         text=text,
         tags=tags,
@@ -16,8 +15,7 @@ def create_question(session: Session, text: str, tags: str, keywords: str, user_
         answer_choices=answer_choices,
         correct_answer=correct_answer,
         source_pdf=source_pdf,
-        user_id=user_id
-        is_verified=is_verified
+        user_id=user_id,
     )
     session.add(question)
     session.commit()
