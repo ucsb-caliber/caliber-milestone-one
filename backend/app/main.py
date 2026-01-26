@@ -92,7 +92,8 @@ def process_pdf_background(filename: str, file_content: bytes, user_id: str):
                     tags=q_dict["tags"],
                     keywords=q_dict["keywords"],
                     source_pdf=filename,
-                    user_id=user_id
+                    user_id=user_id,
+                    is_verified=False  # applies pending status to new questions
                 )
         
         print(f"Successfully processed {filename}: created {len(question_dicts)} questions for user {user_id}")
@@ -139,12 +140,26 @@ async def upload_pdf(
 def list_questions(
     skip: int = 0,
     limit: int = 100,
+    verified_only: Optional[bool] = None,
+    source_pdf: Optional[str] = None,
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
-    """Get a list of questions for the authenticated user."""
-    questions = get_questions(session, user_id=user_id, skip=skip, limit=limit)
-    total = get_questions_count(session, user_id=user_id)
+    """Get a list of questions for the authenticated user with optional filters."""
+    questions = get_questions(
+        session, 
+        user_id=user_id, 
+        verified_only=verified_only,
+        source_pdf=source_pdf,
+        skip=skip, 
+        limit=limit
+    )
+    total = get_questions_count(
+        session, 
+        user_id=user_id,
+        verified_only=verified_only,
+        source_pdf=source_pdf
+    )
     
     return QuestionListResponse(
         questions=questions,
@@ -228,7 +243,8 @@ def update_existing_question(
         course=question_data.course,
         answer_choices=question_data.answer_choices,
         correct_answer=question_data.correct_answer,
-        source_pdf=question_data.source_pdf
+        source_pdf=question_data.source_pdf,
+        is_verified=question_data.is_verified
     )
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")

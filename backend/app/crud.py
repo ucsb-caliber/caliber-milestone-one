@@ -1,4 +1,4 @@
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from typing import List, Optional
 from datetime import datetime
 from .models import Question, User
@@ -6,8 +6,8 @@ from .models import Question, User
 
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
                    course: str = "", answer_choices: str = "[]", correct_answer: str = "",
-                   source_pdf: Optional[str] = None) -> Question:
-    """Create a new question in the database."""
+                   source_pdf: Optional[str] = None, is_verified: bool = False) -> Question:
+    """Create and persist a new question, optionally marking it as verified."""
     question = Question(
         text=text,
         tags=tags,
@@ -16,7 +16,8 @@ def create_question(session: Session, text: str, tags: str, keywords: str, user_
         answer_choices=answer_choices,
         correct_answer=correct_answer,
         source_pdf=source_pdf,
-        user_id=user_id
+        user_id=user_id,
+        is_verified=is_verified
     )
     session.add(question)
     session.commit()
@@ -32,21 +33,38 @@ def get_question(session: Session, question_id: int, user_id: Optional[str] = No
     return question
 
 
-def get_questions(session: Session, user_id: Optional[str] = None, skip: int = 0, limit: int = 100) -> List[Question]:
-    """Get a list of questions. Optionally filter by user_id."""
+def get_questions(session: Session, user_id: Optional[str] = None, 
+                  verified_only: Optional[bool] = None, 
+                  source_pdf: Optional[str] = None,
+                  skip: int = 0, limit: int = 100) -> List[Question]:
     statement = select(Question)
     if user_id:
         statement = statement.where(Question.user_id == user_id)
+    
+    # Allows the frontend to ask for "just the drafts"
+    if verified_only is not None:
+        statement = statement.where(Question.is_verified == verified_only)
+    
+    # Allows the frontend to find questions from a specific upload
+    if source_pdf:
+        statement = statement.where(Question.source_pdf == source_pdf)
+        
     statement = statement.offset(skip).limit(limit)
     return list(session.exec(statement).all())
 
 
-def get_questions_count(session: Session, user_id: Optional[str] = None) -> int:
-    """Get total count of questions. Optionally filter by user_id."""
-    statement = select(Question)
+def get_questions_count(session: Session, user_id: Optional[str] = None,
+                       verified_only: Optional[bool] = None,
+                       source_pdf: Optional[str] = None) -> int:
+    """Get total count of questions with optional filters."""
+    statement = select(func.count(Question.id))
     if user_id:
         statement = statement.where(Question.user_id == user_id)
-    return len(list(session.exec(statement).all()))
+    if verified_only is not None:
+        statement = statement.where(Question.is_verified == verified_only)
+    if source_pdf:
+        statement = statement.where(Question.source_pdf == source_pdf)
+    return session.exec(statement).one()
 
 
 def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List[Question]:
@@ -58,7 +76,8 @@ def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List
 def update_question(session: Session, question_id: int, user_id: str, text: Optional[str] = None, 
                    tags: Optional[str] = None, keywords: Optional[str] = None, 
                    course: Optional[str] = None, answer_choices: Optional[str] = None, 
-                   correct_answer: Optional[str] = None, source_pdf: Optional[str] = None) -> Optional[Question]:
+                   correct_answer: Optional[str] = None, source_pdf: Optional[str] = None, 
+                   is_verified: Optional[bool] = None) -> Optional[Question]:
     """Update an existing question in the database. Only the owner can update."""
     question = session.get(Question, question_id)
     if not question or question.user_id != user_id:
@@ -78,6 +97,8 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
         question.correct_answer = correct_answer
     if source_pdf is not None:
         question.source_pdf = source_pdf
+    if is_verified is not None:
+        question.is_verified = is_verified # question becomes verified
     
     session.add(question)
     session.commit()

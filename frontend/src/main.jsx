@@ -5,6 +5,7 @@ import QuestionBank from './pages/QuestionBank.jsx'
 import CreateQuestion from './pages/CreateQuestion.jsx'
 import Auth from './pages/Auth.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
+import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -30,14 +31,22 @@ function ProtectedRoute({ children }) {
 
 // Simple router using hash-based navigation
 function App() {
-  const [page, setPage] = React.useState(window.location.hash.slice(1) || 'home');
+
+  const getPageFromHash = () => {
+  const hash = window.location.hash.slice(1);
+  return hash.split('?')[0] || 'home';
+  };
+
+  const [page, setPage] = React.useState(getPageFromHash());
+
+
   const { user, signOut, loading } = useAuth();
 
   React.useEffect(() => {
     const handleHashChange = () => {
-      setPage(window.location.hash.slice(1) || 'home');
+      setPage(getPageFromHash());
     };
-    window.addEventListener('hashchange', handleHashChange);
+     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
@@ -140,6 +149,11 @@ function App() {
             {page === 'create-question' && (
               <ProtectedRoute>
                 <CreateQuestion />
+              </ProtectedRoute>
+            )}
+            {page === 'verify' && (
+              <ProtectedRoute>
+                <VerifyQuestions />
               </ProtectedRoute>
             )}
           </>

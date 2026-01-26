@@ -60,16 +60,21 @@ export async function uploadPDF(file) {
 }
 
 /**
- * Fetch all questions from the backend
+ * Fetch all questions from the backend with optional filters for verified_only and source_pdf
  */
-export async function getQuestions() {
+export async function getQuestions(filters = {}) {
   try {
     const headers = await getAuthHeaders();
-    
-    const response = await fetch(`${API_BASE}/api/questions`, {
-      headers,
-    });
 
+    // Construct query string for filters
+    const params = new URLSearchParams();
+    if (filters.verified_only !== undefined) params.append('verified_only', filters.verified_only);
+    if (filters.source_pdf) params.append('source_pdf', filters.source_pdf);
+    
+    const url = `${API_BASE}/api/questions${params.toString() ? `?${params.toString()}` : ''}`;
+    
+    const response = await fetch(url, { headers });
+    
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = 'Failed to fetch questions';
@@ -209,6 +214,32 @@ export async function deleteQuestion(id) {
     if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
     }
+    throw error;
+  }
+}
+
+/**
+ * Update a question (used for editing text or verifying/approving)
+ */
+export async function updateQuestion(id, updateData) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(updateData), // This sends { is_verified: true }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Update failed');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error("Update error:", error);
     throw error;
   }
 }

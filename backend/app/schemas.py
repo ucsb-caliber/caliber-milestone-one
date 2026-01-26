@@ -42,6 +42,8 @@ class QuestionUpdate(BaseModel):
     answer_choices: Optional[str] = None
     correct_answer: Optional[str] = None
     source_pdf: Optional[str] = None
+    is_verified: Optional[bool] = None
+
 
 
 class QuestionResponse(BaseModel):
@@ -56,6 +58,7 @@ class QuestionResponse(BaseModel):
     source_pdf: Optional[str]
     user_id: str
     created_at: datetime
+    is_verified: bool
 
     class Config:
         from_attributes = True
