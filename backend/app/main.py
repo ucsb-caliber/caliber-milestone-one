@@ -229,7 +229,8 @@ def update_existing_question(
         course=question_data.course,
         answer_choices=question_data.answer_choices,
         correct_answer=question_data.correct_answer,
-        source_pdf=question_data.source_pdf
+        source_pdf=question_data.source_pdf,
+        is_verified=question_data.is_verified
     )
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
