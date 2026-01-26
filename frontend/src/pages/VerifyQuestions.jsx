@@ -42,12 +42,16 @@ const VerifyQuestions = () => {
   const handleConfirmAll = async () => {
     setIsVerifying(true);
     try {
-      // Calls your update_question crud logic to set is_verified = True
-      const promises = questions.map((q) =>
-        api.updateQuestion(q.id, { text: q.text, is_verified: true})
+      // Limit concurrent HTTP requests by processing questions in batches
+      const BATCH_SIZE = 10;
 
-      );
-      await Promise.all(promises);
+      for (let i = 0; i < questions.length; i += BATCH_SIZE) {
+        const batch = questions.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map((q) =>
+          api.updateQuestion(q.id, { text: q.text, is_verified: true })
+        );
+        await Promise.all(batchPromises);
+      }
       
       // Use hash navigation to return to the Question Bank
       window.location.hash = "questions"; 
