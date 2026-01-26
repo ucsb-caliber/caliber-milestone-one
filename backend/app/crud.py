@@ -1,4 +1,4 @@
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from typing import List, Optional
 from datetime import datetime
 from .models import Question, User
@@ -52,12 +52,18 @@ def get_questions(session: Session, user_id: Optional[str] = None,
     return list(session.exec(statement).all())
 
 
-def get_questions_count(session: Session, user_id: Optional[str] = None) -> int:
-    """Get total count of questions. Optionally filter by user_id."""
-    statement = select(Question)
+def get_questions_count(session: Session, user_id: Optional[str] = None,
+                       verified_only: Optional[bool] = None,
+                       source_pdf: Optional[str] = None) -> int:
+    """Get total count of questions with optional filters."""
+    statement = select(func.count(Question.id))
     if user_id:
         statement = statement.where(Question.user_id == user_id)
-    return len(list(session.exec(statement).all()))
+    if verified_only is not None:
+        statement = statement.where(Question.is_verified == verified_only)
+    if source_pdf:
+        statement = statement.where(Question.source_pdf == source_pdf)
+    return session.exec(statement).one()
 
 
 def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List[Question]:

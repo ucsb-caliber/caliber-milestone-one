@@ -4,6 +4,7 @@ import * as api from "../api";
 const VerifyQuestions = () => {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
   // Parse filename from hash manually since you aren't using react-router-dom
@@ -11,7 +12,12 @@ const VerifyQuestions = () => {
   const sourceFile = new URLSearchParams(hash.split("?")[1] || "").get("file");
 
   useEffect(() => {
-    if (!sourceFile) return;
+    // Handle missing file parameter
+    if (!sourceFile) {
+      setError("No source file specified. Please upload a PDF to generate questions.");
+      setLoading(false);
+      return;
+    }
 
     const fetchDrafts = async () => {
       try {
@@ -21,9 +27,12 @@ const VerifyQuestions = () => {
           source_pdf: sourceFile,
         });
         setQuestions(data.questions || []);
-        setLoading(false);
+        setError(null);
       } catch (err) {
         console.error("Error fetching pending questions:", err);
+        setError(err.message || "Failed to fetch questions. Please try again.");
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -62,10 +71,77 @@ const VerifyQuestions = () => {
     }
   };
 
-  if (loading && questions.length === 0) {
+  // Handle error state
+  if (error) {
+    return (
+      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#dc3545', marginBottom: '1rem' }}>Error</h1>
+        <p style={{ color: '#666', marginBottom: '1.5rem' }}>{error}</p>
+        <button
+          onClick={() => window.location.hash = "home"}
+          style={{
+            background: '#007bff',
+            color: 'white',
+            padding: '0.75rem 1.5rem',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          Go to Home
+        </button>
+      </div>
+    );
+  }
+
+  // Handle loading state
+  if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '2rem' }}>
         Waiting for AI to generate questions from <strong>{sourceFile}</strong>...
+      </div>
+    );
+  }
+
+  // Handle empty state (questions still being generated)
+  if (questions.length === 0) {
+    return (
+      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>No Questions Yet</h1>
+        <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+          Questions from <strong>{sourceFile}</strong> are still being generated. 
+          This may take a few moments.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            background: '#007bff',
+            color: 'white',
+            padding: '0.75rem 1.5rem',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            marginRight: '1rem'
+          }}
+        >
+          Retry
+        </button>
+        <button
+          onClick={() => window.location.hash = "questions"}
+          style={{
+            background: '#6c757d',
+            color: 'white',
+            padding: '0.75rem 1.5rem',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          Go to Question Bank
+        </button>
       </div>
     );
   }
