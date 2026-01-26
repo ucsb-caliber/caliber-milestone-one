@@ -13,6 +13,7 @@ class User(SQLModel, table=True):
     teacher: bool = Field(default=False)  # Whether user is a teacher/instructor
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    is_verified: bool = Field(default=False)  # Whether question in database is verified
 
 
 class Question(SQLModel, table=True):

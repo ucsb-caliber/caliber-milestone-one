@@ -92,7 +92,8 @@ def process_pdf_background(filename: str, file_content: bytes, user_id: str):
                     tags=q_dict["tags"],
                     keywords=q_dict["keywords"],
                     source_pdf=filename,
-                    user_id=user_id
+                    user_id=user_id,
+                    is_verified=False  # applies pending status to new questions
                 )
         
         print(f"Successfully processed {filename}: created {len(question_dicts)} questions for user {user_id}")
