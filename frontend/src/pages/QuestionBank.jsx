@@ -27,9 +27,19 @@ export default function QuestionBank() {
         getQuestions(),
         getAllQuestions()
       ]);
+
+     const verifiedMyQuestions = (myData.questions || [])
+      .filter(q => q.is_verified === true)
+      .sort(sortByNewest);
+
+     const verifiedAllQuestions = (allData.questions || [])
+      .filter(q => q.is_verified === true)
+      .sort(sortByNewest);
+
       // Sort questions by created_at descending (newest first)
-      setMyQuestions((myData.questions || []).sort(sortByNewest));
-      setAllQuestions((allData.questions || []).sort(sortByNewest));
+      setMyQuestions(verifiedMyQuestions);
+      setAllQuestions(verifiedAllQuestions);
+
     } catch (err) {
       setError(err.message || 'Failed to load questions');
     } finally {
