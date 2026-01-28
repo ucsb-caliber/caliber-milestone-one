@@ -89,7 +89,7 @@ export default function CreateQuestion() {
         keywords: formData.keywords,
         tags: formData.tags,
         answer_choices: JSON.stringify(validAnswers),
-        correct_answer: formData.correct_answer
+        correct_answer: formData.correct_answer,
       });
 
       setSuccess(true);

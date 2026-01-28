@@ -161,6 +161,8 @@ export async function createQuestion(questionData) {
     formData.append('course', questionData.course || '');
     formData.append('answer_choices', questionData.answer_choices || '[]');
     formData.append('correct_answer', questionData.correct_answer || '');
+
+
     if (questionData.source_pdf) {
       formData.append('source_pdf', questionData.source_pdf);
     }
