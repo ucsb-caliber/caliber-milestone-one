@@ -36,25 +36,27 @@ The question storage system now supports comprehensive metadata for educational 
 ## Markdown Support
 
 ### Question Text
-Questions support full markdown formatting in the text field:
+Questions support full markdown formatting in the text field. Here's an example:
 
-```markdown
+**Question about recursion:**
+
+```
 ## What is recursion?
 
 Recursion is when a **function calls itself**.
 
-Example code:
-```python
-def factorial(n):
-    if n <= 1:
-        return 1
-    return n * factorial(n-1)
-```
+Example code in Python:
+    def factorial(n):
+        if n <= 1:
+            return 1
+        return n * factorial(n-1)
 
 Key points:
 - Base case prevents infinite recursion
 - Recursive case breaks problem into smaller parts
 ```
+
+In the markdown editor, you would write this as plain text, and it will be rendered with proper formatting when displayed.
 
 ### Markdown Features Supported
 - **Headers**: `# H1`, `## H2`, `### H3`

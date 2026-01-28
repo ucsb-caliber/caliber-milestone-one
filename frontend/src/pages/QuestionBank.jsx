@@ -181,10 +181,7 @@ export default function QuestionBank() {
           <div style={{ 
             fontSize: '1rem', 
             lineHeight: '1.5', 
-            fontWeight: '500',
-            '& h1, & h2, & h3': { marginTop: '0.5rem', marginBottom: '0.5rem' },
-            '& p': { margin: '0.5rem 0' },
-            '& code': { background: '#f4f4f4', padding: '0.2rem 0.4rem', borderRadius: '3px' }
+            fontWeight: '500'
           }}>
             <ReactMarkdown>{question.text}</ReactMarkdown>
           </div>

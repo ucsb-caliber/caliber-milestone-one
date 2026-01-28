@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UserResponse(BaseModel):
@@ -61,6 +61,23 @@ class QuestionCreate(BaseModel):
     answer_choices: str = "[]"  # JSON string of answer choices
     correct_answer: str = ""
     source_pdf: Optional[str] = None
+    
+    @field_validator('question_type')
+    @classmethod
+    def validate_question_type(cls, v: str) -> str:
+        """Validate question_type is one of the allowed values."""
+        if v and v not in ['mcq', 'fr', 'short_answer', 'true_false', '']:
+            raise ValueError(f"question_type must be one of: mcq, fr, short_answer, true_false (got '{v}')")
+        return v
+    
+    @field_validator('blooms_taxonomy')
+    @classmethod
+    def validate_blooms_taxonomy(cls, v: str) -> str:
+        """Validate blooms_taxonomy is one of the allowed values."""
+        valid_levels = ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating', '']
+        if v and v not in valid_levels:
+            raise ValueError(f"blooms_taxonomy must be one of: {', '.join(valid_levels[:-1])} (got '{v}')")
+        return v
 
 
 class QuestionUpdate(BaseModel):
@@ -77,6 +94,23 @@ class QuestionUpdate(BaseModel):
     correct_answer: Optional[str] = None
     source_pdf: Optional[str] = None
     is_verified: Optional[bool] = None
+    
+    @field_validator('question_type')
+    @classmethod
+    def validate_question_type(cls, v: Optional[str]) -> Optional[str]:
+        """Validate question_type is one of the allowed values."""
+        if v and v not in ['mcq', 'fr', 'short_answer', 'true_false', '']:
+            raise ValueError(f"question_type must be one of: mcq, fr, short_answer, true_false (got '{v}')")
+        return v
+    
+    @field_validator('blooms_taxonomy')
+    @classmethod
+    def validate_blooms_taxonomy(cls, v: Optional[str]) -> Optional[str]:
+        """Validate blooms_taxonomy is one of the allowed values."""
+        valid_levels = ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating', '']
+        if v and v not in valid_levels:
+            raise ValueError(f"blooms_taxonomy must be one of: {', '.join(valid_levels[:-1])} (got '{v}')")
+        return v
 
 
 
