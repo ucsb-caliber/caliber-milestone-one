@@ -24,7 +24,7 @@ class User(SQLModel, table=True):
 class Question(SQLModel, table=True):
     """Question model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
-    text: str = Field(sa_column=Column(TEXT), index=True)  # Question text (supports markdown)
+    text: str = Field(sa_column=Column(TEXT))  # Question text (supports markdown)
     tags: str = Field(default="")  # Stored as comma-separated string
     keywords: str = Field(default="")  # Stored as comma-separated string
     course: str = Field(default="")  # UCSB class tag (e.g., CS16, CS24, MATH 3A)
