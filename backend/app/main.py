@@ -1,4 +1,5 @@
 import os
+import logging
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
@@ -242,12 +243,10 @@ async def create_new_question(
             
             # Upload to Supabase
             image_url = await upload_image_to_supabase(file_content, image_file.filename, user_id)
-            import logging
             logging.info(f"Image URL after upload: {image_url}")
         except HTTPException:
             raise  # Re-raise validation errors
         except Exception as e:
-            import logging
             logging.error(f"Error uploading image: {e}")
             # Continue without image if upload fails
     

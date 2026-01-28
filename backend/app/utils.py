@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 import io
 import os
 import uuid
+import logging
 from supabase import create_client, Client
 
 
@@ -65,12 +66,10 @@ async def upload_image_to_supabase(file_content: bytes, file_name: str, user_id:
         # Get public URL - the method returns the URL string directly
         public_url = supabase.storage.from_(bucket_name).get_public_url(unique_name)
         
-        import logging
         logging.info(f"Image uploaded successfully. Public URL: {public_url}")
         
         return public_url
     except Exception as e:
-        import logging
         logging.error(f"Error uploading image to Supabase: {e}")
         # Return None if upload fails - image is optional
         return None
