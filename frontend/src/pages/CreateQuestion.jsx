@@ -245,7 +245,8 @@ export default function CreateQuestion() {
                 border: '1px solid #ddd',
                 borderRadius: '4px',
                 fontSize: '1rem',
-                fontFamily: 'monospace'
+                fontFamily: 'monospace',
+                boxSizing: 'border-box'
               }}
               placeholder="Enter your question here... You can use **markdown** for _formatting_"
             />
@@ -257,7 +258,8 @@ export default function CreateQuestion() {
                 border: '1px solid #ddd',
                 borderRadius: '4px',
                 minHeight: '150px',
-                background: '#f8f9fa'
+                background: '#f8f9fa',
+                boxSizing: 'border-box'
               }}
             >
               <ReactMarkdown 
@@ -288,7 +290,8 @@ export default function CreateQuestion() {
                 padding: '0.75rem',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
-                fontSize: '1rem'
+                fontSize: '1rem',
+                boxSizing: 'border-box'
               }}
               placeholder="e.g., CS16, CS24, MATH 3A"
             />
@@ -308,7 +311,8 @@ export default function CreateQuestion() {
                 padding: '0.75rem',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
-                fontSize: '1rem'
+                fontSize: '1rem',
+                boxSizing: 'border-box'
               }}
               placeholder="e.g., intro CS, linear algebra"
             />
@@ -330,7 +334,8 @@ export default function CreateQuestion() {
                 padding: '0.75rem',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
-                fontSize: '1rem'
+                fontSize: '1rem',
+                boxSizing: 'border-box'
               }}
             >
               <option value="mcq">Multiple Choice (MCQ)</option>
@@ -354,7 +359,8 @@ export default function CreateQuestion() {
                 padding: '0.75rem',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
-                fontSize: '1rem'
+                fontSize: '1rem',
+                boxSizing: 'border-box'
               }}
             >
               <option value="Remembering">Remembering</option>
@@ -380,7 +386,8 @@ export default function CreateQuestion() {
               padding: '0.75rem',
               border: '1px solid #ddd',
               borderRadius: '4px',
-              fontSize: '1rem'
+              fontSize: '1rem',
+              boxSizing: 'border-box'
             }}
           />
           {imagePreview && (
@@ -416,7 +423,8 @@ export default function CreateQuestion() {
               padding: '0.75rem',
               border: '1px solid #ddd',
               borderRadius: '4px',
-              fontSize: '1rem'
+              fontSize: '1rem',
+              boxSizing: 'border-box'
             }}
             placeholder="e.g., algorithm, data structure, sorting"
           />
@@ -436,7 +444,8 @@ export default function CreateQuestion() {
               padding: '0.75rem',
               border: '1px solid #ddd',
               borderRadius: '4px',
-              fontSize: '1rem'
+              fontSize: '1rem',
+              boxSizing: 'border-box'
             }}
             placeholder="e.g., midterm, important, chapter-3"
           />
@@ -457,7 +466,8 @@ export default function CreateQuestion() {
                   padding: '0.75rem',
                   border: '1px solid #ddd',
                   borderRadius: '4px',
-                  fontSize: '1rem'
+                  fontSize: '1rem',
+                  boxSizing: 'border-box'
                 }}
                 placeholder={`Answer choice ${index + 1}`}
               />
@@ -512,7 +522,8 @@ export default function CreateQuestion() {
               padding: '0.75rem',
               border: '1px solid #ddd',
               borderRadius: '4px',
-              fontSize: '1rem'
+              fontSize: '1rem',
+              boxSizing: 'border-box'
             }}
           >
             <option value="">Select the correct answer</option>

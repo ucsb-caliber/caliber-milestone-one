@@ -242,6 +242,8 @@ async def create_new_question(
             
             # Upload to Supabase
             image_url = await upload_image_to_supabase(file_content, image_file.filename, user_id)
+            import logging
+            logging.info(f"Image URL after upload: {image_url}")
         except HTTPException:
             raise  # Re-raise validation errors
         except Exception as e:
