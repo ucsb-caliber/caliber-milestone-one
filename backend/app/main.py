@@ -210,7 +210,11 @@ def create_new_question(
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
-    """Create a new question using form parameters. Requires authentication."""
+    #Create a new question using form parameters. Requires authentication.
+    #Manual questions(not from pdf)verified by default 
+    
+    is_verified = source_pdf is None
+
     question = create_question(
         session=session,
         text=text,
@@ -220,7 +224,8 @@ def create_new_question(
         answer_choices=answer_choices,
         correct_answer=correct_answer,
         source_pdf=source_pdf,
-        user_id=user_id
+        user_id=user_id,
+        is_verified=is_verified
     )
     return question
 
