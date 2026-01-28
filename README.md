@@ -94,12 +94,14 @@ The frontend will be available at http://localhost:5173
 ### Upload PDF
 1. Navigate to http://localhost:5173
 2. **Sign up** with your email and password (or **sign in** if you already have an account)
-3. After signing in, you'll be redirected to the Home page
-4. Upload a PDF file using the Home page
-5. The backend returns `{status: 'queued'}` and processes the PDF in the background
-6. Visit the Question Bank page to view your parsed questions (click Refresh if needed)
-7. All your data (PDFs and questions) is stored under your user ID
-8. Sign out when done using the button in the navigation bar
+3. **Complete your profile** by entering your first name, last name, and selecting if you are a teacher (new users only)
+4. After completing onboarding, you'll be redirected to the Home page
+5. Upload a PDF file using the Home page
+6. The backend returns `{status: 'queued'}` and processes the PDF in the background
+7. Visit the Question Bank page to view your parsed questions (click Refresh if needed)
+8. All your data (PDFs and questions) is stored under your user ID
+9. View your profile information by clicking on your email in the navigation bar
+10. Sign out when done using the button in the navigation bar
 
 ## Authentication
 
@@ -117,6 +119,7 @@ The frontend will be available at http://localhost:5173
 2. Supabase creates the user account
 3. Supabase sends a confirmation email (if email confirmation is enabled)
 4. User can sign in immediately
+5. **New**: User is prompted to complete their profile with first name, last name, and student/teacher selection
 
 ### User Sign In Flow
 
@@ -125,6 +128,20 @@ The frontend will be available at http://localhost:5173
 3. The token is automatically stored in local storage
 4. All API requests include the token in the Authorization header
 5. Backend validates the token with Supabase on each request
+6. **New**: If profile is incomplete, user is redirected to onboarding page
+
+### User Profile
+
+The application now stores additional user information in the database:
+- **First Name**: User's first name (collected during onboarding)
+- **Last Name**: User's last name (collected during onboarding)
+- **Teacher Status**: Whether the user is a teacher/instructor or a student (set during onboarding)
+- **Admin Status**: Whether the user has admin privileges (set by admin users)
+
+Each user record has:
+- `id`: Auto-incrementing integer ID (starting from 1) for easy searching
+- `user_id`: UUID from Supabase authentication (used as foreign key)
+- User profile is accessible via the Profile page
 
 ### Create Questions Manually
 You can also create questions directly using the API with individual form fields:
@@ -206,16 +223,35 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 │   │   ├── main.py          # FastAPI app and endpoints
 │   │   ├── auth.py          # Supabase authentication utilities
 │   │   ├── database.py      # Database connection and session
-│   │   ├── models.py        # SQLModel database models (includes user_id)
+│   │   ├── models.py        # SQLModel database models (User and Question)
 │   │   ├── schemas.py       # Pydantic response schemas
 │   │   ├── crud.py          # Database operations (user-filtered)
 │   │   └── utils.py         # PDF processing and stubbed agent pipeline
+│   ├── alembic/             # Database migrations
+│   │   └── versions/        # Migration files
 │   ├── data/                # SQLite database (gitignored, for local dev)
 │   ├── uploads/             # Uploaded PDFs (gitignored)
 │   ├── requirements.txt     # Python dependencies
 │   └── .env.example         # Environment variables template
 ├── frontend/
 │   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Home.jsx           # PDF upload page (protected)
+│   │   │   ├── QuestionBank.jsx   # Questions list page (protected)
+│   │   │   ├── Auth.jsx           # Login/signup page
+│   │   │   ├── Onboarding.jsx     # Profile completion page (new)
+│   │   │   └── Profile.jsx        # User profile page
+│   │   ├── main.jsx         # App entry point with routing and auth
+│   │   ├── AuthContext.jsx  # Authentication state management
+│   │   ├── supabaseClient.js # Supabase client configuration
+│   │   └── api.js           # API helper functions with auth
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── package.json
+│   └── .env.example         # Frontend environment variables
+├── .gitignore
+└── README.md
+```
 │   │   ├── pages/
 │   │   │   ├── Home.jsx           # PDF upload page (protected)
 │   │   │   ├── QuestionBank.jsx   # Questions list page (protected)
