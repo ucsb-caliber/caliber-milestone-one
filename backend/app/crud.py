@@ -157,3 +157,24 @@ def update_user_roles(session: Session, user_id: str, admin: Optional[bool] = No
     session.refresh(user)
     return user
 
+
+def update_user_profile(session: Session, user_id: str, first_name: Optional[str] = None,
+                       last_name: Optional[str] = None, teacher: Optional[bool] = None) -> Optional[User]:
+    """Update user profile information (first/last name and teacher status)."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        return None
+    
+    if first_name is not None:
+        user.first_name = first_name
+    if last_name is not None:
+        user.last_name = last_name
+    if teacher is not None:
+        user.teacher = teacher
+    
+    user.updated_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+

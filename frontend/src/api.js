@@ -243,3 +243,56 @@ export async function updateQuestion(id, updateData) {
     throw error;
   }
 }
+
+/**
+ * Get current user information including profile data
+ */
+export async function getUserInfo() {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/user`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch user info');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Update user profile (first name, last name, teacher status)
+ */
+export async function updateUserProfile(profileData) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/user/profile`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(profileData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update profile');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}

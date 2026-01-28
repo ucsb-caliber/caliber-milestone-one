@@ -5,8 +5,10 @@ import QuestionBank from './pages/QuestionBank.jsx'
 import CreateQuestion from './pages/CreateQuestion.jsx'
 import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
+import Onboarding from './pages/Onboarding.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { loadProfilePrefs } from './profilePrefs.js'
+import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -39,10 +41,32 @@ function App() {
   };
 
   const [page, setPage] = React.useState(getPageFromHash());
+  const [userInfo, setUserInfo] = React.useState(null);
+  const [checkingProfile, setCheckingProfile] = React.useState(true);
 
 
   const { user, signOut, loading } = useAuth();
   const profilePrefs = React.useMemo(() => loadProfilePrefs(user), [user?.id]);
+
+  // Check if user profile is complete
+  React.useEffect(() => {
+    async function checkProfile() {
+      if (user && !loading) {
+        try {
+          const info = await getUserInfo();
+          setUserInfo(info);
+        } catch (error) {
+          console.error('Error fetching user info:', error);
+        } finally {
+          setCheckingProfile(false);
+        }
+      } else {
+        setCheckingProfile(false);
+      }
+    }
+    
+    checkProfile();
+  }, [user, loading]);
 
   React.useEffect(() => {
     const handleHashChange = () => {
@@ -66,6 +90,28 @@ function App() {
     window.location.hash = 'home';
     window.location.reload();
   };
+
+  const handleOnboardingComplete = async () => {
+    // Refresh user info after onboarding
+    try {
+      const info = await getUserInfo();
+      setUserInfo(info);
+    } catch (error) {
+      console.error('Error fetching updated user info:', error);
+    }
+  };
+
+  // Show loading state while checking profile
+  if (user && checkingProfile) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  // Show onboarding if user is authenticated but profile is incomplete
+  const needsOnboarding = user && userInfo && !userInfo.profile_complete;
 
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', margin: 0, padding: 0 }}>
@@ -181,6 +227,8 @@ function App() {
       <main style={{ padding: '2rem' }}>
         {!user && !loading ? (
           <Auth />
+        ) : needsOnboarding ? (
+          <Onboarding onComplete={handleOnboardingComplete} />
         ) : (
           <>
             {page === 'home' && (

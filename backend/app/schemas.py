@@ -7,6 +7,8 @@ class UserResponse(BaseModel):
     """Schema for user response."""
     id: int
     user_id: str
+    first_name: Optional[str]
+    last_name: Optional[str]
     admin: bool
     teacher: bool
     created_at: datetime
@@ -19,6 +21,13 @@ class UserResponse(BaseModel):
 class UserUpdate(BaseModel):
     """Schema for updating user admin/teacher status."""
     admin: Optional[bool] = None
+    teacher: Optional[bool] = None
+
+
+class UserProfileUpdate(BaseModel):
+    """Schema for updating user profile (first/last name and teacher status)."""
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     teacher: Optional[bool] = None
 
 
