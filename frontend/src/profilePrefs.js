@@ -44,7 +44,7 @@ export function loadProfilePrefs(user) {
     ...defaults,
     ...parsed,
     // never let initials drift away from email unless user explicitly set them
-    initials: parsed.initials || defaults.initials,
+    initials: 'initials' in parsed ? parsed.initials : defaults.initials,
   };
 }
 
