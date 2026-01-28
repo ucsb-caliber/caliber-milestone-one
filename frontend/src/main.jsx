@@ -77,11 +77,14 @@ function App() {
         gap: '1rem',
         alignItems: 'center'
       }}>
-        <h1
-          onClick={handleLogoClick}
-          style={{ margin: 0, fontSize: '1.5rem', cursor: 'pointer' }}
-        >
-          Caliber
+        <h1 style={{ margin: 0 }}>
+          <a
+            href="#home"
+            onClick={handleLogoClick}
+            style={{ fontSize: '1.5rem', cursor: 'pointer', color: 'inherit', textDecoration: 'none' }}
+          >
+            Caliber
+          </a>
         </h1>
 
         {/* Temporary API docs link immediately to the right of the title */}
