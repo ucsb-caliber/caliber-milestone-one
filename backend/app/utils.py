@@ -41,12 +41,12 @@ def upload_pdf_to_storage(file_content: bytes, filename: str, user_id: str) -> s
     # Upload to Supabase Storage
     try:
         response = supabase.storage.from_('question-pdfs').upload(
-            storage_path,
-            file_content,
-            {
+            path=storage_path,
+            file=file_content,
+            file_options={
                 'content-type': 'application/pdf',
                 'cache-control': '3600',
-                'upsert': 'false'
+                'upsert': False
             }
         )
         
