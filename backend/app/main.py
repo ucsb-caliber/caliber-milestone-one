@@ -219,10 +219,34 @@ async def create_new_question(
     image_url = None
     if image_file:
         try:
+            # Server-side validation
+            ALLOWED_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+            MAX_SIZE = 5 * 1024 * 1024  # 5MB
+            
+            # Validate file type
+            if image_file.content_type not in ALLOWED_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid file type. Allowed types: {', '.join(ALLOWED_TYPES)}"
+                )
+            
+            # Read file content
             file_content = await image_file.read()
+            
+            # Validate file size
+            if len(file_content) > MAX_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail="File too large. Maximum size is 5MB"
+                )
+            
+            # Upload to Supabase
             image_url = await upload_image_to_supabase(file_content, image_file.filename, user_id)
+        except HTTPException:
+            raise  # Re-raise validation errors
         except Exception as e:
-            print(f"Error uploading image: {e}")
+            import logging
+            logging.error(f"Error uploading image: {e}")
             # Continue without image if upload fails
     
     question = create_question(

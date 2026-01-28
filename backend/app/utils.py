@@ -17,7 +17,7 @@ def get_supabase_client() -> Client:
     return create_client(supabase_url, supabase_key)
 
 
-async def upload_image_to_supabase(file_content: bytes, file_name: str, user_id: str) -> str:
+async def upload_image_to_supabase(file_content: bytes, file_name: str, user_id: str) -> Optional[str]:
     """
     Upload an image to Supabase storage bucket and return the public URL.
     
@@ -27,23 +27,39 @@ async def upload_image_to_supabase(file_content: bytes, file_name: str, user_id:
         user_id: User ID for organizing files
     
     Returns:
-        Public URL of the uploaded image
+        Public URL of the uploaded image, or None if upload fails
+    
+    Note: Requires 'question-images' bucket to exist in Supabase storage
     """
     try:
         supabase = get_supabase_client()
         
+        # Validate and extract file extension
+        ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
+        MIME_TYPES = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp'
+        }
+        
+        file_ext = file_name.split('.')[-1].lower() if '.' in file_name else ''
+        if file_ext not in ALLOWED_EXTENSIONS:
+            print(f"Invalid file extension: {file_ext}")
+            return None
+        
         # Generate unique filename with user_id prefix
-        file_ext = file_name.split('.')[-1] if '.' in file_name else 'jpg'
         unique_name = f"{user_id}/{uuid.uuid4()}.{file_ext}"
         
         # Upload to 'question-images' bucket
         bucket_name = "question-images"
         
-        # Upload the file
+        # Upload the file with proper MIME type
         response = supabase.storage.from_(bucket_name).upload(
             unique_name,
             file_content,
-            file_options={"content-type": f"image/{file_ext}"}
+            file_options={"content-type": MIME_TYPES[file_ext]}
         )
         
         # Get public URL
@@ -51,7 +67,8 @@ async def upload_image_to_supabase(file_content: bytes, file_name: str, user_id:
         
         return public_url
     except Exception as e:
-        print(f"Error uploading image to Supabase: {e}")
+        import logging
+        logging.error(f"Error uploading image to Supabase: {e}")
         # Return None if upload fails - image is optional
         return None
 

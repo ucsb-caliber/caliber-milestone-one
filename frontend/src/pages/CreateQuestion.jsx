@@ -39,11 +39,13 @@ export default function CreateQuestion() {
       // Validate file type
       if (!file.type.startsWith('image/')) {
         setError('Please select an image file');
+        e.target.value = ''; // Reset file input
         return;
       }
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setError('Image must be less than 5MB');
+        e.target.value = ''; // Reset file input
         return;
       }
       setFormData(prev => ({
