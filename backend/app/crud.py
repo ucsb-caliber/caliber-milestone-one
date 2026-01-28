@@ -119,16 +119,24 @@ def delete_question(session: Session, question_id: int, user_id: str) -> bool:
 
 # User CRUD operations
 
-def get_or_create_user(session: Session, user_id: str) -> User:
-    """Get a user by user_id or create if it doesn't exist."""
+def get_or_create_user(session: Session, user_id: str, email: Optional[str] = None) -> User:
+    """Get a user by user_id or create if it doesn't exist. Updates email if provided."""
     statement = select(User).where(User.user_id == user_id)
     user = session.exec(statement).first()
     
     if not user:
-        user = User(user_id=user_id, admin=False, teacher=False)
+        user = User(user_id=user_id, email=email, admin=False, teacher=False)
         session.add(user)
         session.commit()
         session.refresh(user)
+    else:
+        # Update email if provided and different
+        if email and user.email != email:
+            user.email = email
+            user.updated_at = datetime.utcnow()
+            session.add(user)
+            session.commit()
+            session.refresh(user)
     
     return user
 

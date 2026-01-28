@@ -7,6 +7,7 @@ class UserResponse(BaseModel):
     """Schema for user response."""
     id: int
     user_id: str
+    email: Optional[str]
     first_name: Optional[str]
     last_name: Optional[str]
     admin: bool

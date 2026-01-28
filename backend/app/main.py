@@ -279,6 +279,7 @@ def get_user_info(
     return {
         "user_id": user_id,
         "authenticated": True,
+        "email": user.email,
         "first_name": user.first_name,
         "last_name": user.last_name,
         "admin": user.admin,

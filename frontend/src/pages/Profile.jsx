@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../AuthContext.jsx';
-import { loadProfilePrefs, saveProfilePrefs } from '../profilePrefs.js';
+import { loadProfilePrefs, saveProfilePrefs, getUserInitials } from '../profilePrefs.js';
 import { getUserInfo } from '../api.js';
 
 function getAccountStatus(user) {
@@ -51,13 +51,9 @@ function ProfileBadge({ prefs, size = 56 }) {
 
 export default function Profile() {
   const { user } = useAuth();
-  const [prefs, setPrefs] = React.useState(() => loadProfilePrefs(user));
   const [userInfo, setUserInfo] = React.useState(null);
   const [loadingUserInfo, setLoadingUserInfo] = React.useState(true);
-
-  React.useEffect(() => {
-    setPrefs(loadProfilePrefs(user));
-  }, [user?.id]);
+  const [prefs, setPrefs] = React.useState(() => loadProfilePrefs(user));
 
   // Fetch user info from backend
   React.useEffect(() => {
@@ -70,6 +66,8 @@ export default function Profile() {
       try {
         const info = await getUserInfo();
         setUserInfo(info);
+        // Update prefs with userInfo-based initials
+        setPrefs(loadProfilePrefs(user, info));
       } catch (error) {
         console.error('Error fetching user info:', error);
       } finally {
@@ -85,6 +83,10 @@ export default function Profile() {
   const status = getAccountStatus(user);
 
   const updatePrefs = (next) => {
+    // If initials are cleared, reset to default
+    if (!next.initials || !next.initials.trim()) {
+      next = { ...next, initials: getUserInitials(user, userInfo) };
+    }
     setPrefs(next);
     saveProfilePrefs(user, next);
   };
@@ -148,44 +150,25 @@ export default function Profile() {
             </div>
           ) : null}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div>
-              <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                Name (local)
-              </div>
-              <input
-                value={prefs.displayName}
-                onChange={(e) => updatePrefs({ ...prefs, displayName: e.target.value })}
-                placeholder="Optional display name"
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                }}
-              />
-              <div style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                Stored in your browser for now (no database changes needed for Milestone 1).
-              </div>
+          <div>
+            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+              Initials
             </div>
-
-            <div>
-              <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                Initials
-              </div>
-              <input
-                value={prefs.initials}
-                onChange={(e) => updatePrefs({ ...prefs, initials: e.target.value.slice(0, 2) })}
-                maxLength={2}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  textTransform: 'uppercase',
-                }}
-              />
-            </div>
+            <input
+              value={prefs.initials}
+              onChange={(e) => updatePrefs({ ...prefs, initials: e.target.value.slice(0, 2) })}
+              placeholder={userInfo && userInfo.first_name && userInfo.last_name 
+                ? `${userInfo.first_name[0]}${userInfo.last_name[0]}`.toUpperCase() 
+                : ''}
+              maxLength={2}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                textTransform: 'uppercase',
+              }}
+            />
           </div>
 
           <div style={{ marginTop: '1.25rem' }}>
@@ -296,13 +279,6 @@ export default function Profile() {
           </div>
         </div>
       </div>
-
-      <details style={{ marginTop: '1.5rem' }}>
-        <summary style={{ cursor: 'pointer', color: '#374151' }}>Debug: raw user object</summary>
-        <pre style={{ background: '#0b1020', color: '#e5e7eb', padding: '1rem', borderRadius: '8px' }}>
-          {JSON.stringify(user, null, 2)}
-        </pre>
-      </details>
     </div>
   );
 }

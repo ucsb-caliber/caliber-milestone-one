@@ -13,24 +13,30 @@ export function getProfilePrefsStorageKey(user) {
   return `${STORAGE_PREFIX}.${keyPart}`;
 }
 
-export function getUserInitials(user) {
+export function getUserInitials(user, userInfo = null) {
+  // If we have first and last name from backend, use those
+  if (userInfo?.first_name && userInfo?.last_name) {
+    return `${userInfo.first_name[0]}${userInfo.last_name[0]}`.toUpperCase();
+  }
+  
+  // Fallback to email-based initials
   const email = user?.email || '';
   const display = (email.split('@')[0] || '').trim();
   if (!display) return 'U';
   return display.slice(0, 2).toUpperCase();
 }
 
-export function getDefaultProfilePrefs(user) {
+export function getDefaultProfilePrefs(user, userInfo = null) {
   return {
     displayName: user?.user_metadata?.full_name || user?.user_metadata?.name || '',
     iconShape: 'circle', // circle | square | hex
     color: '#4f46e5',
-    initials: getUserInitials(user),
+    initials: getUserInitials(user, userInfo),
   };
 }
 
-export function loadProfilePrefs(user) {
-  const defaults = getDefaultProfilePrefs(user);
+export function loadProfilePrefs(user, userInfo = null) {
+  const defaults = getDefaultProfilePrefs(user, userInfo);
   if (!user) return defaults;
 
   const key = getProfilePrefsStorageKey(user);
@@ -43,8 +49,8 @@ export function loadProfilePrefs(user) {
   return {
     ...defaults,
     ...parsed,
-    // never let initials drift away from email unless user explicitly set them
-    initials: 'initials' in parsed ? parsed.initials : defaults.initials,
+    // If initials are empty or not set, use default based on name
+    initials: parsed.initials && parsed.initials.trim() ? parsed.initials : defaults.initials,
   };
 }
 
