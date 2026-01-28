@@ -31,6 +31,7 @@ class Question(SQLModel, table=True):
     answer_choices: str = Field(sa_column=Column(TEXT), default="[]")  # JSON array of answer choices
     correct_answer: str = Field(default="")  # The correct answer text
     source_pdf: Optional[str] = Field(default=None)  # Original PDF filename
+    image_url: Optional[str] = Field(default=None)  # URL to image stored in Supabase bucket
     user_id: str = Field(index=True)  # Supabase user ID
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_verified: bool = Field(default=False)  # Whether question in database is verified

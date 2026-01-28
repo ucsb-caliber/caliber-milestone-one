@@ -60,6 +60,48 @@ export async function uploadPDF(file) {
 }
 
 /**
+ * Upload an image file to Supabase Storage
+ * @param {File} file - The image file to upload
+ * @returns {Promise<string>} - The public URL of the uploaded image
+ */
+export async function uploadImage(file) {
+  try {
+    // Get the current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Create a unique filename with user ID and timestamp
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('question-images')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    // Get the public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('question-images')
+      .getPublicUrl(data.path);
+
+    return publicUrl;
+  } catch (error) {
+    console.error('Image upload error:', error);
+    throw new Error(error.message || 'Failed to upload image');
+  }
+}
+
+/**
  * Fetch all questions from the backend with optional filters for verified_only and source_pdf
  */
 export async function getQuestions(filters = {}) {
@@ -163,6 +205,9 @@ export async function createQuestion(questionData) {
     formData.append('correct_answer', questionData.correct_answer || '');
     if (questionData.source_pdf) {
       formData.append('source_pdf', questionData.source_pdf);
+    }
+    if (questionData.image_url) {
+      formData.append('image_url', questionData.image_url);
     }
 
     const response = await fetch(`${API_BASE}/api/questions`, {
