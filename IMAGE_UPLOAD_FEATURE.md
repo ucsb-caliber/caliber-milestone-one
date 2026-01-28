@@ -55,13 +55,15 @@ This feature allows users to optionally attach image files to questions. Images 
 - Bucket: `question-images` (private bucket)
 - Path structure: `{user_id}/{timestamp}.{extension}`
 - Example: `a1b2c3d4-e5f6/.../1643123456789.jpg`
-- Access: Signed URLs valid for 1 year
+- Database stores file **paths** (not URLs)
+- Signed URLs generated on-demand when authenticated users view questions
 
 ### Security
-- Bucket is **private** - only authenticated users can view images
+- Bucket is **private** - only authenticated users can access images
 - Only authenticated users can upload images
 - Users can only delete their own images
-- Images accessible via signed URLs (expire after 1 year)
+- Signed URLs generated on-demand (requires active authentication)
+- Signed URLs expire after 1 hour
 - File type and size validation on upload
 - Extension validation to prevent malicious files
 
@@ -103,10 +105,10 @@ Response includes:
 
 ### Image doesn't display
 1. Verify bucket is set to "Private" (not public)
-2. Check image_url is correctly saved in database
-3. Ensure signed URL was generated successfully
-4. Verify you're logged in when viewing questions
-5. Check RLS policies allow authenticated users to SELECT
+2. Check image path (not URL) is correctly saved in database
+3. Ensure you're logged in when viewing questions
+4. Check browser console for signed URL generation errors
+5. Verify RLS policies allow authenticated users to SELECT
 
 ### "Failed to upload image" error
 1. Check Supabase credentials in `.env` file
@@ -114,10 +116,11 @@ Response includes:
 3. Check RLS policies are configured correctly for authenticated users
 4. Review browser console for detailed error messages
 
-### Images stop working after some time
-- Signed URLs expire after 1 year
-- If URLs expire, questions will need to be updated with new signed URLs
-- Consider implementing a background job to refresh expiring URLs
+### Images load slowly
+- Signed URLs are generated on-demand when viewing questions
+- First load may be slightly slower as URLs are generated
+- URLs are cached in memory during the session
+- Consider implementing server-side caching if performance is critical
 
 ## Future Enhancements
 

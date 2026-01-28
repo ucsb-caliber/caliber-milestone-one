@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
+import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl } from '../api';
 import { useAuth } from '../AuthContext';
 
 // Color palettes for keyword and tag bubbles
@@ -18,6 +18,7 @@ export default function QuestionBank() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
+  const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -28,8 +29,27 @@ export default function QuestionBank() {
         getAllQuestions()
       ]);
       // Sort questions by created_at descending (newest first)
-      setMyQuestions((myData.questions || []).sort(sortByNewest));
-      setAllQuestions((allData.questions || []).sort(sortByNewest));
+      const myQuestionsList = (myData.questions || []).sort(sortByNewest);
+      const allQuestionsList = (allData.questions || []).sort(sortByNewest);
+      
+      setMyQuestions(myQuestionsList);
+      setAllQuestions(allQuestionsList);
+      
+      // Generate signed URLs for all questions with images
+      const allQuestionsWithImages = [...myQuestionsList, ...allQuestionsList].filter(q => q.image_url);
+      const urlPromises = allQuestionsWithImages.map(async (q) => {
+        const signedUrl = await getImageSignedUrl(q.image_url);
+        return { id: q.id, url: signedUrl };
+      });
+      
+      const urls = await Promise.all(urlPromises);
+      const urlMap = {};
+      urls.forEach(({ id, url }) => {
+        if (url) {
+          urlMap[id] = url;
+        }
+      });
+      setImageUrls(urlMap);
     } catch (err) {
       setError(err.message || 'Failed to load questions');
     } finally {
@@ -146,10 +166,10 @@ export default function QuestionBank() {
         </div>
 
         {/* Image if present */}
-        {question.image_url && (
+        {question.image_url && imageUrls[question.id] && (
           <div style={{ marginBottom: '1rem' }}>
             <img 
-              src={question.image_url} 
+              src={imageUrls[question.id]} 
               alt="Question illustration" 
               style={{ 
                 maxWidth: '100%', 

@@ -62,7 +62,7 @@ export async function uploadPDF(file) {
 /**
  * Upload an image file to Supabase Storage
  * @param {File} file - The image file to upload
- * @returns {Promise<string>} - The signed URL of the uploaded image
+ * @returns {Promise<string>} - The storage path of the uploaded image
  */
 export async function uploadImage(file) {
   try {
@@ -95,20 +95,41 @@ export async function uploadImage(file) {
       throw error;
     }
 
-    // Get a signed URL that expires in 1 year (for private bucket)
-    // This allows only authenticated users to access the image
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-      .from('question-images')
-      .createSignedUrl(data.path, 31536000); // 1 year in seconds
-
-    if (signedUrlError) {
-      throw signedUrlError;
-    }
-
-    return signedUrlData.signedUrl;
+    // Return the storage path (not a URL)
+    // The path will be used to generate signed URLs on-demand when displaying questions
+    return data.path;
   } catch (error) {
     console.error('Image upload error:', error);
     throw new Error(error.message || 'Failed to upload image');
+  }
+}
+
+/**
+ * Get a signed URL for an image stored in Supabase Storage
+ * @param {string} imagePath - The storage path of the image
+ * @returns {Promise<string>} - A signed URL valid for 1 hour
+ */
+export async function getImageSignedUrl(imagePath) {
+  try {
+    if (!imagePath) {
+      return null;
+    }
+
+    // Generate a signed URL that expires in 1 hour
+    // This ensures only currently authenticated users can access images
+    const { data, error } = await supabase.storage
+      .from('question-images')
+      .createSignedUrl(imagePath, 3600); // 1 hour in seconds
+
+    if (error) {
+      console.error('Error creating signed URL:', error);
+      return null;
+    }
+
+    return data.signedUrl;
+  } catch (error) {
+    console.error('Error getting signed URL:', error);
+    return null;
   }
 }
 

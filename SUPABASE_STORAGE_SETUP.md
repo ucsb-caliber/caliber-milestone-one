@@ -1,6 +1,6 @@
 # Supabase Storage Setup for Question Images
 
-This document explains how to set up a Supabase Storage bucket for storing question images with **private access** (only logged-in users can view images).
+This document explains how to set up a Supabase Storage bucket for storing question images with **private, authenticated-only access**.
 
 ## Prerequisites
 
@@ -66,29 +66,53 @@ You can verify the bucket is working by:
 ## Bucket Configuration Summary
 
 - **Bucket name**: `question-images`
-- **Public**: No (requires authentication to view)
+- **Public**: No (requires authentication to access)
 - **File structure**: `{user_id}/{timestamp}.{extension}`
   - Example: `abc123-def456/1643123456789.jpg`
+- **Storage**: File paths are stored in database, signed URLs generated on-demand
 
-## Image Upload Flow
+## Image Upload and Display Flow
 
 1. User selects an image in the Create Question form
 2. Frontend validates the image (type, size)
-3. Image is uploaded to Supabase Storage bucket using the Supabase client
-4. Upload returns a signed URL (valid for 1 year) that requires authentication
-5. The signed URL is saved in the question's `image_url` field
-6. Question is created with the image URL
-7. When displaying questions, images are loaded using the signed URL (only accessible to authenticated users)
+3. Image is uploaded to Supabase Storage bucket
+4. The **storage file path** (not URL) is saved in the question's `image_url` field
+5. When displaying questions, the app generates temporary signed URLs on-the-fly
+6. Signed URLs are valid for 1 hour and require active authentication to generate
+7. This ensures only currently logged-in users can view images
+
+## Security Model
+
+### How Authenticated-Only Access Works
+
+1. **Upload**: Only authenticated users can upload files (enforced by RLS INSERT policy)
+2. **Storage**: File paths (e.g., `user123/1234567890.jpg`) are stored in the database
+3. **Display**: When an authenticated user views questions:
+   - The app requests signed URLs for image paths using the user's auth token
+   - Supabase verifies authentication before generating signed URLs
+   - Signed URLs are temporary (1 hour) and cached in memory
+4. **Access Control**: Unauthenticated users cannot:
+   - Generate signed URLs (requires auth token)
+   - Access images directly (bucket is private)
+   - View images in questions (no signed URL available)
+
+### Why This Is Truly Private
+
+- **Private Bucket**: Direct file access is blocked
+- **RLS Policies**: Only authenticated users can read files
+- **Signed URLs Generated On-Demand**: Created only when authenticated users load questions
+- **Short Expiration**: URLs expire after 1 hour, preventing sharing
+- **No Permanent URLs**: Database stores paths, not URLs, so URLs can't be shared permanently
 
 ## Security Considerations
 
-- Images are stored in a **private bucket** (not publicly accessible)
-- Images are stored in user-specific folders (by user ID)
+- Images stored in a **private bucket** (not publicly accessible)
+- Images organized in user-specific folders (by user ID)
 - Only authenticated users can upload images
-- Only authenticated users can view images (via signed URLs)
+- **Only authenticated users can view images** (signed URLs generated on-demand)
 - Users can only delete their own images
-- Signed URLs expire after 1 year for security
-- Maximum file size is enforced in the frontend (5MB)
+- Signed URLs expire after 1 hour
+- Maximum file size enforced in frontend (5MB)
 - Only image file types are accepted
 
 ## Troubleshooting
@@ -101,7 +125,8 @@ You can verify the bucket is working by:
 - Verify the bucket is set to **Private** (not public)
 - Check that the SELECT policy allows authenticated access
 - Confirm the user is logged in when viewing questions
-- Ensure signed URLs are being generated correctly
+- Check browser console for signed URL generation errors
+- Verify the file path is correctly stored in the database
 
 ### Cannot delete images
 - Verify the DELETE policy is configured
@@ -110,16 +135,30 @@ You can verify the bucket is working by:
 ### "Failed to create signed URL" error
 - Check that RLS policies allow SELECT for authenticated users
 - Verify the bucket exists and is named `question-images`
-- Ensure the file path is correct
+- Ensure the user is authenticated
+- Check that the file path exists in storage
 
 ## Migration from Public to Private Bucket
 
 If you previously set up a public bucket and want to migrate to private:
 
-1. In Supabase Dashboard, go to Storage → `question-images`
-2. Click the settings icon (gear) for the bucket
-3. Uncheck "Public bucket" 
-4. Update the SELECT policy to target `authenticated` instead of `public`
-5. Existing public URLs will stop working
-6. New uploads will generate signed URLs automatically
-7. Consider regenerating URLs for existing questions if needed
+1. **Change Bucket Settings**:
+   - In Supabase Dashboard, go to Storage → `question-images`
+   - Click the settings icon (gear) for the bucket
+   - Uncheck "Public bucket"
+
+2. **Update RLS Policies**:
+   - Change SELECT policy from `public` to `authenticated` role
+   
+3. **Migrate Existing Data**:
+   - If storing full URLs: Extract file paths from URLs in database
+   - Update all `image_url` fields to contain just the storage path
+   - Example: Change `https://...storage.../user123/123.jpg` to `user123/123.jpg`
+   
+4. **Update Frontend Code**:
+   - Ensure you're using the latest version that generates signed URLs on-demand
+   - The app will automatically handle generating signed URLs for the paths
+
+5. **Test**:
+   - Verify images display correctly for logged-in users
+   - Confirm images are NOT accessible to logged-out users
