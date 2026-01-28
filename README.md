@@ -60,6 +60,7 @@ Edit your `.env` file and replace the placeholders:
 ```bash
 alembic upgrade head
 ```
+If you're getting some weird errors here you need to make sure you're using python v3.12 to create your venv!
 
 See `backend/MIGRATIONS.md` for more details on how to use alembic.
 
