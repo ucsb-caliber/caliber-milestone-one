@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
 import { createQuestion } from '../api';
+import ReactMarkdown from 'react-markdown';
 
 export default function CreateQuestion() {
   const [formData, setFormData] = useState({
     text: '',
     course: '',
+    course_type: '',
+    question_type: 'mcq',
+    blooms_taxonomy: 'Remembering',
+    image_url: '',
     keywords: '',
     tags: '',
     answer_choices: ['', '', '', ''],
@@ -13,6 +18,7 @@ export default function CreateQuestion() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -86,6 +92,10 @@ export default function CreateQuestion() {
       await createQuestion({
         text: formData.text,
         course: formData.course,
+        course_type: formData.course_type,
+        question_type: formData.question_type,
+        blooms_taxonomy: formData.blooms_taxonomy,
+        image_url: formData.image_url || null,
         keywords: formData.keywords,
         tags: formData.tags,
         answer_choices: JSON.stringify(validAnswers),
@@ -97,6 +107,10 @@ export default function CreateQuestion() {
       setFormData({
         text: '',
         course: '',
+        course_type: '',
+        question_type: 'mcq',
+        blooms_taxonomy: 'Remembering',
+        image_url: '',
         keywords: '',
         tags: '',
         answer_choices: ['', '', '', ''],
@@ -150,34 +164,178 @@ export default function CreateQuestion() {
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Question Text *
+            Question Text (Markdown Supported) *
           </label>
-          <textarea
-            name="text"
-            value={formData.text}
-            onChange={handleInputChange}
-            required
-            rows={4}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem',
-              fontFamily: 'inherit'
-            }}
-            placeholder="Enter your question here..."
-          />
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => setShowPreview(false)}
+              style={{
+                padding: '0.25rem 1rem',
+                background: !showPreview ? '#007bff' : '#e9ecef',
+                color: !showPreview ? 'white' : '#495057',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem'
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPreview(true)}
+              style={{
+                padding: '0.25rem 1rem',
+                background: showPreview ? '#007bff' : '#e9ecef',
+                color: showPreview ? 'white' : '#495057',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem'
+              }}
+            >
+              Preview
+            </button>
+          </div>
+          {!showPreview ? (
+            <textarea
+              name="text"
+              value={formData.text}
+              onChange={handleInputChange}
+              required
+              rows={6}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem',
+                fontFamily: 'monospace'
+              }}
+              placeholder="Enter your question here... You can use **markdown** for _formatting_"
+            />
+          ) : (
+            <div
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                minHeight: '150px',
+                background: '#f8f9fa'
+              }}
+            >
+              <ReactMarkdown>{formData.text || '*No content*'}</ReactMarkdown>
+            </div>
+          )}
+          <small style={{ color: '#666', fontSize: '0.875rem' }}>
+            Supports markdown: **bold**, *italic*, `code`, lists, etc.
+          </small>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              UCSB Class Tag
+            </label>
+            <input
+              type="text"
+              name="course"
+              value={formData.course}
+              onChange={handleInputChange}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+              placeholder="e.g., CS16, CS24, MATH 3A"
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              Course Type
+            </label>
+            <input
+              type="text"
+              name="course_type"
+              value={formData.course_type}
+              onChange={handleInputChange}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+              placeholder="e.g., intro CS, linear algebra"
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              Question Type *
+            </label>
+            <select
+              name="question_type"
+              value={formData.question_type}
+              onChange={handleInputChange}
+              required
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+            >
+              <option value="mcq">Multiple Choice (MCQ)</option>
+              <option value="short_answer">Short Answer</option>
+              <option value="fr">Free Response</option>
+              <option value="true_false">True/False</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              Bloom's Taxonomy Level *
+            </label>
+            <select
+              name="blooms_taxonomy"
+              value={formData.blooms_taxonomy}
+              onChange={handleInputChange}
+              required
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+            >
+              <option value="Remembering">Remembering</option>
+              <option value="Understanding">Understanding</option>
+              <option value="Applying">Applying</option>
+              <option value="Analyzing">Analyzing</option>
+              <option value="Evaluating">Evaluating</option>
+              <option value="Creating">Creating</option>
+            </select>
+          </div>
         </div>
 
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Course
+            Image URL (optional)
           </label>
           <input
             type="text"
-            name="course"
-            value={formData.course}
+            name="image_url"
+            value={formData.image_url}
             onChange={handleInputChange}
             style={{
               width: '100%',
@@ -186,8 +344,11 @@ export default function CreateQuestion() {
               borderRadius: '4px',
               fontSize: '1rem'
             }}
-            placeholder="e.g., CS 101, Math 205"
+            placeholder="https://example.com/image.png"
           />
+          <small style={{ color: '#666', fontSize: '0.875rem' }}>
+            Enter a URL to an image to display with the question
+          </small>
         </div>
 
         <div>

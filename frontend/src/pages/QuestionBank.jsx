@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
 import { useAuth } from '../AuthContext';
+import ReactMarkdown from 'react-markdown';
 
 // Color palettes for keyword and tag bubbles
 const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
@@ -78,10 +79,10 @@ export default function QuestionBank() {
           position: 'relative'
         }}
       >
-        {/* Header with course, keywords, tags */}
+        {/* Header with course, course type, question type, Bloom's taxonomy */}
         <div style={{ marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #eee' }}>
-          {question.course && (
-            <div style={{ marginBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            {question.course && (
               <span style={{
                 background: '#007bff',
                 color: 'white',
@@ -92,8 +93,45 @@ export default function QuestionBank() {
               }}>
                 {question.course}
               </span>
-            </div>
-          )}
+            )}
+            {question.course_type && (
+              <span style={{
+                background: '#6c757d',
+                color: 'white',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                fontWeight: '500'
+              }}>
+                {question.course_type}
+              </span>
+            )}
+            {question.question_type && (
+              <span style={{
+                background: '#17a2b8',
+                color: 'white',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                fontWeight: '500',
+                textTransform: 'uppercase'
+              }}>
+                {question.question_type}
+              </span>
+            )}
+            {question.blooms_taxonomy && (
+              <span style={{
+                background: '#ffc107',
+                color: '#000',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                fontWeight: '500'
+              }}>
+                📚 {question.blooms_taxonomy}
+              </span>
+            )}
+          </div>
           {keywords.length > 0 && (
             <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
               <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
@@ -138,12 +176,38 @@ export default function QuestionBank() {
           )}
         </div>
 
-        {/* Question text */}
+        {/* Question text with markdown support */}
         <div style={{ marginBottom: '1rem', flex: 1 }}>
-          <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5', fontWeight: '500' }}>
-            {question.text}
-          </p>
+          <div style={{ 
+            fontSize: '1rem', 
+            lineHeight: '1.5', 
+            fontWeight: '500',
+            '& h1, & h2, & h3': { marginTop: '0.5rem', marginBottom: '0.5rem' },
+            '& p': { margin: '0.5rem 0' },
+            '& code': { background: '#f4f4f4', padding: '0.2rem 0.4rem', borderRadius: '3px' }
+          }}>
+            <ReactMarkdown>{question.text}</ReactMarkdown>
+          </div>
         </div>
+
+        {/* Image display if URL is provided */}
+        {question.image_url && (
+          <div style={{ marginBottom: '1rem' }}>
+            <img 
+              src={question.image_url} 
+              alt="Question illustration"
+              style={{ 
+                maxWidth: '100%', 
+                height: 'auto', 
+                borderRadius: '4px',
+                border: '1px solid #ddd'
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          </div>
+        )}
 
         {/* Answer choices */}
         {answerChoices.length > 0 && (
