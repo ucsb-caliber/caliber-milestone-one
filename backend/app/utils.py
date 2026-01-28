@@ -1,8 +1,8 @@
 import PyPDF2
 from typing import List, Dict
 import io
-import os
 from datetime import datetime
+import re
 
 
 def get_supabase_client():
@@ -30,26 +30,37 @@ def upload_pdf_to_storage(file_content: bytes, filename: str, user_id: str) -> s
     
     # Create a unique filename with user ID, timestamp, and original filename
     timestamp = int(datetime.now().timestamp() * 1000)
-    # Sanitize filename to prevent path traversal
-    safe_filename = filename.replace('/', '_').replace('\\', '_')
+    
+    # Sanitize filename to prevent path traversal and other issues
+    # Remove or replace potentially problematic characters
+    safe_filename = re.sub(r'[^\w\s\-\.]', '_', filename)
+    safe_filename = safe_filename.replace(' ', '_')
+    
     storage_path = f"{user_id}/{timestamp}_{safe_filename}"
     
     # Upload to Supabase Storage
-    response = supabase.storage.from_('question-pdfs').upload(
-        storage_path,
-        file_content,
-        {
-            'content-type': 'application/pdf',
-            'cache-control': '3600',
-            'upsert': 'false'
-        }
-    )
-    
-    # Check if upload was successful
-    if hasattr(response, 'error') and response.error:
-        raise Exception(f"Failed to upload PDF to storage: {response.error}")
-    
-    return storage_path
+    try:
+        response = supabase.storage.from_('question-pdfs').upload(
+            storage_path,
+            file_content,
+            {
+                'content-type': 'application/pdf',
+                'cache-control': '3600',
+                'upsert': 'false'
+            }
+        )
+        
+        # Check if upload was successful
+        if hasattr(response, 'error') and response.error:
+            error_msg = str(response.error) if response.error else "Unknown error"
+            raise Exception(f"Failed to upload PDF to storage: {error_msg}")
+        
+        return storage_path
+    except Exception as e:
+        # Re-raise with more context if it's not already our custom exception
+        if "Failed to upload PDF to storage" not in str(e):
+            raise Exception(f"Failed to upload PDF '{filename}' to storage: {str(e)}")
+        raise
 
 
 def download_pdf_from_storage(storage_path: str) -> bytes:
@@ -67,13 +78,19 @@ def download_pdf_from_storage(storage_path: str) -> bytes:
     """
     supabase = get_supabase_client()
     
-    # Download from Supabase Storage
-    response = supabase.storage.from_('question-pdfs').download(storage_path)
-    
-    if not response:
-        raise Exception(f"Failed to download PDF from storage: {storage_path}")
-    
-    return response
+    try:
+        # Download from Supabase Storage
+        response = supabase.storage.from_('question-pdfs').download(storage_path)
+        
+        if not response:
+            raise Exception(f"Download returned empty response for path: {storage_path}")
+        
+        return response
+    except Exception as e:
+        # Provide helpful error message with context
+        if "Download returned empty response" in str(e):
+            raise
+        raise Exception(f"Failed to download PDF from storage path '{storage_path}': {str(e)}")
 
 
 def extract_text_from_pdf(file_content: bytes) -> str:
