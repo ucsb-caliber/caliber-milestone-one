@@ -145,6 +145,24 @@ export default function QuestionBank() {
           </p>
         </div>
 
+        {/* Image if present */}
+        {question.image_url && (
+          <div style={{ marginBottom: '1rem' }}>
+            <img 
+              src={question.image_url} 
+              alt="Question illustration" 
+              style={{ 
+                maxWidth: '100%', 
+                height: 'auto',
+                maxHeight: '300px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                objectFit: 'contain'
+              }} 
+            />
+          </div>
+        )}
+
         {/* Answer choices */}
         {answerChoices.length > 0 && (
           <div style={{ marginBottom: '1rem' }}>
