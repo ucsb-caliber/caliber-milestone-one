@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../AuthContext.jsx';
 import { loadProfilePrefs, saveProfilePrefs } from '../profilePrefs.js';
+import { getUserInfo } from '../api.js';
 
 function getAccountStatus(user) {
   const supabaseRole = user?.role || 'unknown';
@@ -51,10 +52,30 @@ function ProfileBadge({ prefs, size = 56 }) {
 export default function Profile() {
   const { user } = useAuth();
   const [prefs, setPrefs] = React.useState(() => loadProfilePrefs(user));
+  const [userInfo, setUserInfo] = React.useState(null);
+  const [loadingUserInfo, setLoadingUserInfo] = React.useState(true);
 
   React.useEffect(() => {
     setPrefs(loadProfilePrefs(user));
   }, [user?.id]);
+
+  // Fetch user info from backend
+  React.useEffect(() => {
+    async function fetchUserInfo() {
+      if (user) {
+        try {
+          const info = await getUserInfo();
+          setUserInfo(info);
+        } catch (error) {
+          console.error('Error fetching user info:', error);
+        } finally {
+          setLoadingUserInfo(false);
+        }
+      }
+    }
+    
+    fetchUserInfo();
+  }, [user]);
 
   if (!user) return null;
 
@@ -93,6 +114,36 @@ export default function Profile() {
               {user.email}
             </div>
           </div>
+
+          {/* Display backend user profile info */}
+          {loadingUserInfo ? (
+            <div style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1rem' }}>
+              Loading profile information...
+            </div>
+          ) : userInfo && (userInfo.first_name || userInfo.last_name) ? (
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+                Name
+              </div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
+                {userInfo.first_name} {userInfo.last_name}
+              </div>
+              {userInfo.teacher && (
+                <div style={{ 
+                  display: 'inline-block',
+                  marginTop: '0.25rem',
+                  padding: '0.25rem 0.5rem',
+                  background: '#dbeafe',
+                  color: '#1e40af',
+                  borderRadius: '4px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600
+                }}>
+                  Teacher
+                </div>
+              )}
+            </div>
+          ) : null}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
@@ -137,21 +188,37 @@ export default function Profile() {
           <div style={{ marginTop: '1.25rem' }}>
             <div style={{ fontWeight: 800, marginBottom: '0.5rem', color: '#111827' }}>Role / Status</div>
             <div style={{ color: '#374151' }}>
-              <div>
-                <strong>Supabase role:</strong> {status.supabaseRole}
-              </div>
-              <div>
-                <strong>Auth provider:</strong> {status.provider}
-              </div>
-              <div>
-                <strong>Admin:</strong> {status.isAdmin ? 'Yes' : 'No / Unknown'}
-              </div>
-              <div>
-                <strong>Instructor:</strong> {status.isInstructor ? 'Yes' : 'No / Unknown'}
-              </div>
-              <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.35rem' }}>
-                Admin/instructor flags depend on what your Supabase project stores in metadata.
-              </div>
+              {userInfo ? (
+                <>
+                  <div>
+                    <strong>Admin:</strong> {userInfo.admin ? 'Yes' : 'No'}
+                  </div>
+                  <div>
+                    <strong>Teacher:</strong> {userInfo.teacher ? 'Yes' : 'No'}
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.35rem' }}>
+                    These flags are stored in the database and set during onboarding.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <strong>Supabase role:</strong> {status.supabaseRole}
+                  </div>
+                  <div>
+                    <strong>Auth provider:</strong> {status.provider}
+                  </div>
+                  <div>
+                    <strong>Admin:</strong> {status.isAdmin ? 'Yes' : 'No / Unknown'}
+                  </div>
+                  <div>
+                    <strong>Instructor:</strong> {status.isInstructor ? 'Yes' : 'No / Unknown'}
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.35rem' }}>
+                    Admin/instructor flags depend on what your Supabase project stores in metadata.
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
