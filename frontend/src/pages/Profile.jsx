@@ -195,7 +195,7 @@ export default function Profile() {
                 : ''}
               maxLength={2}
               style={{
-                width: '100%',
+                width: '60%',
                 padding: '0.5rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',

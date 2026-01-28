@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { createQuestion } from '../api';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 export default function CreateQuestion() {
   const [formData, setFormData] = useState({
@@ -9,7 +13,7 @@ export default function CreateQuestion() {
     course_type: '',
     question_type: 'mcq',
     blooms_taxonomy: 'Remembering',
-    image_url: '',
+    image_file: null,
     keywords: '',
     tags: '',
     answer_choices: ['', '', '', ''],
@@ -19,6 +23,7 @@ export default function CreateQuestion() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -26,6 +31,32 @@ export default function CreateQuestion() {
       ...prev,
       [name]: value
     }));
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please select an image file');
+        return;
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image must be less than 5MB');
+        return;
+      }
+      setFormData(prev => ({
+        ...prev,
+        image_file: file
+      }));
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleAnswerChange = (index, value) => {
@@ -95,7 +126,7 @@ export default function CreateQuestion() {
         course_type: formData.course_type,
         question_type: formData.question_type,
         blooms_taxonomy: formData.blooms_taxonomy,
-        image_url: formData.image_url || null,
+        image_file: formData.image_file,
         keywords: formData.keywords,
         tags: formData.tags,
         answer_choices: JSON.stringify(validAnswers),
@@ -110,12 +141,13 @@ export default function CreateQuestion() {
         course_type: '',
         question_type: 'mcq',
         blooms_taxonomy: 'Remembering',
-        image_url: '',
+        image_file: null,
         keywords: '',
         tags: '',
         answer_choices: ['', '', '', ''],
         correct_answer: ''
       });
+      setImagePreview(null);
 
       // Redirect to question bank
       window.location.hash = 'questions';
@@ -226,11 +258,16 @@ export default function CreateQuestion() {
                 background: '#f8f9fa'
               }}
             >
-              <ReactMarkdown>{formData.text || '*No content*'}</ReactMarkdown>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+              >
+                {formData.text || '*No content*'}
+              </ReactMarkdown>
             </div>
           )}
           <small style={{ color: '#666', fontSize: '0.875rem' }}>
-            Supports markdown: **bold**, *italic*, `code`, lists, etc.
+            Supports GitHub Flavored Markdown: **bold**, *italic*, `code`, tables, LaTeX math ($...$), etc.
           </small>
         </div>
 
@@ -330,13 +367,12 @@ export default function CreateQuestion() {
 
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Image URL (optional)
+            Image Upload (optional)
           </label>
           <input
-            type="text"
-            name="image_url"
-            value={formData.image_url}
-            onChange={handleInputChange}
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
             style={{
               width: '100%',
               padding: '0.75rem',
@@ -344,10 +380,23 @@ export default function CreateQuestion() {
               borderRadius: '4px',
               fontSize: '1rem'
             }}
-            placeholder="https://example.com/image.png"
           />
+          {imagePreview && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <img 
+                src={imagePreview} 
+                alt="Preview" 
+                style={{ 
+                  maxWidth: '300px', 
+                  maxHeight: '200px', 
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }} 
+              />
+            </div>
+          )}
           <small style={{ color: '#666', fontSize: '0.875rem' }}>
-            Enter a URL to an image to display with the question
+            Upload an image to display with the question (max 5MB)
           </small>
         </div>
 

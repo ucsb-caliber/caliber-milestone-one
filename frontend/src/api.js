@@ -159,10 +159,17 @@ export async function createQuestion(questionData) {
     formData.append('tags', questionData.tags || '');
     formData.append('keywords', questionData.keywords || '');
     formData.append('course', questionData.course || '');
+    formData.append('course_type', questionData.course_type || '');
+    formData.append('question_type', questionData.question_type || '');
+    formData.append('blooms_taxonomy', questionData.blooms_taxonomy || '');
     formData.append('answer_choices', questionData.answer_choices || '[]');
     formData.append('correct_answer', questionData.correct_answer || '');
     if (questionData.source_pdf) {
       formData.append('source_pdf', questionData.source_pdf);
+    }
+    // Handle image file upload
+    if (questionData.image_file) {
+      formData.append('image_file', questionData.image_file);
     }
 
     const response = await fetch(`${API_BASE}/api/questions`, {

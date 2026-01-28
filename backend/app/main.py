@@ -11,7 +11,7 @@ from .database import create_db_and_tables, get_session, engine
 from .models import Question, User
 from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate
 from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, update_user_profile, update_user_preferences
-from .utils import extract_text_from_pdf, send_to_agent_pipeline
+from .utils import extract_text_from_pdf, send_to_agent_pipeline, upload_image_to_supabase
 from .auth import get_current_user
 
 load_dotenv()
@@ -199,7 +199,7 @@ def get_question_by_id(
 
 
 @app.post("/api/questions", response_model=QuestionResponse, status_code=201)
-def create_new_question(
+async def create_new_question(
     text: str = Form(...),
     tags: str = Form(""),
     keywords: str = Form(""),
@@ -207,14 +207,24 @@ def create_new_question(
     course_type: str = Form(""),
     question_type: str = Form(""),
     blooms_taxonomy: str = Form(""),
-    image_url: Optional[str] = Form(None),
     answer_choices: str = Form("[]"),
     correct_answer: str = Form(""),
     source_pdf: Optional[str] = Form(None),
+    image_file: Optional[UploadFile] = File(None),
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
-    """Create a new question using form parameters. Requires authentication."""
+    """Create a new question using form parameters. Requires authentication. Supports image upload."""
+    # Handle image upload if provided
+    image_url = None
+    if image_file:
+        try:
+            file_content = await image_file.read()
+            image_url = await upload_image_to_supabase(file_content, image_file.filename, user_id)
+        except Exception as e:
+            print(f"Error uploading image: {e}")
+            # Continue without image if upload fails
+    
     question = create_question(
         session=session,
         text=text,

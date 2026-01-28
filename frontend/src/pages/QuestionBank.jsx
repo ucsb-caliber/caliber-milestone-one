@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
 import { useAuth } from '../AuthContext';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 // Color palettes for keyword and tag bubbles
 const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
@@ -183,7 +187,12 @@ export default function QuestionBank() {
             lineHeight: '1.5', 
             fontWeight: '500'
           }}>
-            <ReactMarkdown>{question.text}</ReactMarkdown>
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {question.text}
+            </ReactMarkdown>
           </div>
         </div>
 

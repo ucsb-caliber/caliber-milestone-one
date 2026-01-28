@@ -216,18 +216,18 @@ function App() {
               >
                 <span
                   style={{
-                    width: 22,
-                    height: 22,
+                    width: 28,
+                    height: 28,
                     background: profilePrefs.color,
                     color: 'white',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontWeight: 800,
-                    fontSize: '0.75rem',
+                    fontSize: '0.7rem',
                     borderRadius: profilePrefs.iconShape === 'square' ? 6 : 9999,
                     ...(profilePrefs.iconShape === 'hex'
-                      ? { clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)' }
+                      ? { clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)', borderRadius: 0 }
                       : {})
                   }}
                 >
