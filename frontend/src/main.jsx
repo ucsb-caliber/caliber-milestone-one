@@ -207,11 +207,6 @@ function App() {
                 <VerifyQuestions />
               </ProtectedRoute>
             )}
-            {page === 'profile' && (
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            )}
           </>
         )}
       </main>
