@@ -1,6 +1,6 @@
 """add_enhanced_question_fields
 
-Revision ID: fa1679986660
+Revision ID: 008_add_enhanced_question_fields
 Revises: 007_add_profile_preferences
 Create Date: 2026-01-28 05:58:13.018766
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'fa1679986660'
+revision = '008_add_enhanced_question_fields'
 down_revision = '007_add_profile_preferences'
 branch_labels = None
 depends_on = None
