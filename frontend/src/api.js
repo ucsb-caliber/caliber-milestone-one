@@ -62,7 +62,7 @@ export async function uploadPDF(file) {
 /**
  * Upload an image file to Supabase Storage
  * @param {File} file - The image file to upload
- * @returns {Promise<string>} - The public URL of the uploaded image
+ * @returns {Promise<string>} - The signed URL of the uploaded image
  */
 export async function uploadImage(file) {
   try {
@@ -95,12 +95,17 @@ export async function uploadImage(file) {
       throw error;
     }
 
-    // Get the public URL
-    const { data: { publicUrl } } = supabase.storage
+    // Get a signed URL that expires in 1 year (for private bucket)
+    // This allows only authenticated users to access the image
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('question-images')
-      .getPublicUrl(data.path);
+      .createSignedUrl(data.path, 31536000); // 1 year in seconds
 
-    return publicUrl;
+    if (signedUrlError) {
+      throw signedUrlError;
+    }
+
+    return signedUrlData.signedUrl;
   } catch (error) {
     console.error('Image upload error:', error);
     throw new Error(error.message || 'Failed to upload image');

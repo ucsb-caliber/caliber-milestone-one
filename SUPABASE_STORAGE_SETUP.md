@@ -1,6 +1,6 @@
 # Supabase Storage Setup for Question Images
 
-This document explains how to set up a Supabase Storage bucket for storing question images.
+This document explains how to set up a Supabase Storage bucket for storing question images with **private access** (only logged-in users can view images).
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ This document explains how to set up a Supabase Storage bucket for storing quest
 4. Click **New bucket**
 5. Configure the bucket:
    - **Name**: `question-images`
-   - **Public bucket**: ✅ **Yes** (check this box)
+   - **Public bucket**: ❌ **No** (leave unchecked for private access)
    - Click **Create bucket**
 
 ### 2. Set Up Storage Policies
@@ -34,17 +34,13 @@ After creating the bucket, you need to set up Row Level Security (RLS) policies 
 - **Target roles**: `authenticated`
 - **Policy definition**:
 ```sql
-true
-```
-or for user-specific folders:
-```sql
 (bucket_id = 'question-images'::text) AND (auth.uid()::text = (storage.foldername(name))[1])
 ```
 
-#### Policy 2: Allow public read access
-- **Policy name**: `Public read access`
+#### Policy 2: Allow authenticated users to read images
+- **Policy name**: `Authenticated read access`
 - **Allowed operation**: `SELECT`
-- **Target roles**: `public`
+- **Target roles**: `authenticated`
 - **Policy definition**:
 ```sql
 true
@@ -65,12 +61,12 @@ You can verify the bucket is working by:
 
 1. Testing image upload through the application's Create Question page
 2. Checking the Storage tab in Supabase to see uploaded files
-3. Accessing an image URL directly in your browser to confirm public read access
+3. Images should NOT be accessible via direct URL without authentication
 
 ## Bucket Configuration Summary
 
 - **Bucket name**: `question-images`
-- **Public**: Yes (allows unauthenticated read access)
+- **Public**: No (requires authentication to view)
 - **File structure**: `{user_id}/{timestamp}.{extension}`
   - Example: `abc123-def456/1643123456789.jpg`
 
@@ -79,17 +75,19 @@ You can verify the bucket is working by:
 1. User selects an image in the Create Question form
 2. Frontend validates the image (type, size)
 3. Image is uploaded to Supabase Storage bucket using the Supabase client
-4. Upload returns a public URL
-5. The public URL is saved in the question's `image_url` field
+4. Upload returns a signed URL (valid for 1 year) that requires authentication
+5. The signed URL is saved in the question's `image_url` field
 6. Question is created with the image URL
-7. When displaying questions, images are loaded from Supabase Storage using the public URL
+7. When displaying questions, images are loaded using the signed URL (only accessible to authenticated users)
 
 ## Security Considerations
 
+- Images are stored in a **private bucket** (not publicly accessible)
 - Images are stored in user-specific folders (by user ID)
 - Only authenticated users can upload images
+- Only authenticated users can view images (via signed URLs)
 - Users can only delete their own images
-- All images are publicly readable (necessary for display)
+- Signed URLs expire after 1 year for security
 - Maximum file size is enforced in the frontend (5MB)
 - Only image file types are accepted
 
@@ -100,10 +98,28 @@ You can verify the bucket is working by:
 - Ensure the user is authenticated
 
 ### Images don't display
-- Verify the bucket is set to **Public**
-- Check that the SELECT policy allows public access
-- Confirm the image URL is correctly stored in the database
+- Verify the bucket is set to **Private** (not public)
+- Check that the SELECT policy allows authenticated access
+- Confirm the user is logged in when viewing questions
+- Ensure signed URLs are being generated correctly
 
 ### Cannot delete images
 - Verify the DELETE policy is configured
 - Ensure the user is authenticated and owns the image
+
+### "Failed to create signed URL" error
+- Check that RLS policies allow SELECT for authenticated users
+- Verify the bucket exists and is named `question-images`
+- Ensure the file path is correct
+
+## Migration from Public to Private Bucket
+
+If you previously set up a public bucket and want to migrate to private:
+
+1. In Supabase Dashboard, go to Storage → `question-images`
+2. Click the settings icon (gear) for the bucket
+3. Uncheck "Public bucket" 
+4. Update the SELECT policy to target `authenticated` instead of `public`
+5. Existing public URLs will stop working
+6. New uploads will generate signed URLs automatically
+7. Consider regenerating URLs for existing questions if needed

@@ -52,14 +52,16 @@ This feature allows users to optionally attach image files to questions. Images 
 - Enforced on the frontend before upload
 
 ### Storage Location
-- Bucket: `question-images`
+- Bucket: `question-images` (private bucket)
 - Path structure: `{user_id}/{timestamp}.{extension}`
 - Example: `a1b2c3d4-e5f6/.../1643123456789.jpg`
+- Access: Signed URLs valid for 1 year
 
 ### Security
+- Bucket is **private** - only authenticated users can view images
 - Only authenticated users can upload images
 - Users can only delete their own images
-- All images are publicly readable (necessary for display)
+- Images accessible via signed URLs (expire after 1 year)
 - File type and size validation on upload
 - Extension validation to prevent malicious files
 
@@ -97,19 +99,25 @@ Response includes:
 1. Check file size (must be < 5MB)
 2. Verify file is an image type
 3. Ensure you're authenticated
-4. Check Supabase Storage bucket is created and configured
+4. Check Supabase Storage bucket is created and configured as **private**
 
 ### Image doesn't display
-1. Verify bucket is set to "Public"
+1. Verify bucket is set to "Private" (not public)
 2. Check image_url is correctly saved in database
-3. Ensure RLS policies allow public read access
-4. Try accessing the image URL directly in browser
+3. Ensure signed URL was generated successfully
+4. Verify you're logged in when viewing questions
+5. Check RLS policies allow authenticated users to SELECT
 
 ### "Failed to upload image" error
 1. Check Supabase credentials in `.env` file
 2. Verify Storage bucket exists and is named `question-images`
-3. Check RLS policies are configured correctly
+3. Check RLS policies are configured correctly for authenticated users
 4. Review browser console for detailed error messages
+
+### Images stop working after some time
+- Signed URLs expire after 1 year
+- If URLs expire, questions will need to be updated with new signed URLs
+- Consider implementing a background job to refresh expiring URLs
 
 ## Future Enhancements
 
