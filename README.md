@@ -13,7 +13,7 @@ This prototype demonstrates:
 ## Architecture
 
 ### Backend (FastAPI)
-- **POST /api/upload-pdf**: Accepts multipart PDF uploads, saves file to UPLOAD_DIR, and schedules a background task to process the PDF and create Question records
+- **POST /api/upload-pdf**: Accepts multipart PDF uploads, saves file to Supabase Storage (private bucket), and schedules a background task to process the PDF and create Question records
 - **GET /api/questions**: List all questions (supports optional `skip` and `limit` query parameters)
 - **GET /api/questions/{id}**: Get a specific question by ID
 - **POST /api/questions**: Create a new question using individual form fields (`text` required, `tags`, `keywords`, and `source_pdf` optional)
@@ -26,6 +26,7 @@ This prototype demonstrates:
 - Background processing uses FastAPI BackgroundTasks
 - CORS enabled for http://localhost:5173
 - All API endpoints (except root) require authentication
+- PDFs stored in private Supabase Storage bucket (`question-pdfs`)
 
 ### Frontend (React + Vite)
 - **Authentication Flow**: Users must sign in or sign up before accessing the app
@@ -38,6 +39,14 @@ This prototype demonstrates:
 - Sign out functionality in navigation bar
 
 ## Quick Start
+
+### Prerequisites
+
+Before setting up the application, you need to:
+1. Create a Supabase account and project
+2. Set up the required Supabase Storage buckets:
+   - Follow **SUPABASE_STORAGE_SETUP.md** for `question-images` bucket
+   - Follow **PDF_STORAGE_SETUP.md** for `question-pdfs` bucket
 
 ### Backend Setup
 
@@ -166,12 +175,15 @@ The create question endpoint now accepts individual form parameters similar to G
 The agentic AI pipeline is currently stubbed in `backend/app/utils.py` (`send_to_agent_pipeline` function). 
 
 **Current implementation:**
+- PDFs are uploaded to Supabase Storage for secure, scalable cloud storage
+- Backend downloads PDFs from storage for processing
 - Splits PDF text into chunks (~500 characters)
 - Extracts simple keywords from each chunk
 - Creates mock question records with tags and keywords
 
 **Future implementation:**
 Replace this stub with your AGI pipeline that:
+- Retrieves PDFs from Supabase Storage for processing
 - Intelligently splits/extracts questions
 - Generates semantic tags and keywords
 - Stores embeddings (pgvector or similar)
@@ -230,7 +242,6 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 │   ├── alembic/             # Database migrations
 │   │   └── versions/        # Migration files
 │   ├── data/                # SQLite database (gitignored, for local dev)
-│   ├── uploads/             # Uploaded PDFs (gitignored)
 │   ├── requirements.txt     # Python dependencies
 │   └── .env.example         # Environment variables template
 ├── frontend/
@@ -277,10 +288,11 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 
 - **Authentication**: All endpoints (except root) require valid JWT tokens from Supabase
 - **User Data Isolation**: Questions are automatically filtered by user_id
+- **PDF Storage**: PDFs are stored in private Supabase Storage bucket (`question-pdfs`), not locally
+- **Storage Setup**: Follow PDF_STORAGE_SETUP.md to configure the `question-pdfs` bucket
 - Background processing may take a few seconds depending on PDF size
 - The stubbed agent pipeline is intentionally simple - replace it with your AI pipeline
 - CORS is configured for localhost:5173 - update for production domains
-- All uploaded PDFs are stored in `backend/uploads/` (gitignored)
 - User sessions are stored in browser local storage
 - The Supabase client automatically handles token refresh
 
