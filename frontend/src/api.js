@@ -75,6 +75,12 @@ export async function uploadImage(file) {
 
     // Create a unique filename with user ID and timestamp
     const fileExt = file.name.split('.').pop();
+    
+    // Validate file extension exists and is safe
+    if (!fileExt || fileExt.length > 10) {
+      throw new Error('Invalid file extension');
+    }
+    
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage

@@ -12,6 +12,7 @@ export default function CreateQuestion() {
   });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [imageInputRef, setImageInputRef] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -58,15 +59,21 @@ export default function CreateQuestion() {
       // Validate file type
       if (!file.type.startsWith('image/')) {
         setError('Please select an image file');
+        setImageFile(null);
+        setImagePreview(null);
         return;
       }
       
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setError('Image size must be less than 5MB');
+        setImageFile(null);
+        setImagePreview(null);
         return;
       }
       
+      // Clear any previous errors
+      setError('');
       setImageFile(file);
       
       // Create preview
@@ -81,6 +88,10 @@ export default function CreateQuestion() {
   const removeImage = () => {
     setImageFile(null);
     setImagePreview(null);
+    // Clear the file input
+    if (imageInputRef) {
+      imageInputRef.value = '';
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -280,13 +291,15 @@ export default function CreateQuestion() {
         </div>
 
         <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+          <label htmlFor="image-upload" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
             Image (optional)
           </label>
           <input
+            id="image-upload"
             type="file"
             accept="image/*"
             onChange={handleImageChange}
+            ref={(ref) => setImageInputRef(ref)}
             style={{
               width: '100%',
               padding: '0.75rem',
