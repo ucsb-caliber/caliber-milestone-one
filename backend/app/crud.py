@@ -5,7 +5,9 @@ from .models import Question, User
 
 
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
-                   course: str = "", answer_choices: str = "[]", correct_answer: str = "",
+                   course: str = "", course_type: str = "", question_type: str = "", 
+                   blooms_taxonomy: str = "", image_url: Optional[str] = None,
+                   answer_choices: str = "[]", correct_answer: str = "",
                    source_pdf: Optional[str] = None, is_verified: bool = False) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     question = Question(
@@ -13,6 +15,10 @@ def create_question(session: Session, text: str, tags: str, keywords: str, user_
         tags=tags,
         keywords=keywords,
         course=course,
+        course_type=course_type,
+        question_type=question_type,
+        blooms_taxonomy=blooms_taxonomy,
+        image_url=image_url,
         answer_choices=answer_choices,
         correct_answer=correct_answer,
         source_pdf=source_pdf,
@@ -75,7 +81,9 @@ def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List
 
 def update_question(session: Session, question_id: int, user_id: str, text: Optional[str] = None, 
                    tags: Optional[str] = None, keywords: Optional[str] = None, 
-                   course: Optional[str] = None, answer_choices: Optional[str] = None, 
+                   course: Optional[str] = None, course_type: Optional[str] = None,
+                   question_type: Optional[str] = None, blooms_taxonomy: Optional[str] = None,
+                   image_url: Optional[str] = None, answer_choices: Optional[str] = None, 
                    correct_answer: Optional[str] = None, source_pdf: Optional[str] = None, 
                    is_verified: Optional[bool] = None) -> Optional[Question]:
     """Update an existing question in the database. Only the owner can update."""
@@ -91,6 +99,14 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
         question.keywords = keywords
     if course is not None:
         question.course = course
+    if course_type is not None:
+        question.course_type = course_type
+    if question_type is not None:
+        question.question_type = question_type
+    if blooms_taxonomy is not None:
+        question.blooms_taxonomy = blooms_taxonomy
+    if image_url is not None:
+        question.image_url = image_url
     if answer_choices is not None:
         question.answer_choices = answer_choices
     if correct_answer is not None:

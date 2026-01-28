@@ -54,6 +54,10 @@ class QuestionCreate(BaseModel):
     tags: str = ""
     keywords: str = ""
     course: str = ""
+    course_type: str = ""
+    question_type: str = ""
+    blooms_taxonomy: str = ""
+    image_url: Optional[str] = None
     answer_choices: str = "[]"  # JSON string of answer choices
     correct_answer: str = ""
     source_pdf: Optional[str] = None
@@ -65,6 +69,10 @@ class QuestionUpdate(BaseModel):
     tags: Optional[str] = None
     keywords: Optional[str] = None
     course: Optional[str] = None
+    course_type: Optional[str] = None
+    question_type: Optional[str] = None
+    blooms_taxonomy: Optional[str] = None
+    image_url: Optional[str] = None
     answer_choices: Optional[str] = None
     correct_answer: Optional[str] = None
     source_pdf: Optional[str] = None
@@ -79,6 +87,10 @@ class QuestionResponse(BaseModel):
     tags: str
     keywords: str
     course: str
+    course_type: str
+    question_type: str
+    blooms_taxonomy: str
+    image_url: Optional[str]
     answer_choices: str
     correct_answer: str
     source_pdf: Optional[str]
