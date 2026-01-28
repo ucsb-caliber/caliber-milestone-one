@@ -352,19 +352,3 @@ export async function updateUserPreferences(preferencesData) {
     throw error;
   }
 }
-      body: JSON.stringify(onboardingData),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to complete onboarding');
-    }
-
-    return response.json();
-  } catch (error) {
-    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
-      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
-    }
-    throw error;
-  }
-}
