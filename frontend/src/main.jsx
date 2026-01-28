@@ -3,10 +3,11 @@ import ReactDOM from 'react-dom/client'
 import Home from './pages/Home.jsx'
 import QuestionBank from './pages/QuestionBank.jsx'
 import CreateQuestion from './pages/CreateQuestion.jsx'
+import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
+import { loadProfilePrefs } from './profilePrefs.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
-
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -41,6 +42,7 @@ function App() {
 
 
   const { user, signOut, loading } = useAuth();
+  const profilePrefs = React.useMemo(() => loadProfilePrefs(user), [user?.id]);
 
   React.useEffect(() => {
     const handleHashChange = () => {
@@ -59,6 +61,12 @@ function App() {
     }
   };
 
+  const handleLogoClick = () => {
+    // Navigate to home and refresh the page
+    window.location.hash = 'home';
+    window.location.reload();
+  };
+
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', margin: 0, padding: 0 }}>
       <nav style={{
@@ -69,7 +77,15 @@ function App() {
         gap: '1rem',
         alignItems: 'center'
       }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Caliber</h1>
+        <h1 style={{ margin: 0 }}>
+          <a
+            href="#home"
+            onClick={handleLogoClick}
+            style={{ fontSize: '1.5rem', cursor: 'pointer', color: 'inherit', textDecoration: 'none' }}
+          >
+            Caliber
+          </a>
+        </h1>
 
         {/* Temporary API docs link immediately to the right of the title */}
         <a
@@ -110,9 +126,40 @@ function App() {
               >
                 Question Bank
               </a>
-              <span style={{ color: '#aaa', fontSize: '0.9rem' }}>
+              <a
+                href="#profile"
+                style={{
+                  color: page === 'profile' ? '#fff' : '#aaa',
+                  textDecoration: 'none',
+                  fontWeight: page === 'profile' ? 'bold' : 'normal',
+                  fontSize: '0.9rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+                title="View your profile"
+              >
+                <span
+                  style={{
+                    width: 22,
+                    height: 22,
+                    background: profilePrefs.color,
+                    color: 'white',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 800,
+                    fontSize: '0.75rem',
+                    borderRadius: profilePrefs.iconShape === 'square' ? 6 : 9999,
+                    ...(profilePrefs.iconShape === 'hex'
+                      ? { clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)' }
+                      : {})
+                  }}
+                >
+                  {(profilePrefs.initials || '').toUpperCase()}
+                </span>
                 {user.email}
-              </span>
+              </a>
               <button
                 onClick={handleSignOut}
                 style={{
@@ -149,6 +196,11 @@ function App() {
             {page === 'create-question' && (
               <ProtectedRoute>
                 <CreateQuestion />
+              </ProtectedRoute>
+            )}
+            {page === 'profile' && (
+              <ProtectedRoute>
+                <Profile />
               </ProtectedRoute>
             )}
             {page === 'verify' && (
