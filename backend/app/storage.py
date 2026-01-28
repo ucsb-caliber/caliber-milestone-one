@@ -29,11 +29,26 @@ def get_storage_client() -> Client:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set for storage operations")
     try:
         return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    except ImportError as exc:
+        # httpx not installed
+        raise HTTPException(
+            status_code=500, 
+            detail="Supabase storage client failed to initialize. Run: pip install -r requirements.txt"
+        )
     except TypeError as exc:
         # Some httpx versions renamed the proxy argument; ensure httpx is pinned appropriately
-        if "proxy" in str(exc):
-            raise HTTPException(status_code=500, detail="Supabase client init failed; install httpx==0.25.2")
+        if "proxy" in str(exc).lower() or "httpx" in str(exc).lower():
+            raise HTTPException(
+                status_code=500, 
+                detail="Supabase client init failed. Ensure httpx==0.25.2 is installed: pip install httpx==0.25.2"
+            )
         raise
+    except Exception as exc:
+        # Other initialization errors
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to initialize Supabase storage client: {str(exc)}"
+        )
 
 
 def validate_image_file(file: UploadFile) -> None:
