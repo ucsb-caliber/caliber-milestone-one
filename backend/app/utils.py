@@ -1,6 +1,79 @@
 import PyPDF2
 from typing import List, Dict
 import io
+import os
+from datetime import datetime
+
+
+def get_supabase_client():
+    """Get Supabase client for storage operations."""
+    from .auth import get_supabase_client
+    return get_supabase_client()
+
+
+def upload_pdf_to_storage(file_content: bytes, filename: str, user_id: str) -> str:
+    """
+    Upload a PDF file to Supabase Storage.
+    
+    Args:
+        file_content: The PDF file content as bytes
+        filename: Original filename of the PDF
+        user_id: ID of the user uploading the file
+        
+    Returns:
+        str: The storage path of the uploaded PDF
+        
+    Raises:
+        Exception: If upload fails
+    """
+    supabase = get_supabase_client()
+    
+    # Create a unique filename with user ID, timestamp, and original filename
+    timestamp = int(datetime.now().timestamp() * 1000)
+    # Sanitize filename to prevent path traversal
+    safe_filename = filename.replace('/', '_').replace('\\', '_')
+    storage_path = f"{user_id}/{timestamp}_{safe_filename}"
+    
+    # Upload to Supabase Storage
+    response = supabase.storage.from_('question-pdfs').upload(
+        storage_path,
+        file_content,
+        {
+            'content-type': 'application/pdf',
+            'cache-control': '3600',
+            'upsert': 'false'
+        }
+    )
+    
+    # Check if upload was successful
+    if hasattr(response, 'error') and response.error:
+        raise Exception(f"Failed to upload PDF to storage: {response.error}")
+    
+    return storage_path
+
+
+def download_pdf_from_storage(storage_path: str) -> bytes:
+    """
+    Download a PDF file from Supabase Storage.
+    
+    Args:
+        storage_path: The storage path of the PDF
+        
+    Returns:
+        bytes: The PDF file content
+        
+    Raises:
+        Exception: If download fails
+    """
+    supabase = get_supabase_client()
+    
+    # Download from Supabase Storage
+    response = supabase.storage.from_('question-pdfs').download(storage_path)
+    
+    if not response:
+        raise Exception(f"Failed to download PDF from storage: {storage_path}")
+    
+    return response
 
 
 def extract_text_from_pdf(file_content: bytes) -> str:
