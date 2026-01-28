@@ -8,8 +8,6 @@ import Auth from './pages/Auth.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { loadProfilePrefs } from './profilePrefs.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
-import { loadProfilePrefs } from './profilePrefs.js'
-
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
