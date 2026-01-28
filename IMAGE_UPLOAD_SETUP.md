@@ -21,7 +21,7 @@ cd backend
 pip install -r requirements.txt
 ```
 
-**Note**: If you see an error like "Supabase client init failed; install httpx==0.25.2", it means this step wasn't completed.
+**Note**: If you see an error like "Supabase client initialization failed" or "Failed to initialize Supabase storage client", it means dependencies aren't installed properly. Run `pip install -r requirements.txt` to fix it.
 
 ### 2. Create Supabase Storage Bucket
 
@@ -68,17 +68,17 @@ uvicorn app.main:app --reload
 
 ## Troubleshooting
 
-### Error: "Supabase client init failed; install httpx==0.25.2"
+### Error: "Supabase client initialization failed" or httpx-related errors
 
 **Cause**: The `httpx` package is not installed or the wrong version is installed.
 
 **Solution**:
 ```bash
 cd backend
-pip install httpx==0.25.2
-# Or reinstall all dependencies:
 pip install -r requirements.txt
 ```
+
+This installs all required dependencies including `httpx==0.25.2` which is required by the Supabase Python client.
 
 ### Error: "SUPABASE_URL and SUPABASE_SERVICE_KEY must be set"
 

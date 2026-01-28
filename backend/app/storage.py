@@ -1,3 +1,17 @@
+"""
+Supabase Storage module for handling question image uploads.
+
+This module uses Supabase Storage with private buckets and signed URLs.
+It requires the following dependencies:
+- supabase==2.3.4
+- httpx==0.25.2 (required by supabase-py)
+
+If you see errors about "Supabase client initialization failed", run:
+    pip install -r requirements.txt
+
+For setup instructions, see IMAGE_UPLOAD_SETUP.md
+"""
+
 import os
 import uuid
 from supabase import create_client, Client
@@ -29,26 +43,22 @@ def get_storage_client() -> Client:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set for storage operations")
     try:
         return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    except ImportError as exc:
-        # httpx not installed
-        raise HTTPException(
-            status_code=500, 
-            detail="Supabase storage client failed to initialize. Run: pip install -r requirements.txt"
-        )
     except TypeError as exc:
         # Some httpx versions renamed the proxy argument; ensure httpx is pinned appropriately
         if "proxy" in str(exc).lower() or "httpx" in str(exc).lower():
             raise HTTPException(
                 status_code=500, 
-                detail="Supabase client init failed. Ensure httpx==0.25.2 is installed: pip install httpx==0.25.2"
-            )
+                detail="Supabase client initialization failed. Ensure httpx==0.25.2 is installed: pip install httpx==0.25.2"
+            ) from exc
         raise
     except Exception as exc:
-        # Other initialization errors
+        # Other initialization errors - but don't catch HTTPException
+        if isinstance(exc, HTTPException):
+            raise
         raise HTTPException(
             status_code=500,
             detail=f"Failed to initialize Supabase storage client: {str(exc)}"
-        )
+        ) from exc
 
 
 def validate_image_file(file: UploadFile) -> None:
