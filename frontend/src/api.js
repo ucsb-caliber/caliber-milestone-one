@@ -60,6 +60,80 @@ export async function uploadPDF(file) {
 }
 
 /**
+ * Upload an image file to Supabase Storage
+ * @param {File} file - The image file to upload
+ * @returns {Promise<string>} - The storage path of the uploaded image
+ */
+export async function uploadImage(file) {
+  try {
+    // Get the current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Create a unique filename with user ID and timestamp
+    const fileExt = file.name.split('.').pop();
+    
+    // Validate file extension exists and is safe
+    if (!fileExt || fileExt.length > 10) {
+      throw new Error('Invalid file extension');
+    }
+    
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('question-images')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    // Return the storage path (not a URL)
+    // The path will be used to generate signed URLs on-demand when displaying questions
+    return data.path;
+  } catch (error) {
+    console.error('Image upload error:', error);
+    throw new Error(error.message || 'Failed to upload image');
+  }
+}
+
+/**
+ * Get a signed URL for an image stored in Supabase Storage
+ * @param {string} imagePath - The storage path of the image
+ * @returns {Promise<string>} - A signed URL valid for 1 hour
+ */
+export async function getImageSignedUrl(imagePath) {
+  try {
+    if (!imagePath) {
+      return null;
+    }
+
+    // Generate a signed URL that expires in 1 hour
+    // This ensures only currently authenticated users can access images
+    const { data, error } = await supabase.storage
+      .from('question-images')
+      .createSignedUrl(imagePath, 3600); // 1 hour in seconds
+
+    if (error) {
+      console.error('Error creating signed URL:', error);
+      return null;
+    }
+
+    return data.signedUrl;
+  } catch (error) {
+    console.error('Error getting signed URL:', error);
+    return null;
+  }
+}
+
+/**
  * Fetch all questions from the backend with optional filters for verified_only and source_pdf
  */
 export async function getQuestions(filters = {}) {
@@ -163,6 +237,9 @@ export async function createQuestion(questionData) {
     formData.append('correct_answer', questionData.correct_answer || '');
     if (questionData.source_pdf) {
       formData.append('source_pdf', questionData.source_pdf);
+    }
+    if (questionData.image_url) {
+      formData.append('image_url', questionData.image_url);
     }
 
     const response = await fetch(`${API_BASE}/api/questions`, {

@@ -207,6 +207,7 @@ def create_new_question(
     answer_choices: str = Form("[]"),
     correct_answer: str = Form(""),
     source_pdf: Optional[str] = Form(None),
+    image_url: Optional[str] = Form(None),
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
@@ -220,6 +221,7 @@ def create_new_question(
         answer_choices=answer_choices,
         correct_answer=correct_answer,
         source_pdf=source_pdf,
+        image_url=image_url,
         user_id=user_id
     )
     return question
@@ -244,6 +246,7 @@ def update_existing_question(
         answer_choices=question_data.answer_choices,
         correct_answer=question_data.correct_answer,
         source_pdf=question_data.source_pdf,
+        image_url=question_data.image_url,
         is_verified=question_data.is_verified
     )
     if not question:

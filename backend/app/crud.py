@@ -6,7 +6,8 @@ from .models import Question, User
 
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
                    course: str = "", answer_choices: str = "[]", correct_answer: str = "",
-                   source_pdf: Optional[str] = None, is_verified: bool = False) -> Question:
+                   source_pdf: Optional[str] = None, image_url: Optional[str] = None, 
+                   is_verified: bool = False) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     question = Question(
         text=text,
@@ -16,6 +17,7 @@ def create_question(session: Session, text: str, tags: str, keywords: str, user_
         answer_choices=answer_choices,
         correct_answer=correct_answer,
         source_pdf=source_pdf,
+        image_url=image_url,
         user_id=user_id,
         is_verified=is_verified
     )
@@ -77,7 +79,7 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
                    tags: Optional[str] = None, keywords: Optional[str] = None, 
                    course: Optional[str] = None, answer_choices: Optional[str] = None, 
                    correct_answer: Optional[str] = None, source_pdf: Optional[str] = None, 
-                   is_verified: Optional[bool] = None) -> Optional[Question]:
+                   image_url: Optional[str] = None, is_verified: Optional[bool] = None) -> Optional[Question]:
     """Update an existing question in the database. Only the owner can update."""
     question = session.get(Question, question_id)
     if not question or question.user_id != user_id:
@@ -97,6 +99,8 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
         question.correct_answer = correct_answer
     if source_pdf is not None:
         question.source_pdf = source_pdf
+    if image_url is not None:
+        question.image_url = image_url
     if is_verified is not None:
         question.is_verified = is_verified # question becomes verified
     

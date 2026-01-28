@@ -57,6 +57,7 @@ class QuestionCreate(BaseModel):
     answer_choices: str = "[]"  # JSON string of answer choices
     correct_answer: str = ""
     source_pdf: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class QuestionUpdate(BaseModel):
@@ -68,6 +69,7 @@ class QuestionUpdate(BaseModel):
     answer_choices: Optional[str] = None
     correct_answer: Optional[str] = None
     source_pdf: Optional[str] = None
+    image_url: Optional[str] = None
     is_verified: Optional[bool] = None
 
 
@@ -82,6 +84,7 @@ class QuestionResponse(BaseModel):
     answer_choices: str
     correct_answer: str
     source_pdf: Optional[str]
+    image_url: Optional[str]
     user_id: str
     created_at: datetime
     is_verified: bool

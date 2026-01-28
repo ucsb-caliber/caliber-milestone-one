@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createQuestion } from '../api';
+import { createQuestion, uploadImage } from '../api';
 
 export default function CreateQuestion() {
   const [formData, setFormData] = useState({
@@ -10,6 +10,9 @@ export default function CreateQuestion() {
     answer_choices: ['', '', '', ''],
     correct_answer: ''
   });
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageInputRef, setImageInputRef] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -50,6 +53,47 @@ export default function CreateQuestion() {
     }));
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please select an image file');
+        setImageFile(null);
+        setImagePreview(null);
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size must be less than 5MB');
+        setImageFile(null);
+        setImagePreview(null);
+        return;
+      }
+      
+      // Clear any previous errors
+      setError('');
+      setImageFile(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    // Clear the file input
+    if (imageInputRef) {
+      imageInputRef.value = '';
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -83,13 +127,27 @@ export default function CreateQuestion() {
     }
 
     try {
+      let imageUrl = null;
+      
+      // Upload image first if one is selected
+      if (imageFile) {
+        try {
+          imageUrl = await uploadImage(imageFile);
+        } catch (uploadError) {
+          setError(`Failed to upload image: ${uploadError.message}`);
+          setLoading(false);
+          return;
+        }
+      }
+      
       await createQuestion({
         text: formData.text,
         course: formData.course,
         keywords: formData.keywords,
         tags: formData.tags,
         answer_choices: JSON.stringify(validAnswers),
-        correct_answer: formData.correct_answer
+        correct_answer: formData.correct_answer,
+        image_url: imageUrl
       });
 
       setSuccess(true);
@@ -102,6 +160,8 @@ export default function CreateQuestion() {
         answer_choices: ['', '', '', ''],
         correct_answer: ''
       });
+      setImageFile(null);
+      setImagePreview(null);
 
       // Redirect to question bank
       window.location.hash = 'questions';
@@ -228,6 +288,58 @@ export default function CreateQuestion() {
             }}
             placeholder="e.g., midterm, important, chapter-3"
           />
+        </div>
+
+        <div>
+          <label htmlFor="image-upload" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+            Image (optional)
+          </label>
+          <input
+            id="image-upload"
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            ref={(ref) => setImageInputRef(ref)}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '1rem'
+            }}
+          />
+          {imagePreview && (
+            <div style={{ marginTop: '1rem', position: 'relative', display: 'inline-block' }}>
+              <img 
+                src={imagePreview} 
+                alt="Preview" 
+                style={{ 
+                  maxWidth: '300px', 
+                  maxHeight: '300px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }} 
+              />
+              <button
+                type="button"
+                onClick={removeImage}
+                style={{
+                  position: 'absolute',
+                  top: '0.5rem',
+                  right: '0.5rem',
+                  padding: '0.5rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
