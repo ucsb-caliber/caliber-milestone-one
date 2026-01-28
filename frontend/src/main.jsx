@@ -7,7 +7,6 @@ import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
 import Onboarding from './pages/Onboarding.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
-import { loadProfilePrefs } from './profilePrefs.js'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 // Determine backend base URL from Vite env or default to localhost
@@ -43,18 +42,28 @@ function App() {
   const [page, setPage] = React.useState(getPageFromHash());
   const [userInfo, setUserInfo] = React.useState(null);
   const [checkingProfile, setCheckingProfile] = React.useState(true);
+  const [profilePrefs, setProfilePrefs] = React.useState({
+    iconShape: 'circle',
+    color: '#4f46e5',
+    initials: ''
+  });
 
 
   const { user, signOut, loading } = useAuth();
-  const profilePrefs = React.useMemo(() => loadProfilePrefs(user), [user?.id]);
 
-  // Check if user profile is complete
+  // Check if user profile is complete and load preferences
   React.useEffect(() => {
     async function checkProfile() {
       if (user && !loading) {
         try {
           const info = await getUserInfo();
           setUserInfo(info);
+          // Set profile preferences from backend
+          setProfilePrefs({
+            iconShape: info.icon_shape || 'circle',
+            color: info.icon_color || '#4f46e5',
+            initials: info.initials || getDefaultInitials(info)
+          });
         } catch (error) {
           console.error('Error fetching user info:', error);
         } finally {
@@ -67,6 +76,26 @@ function App() {
     
     checkProfile();
   }, [user, loading]);
+
+  // Listen for profile preference updates
+  React.useEffect(() => {
+    const handlePreferencesUpdate = (event) => {
+      setProfilePrefs(event.detail);
+    };
+    
+    window.addEventListener('profilePreferencesUpdated', handlePreferencesUpdate);
+    return () => window.removeEventListener('profilePreferencesUpdated', handlePreferencesUpdate);
+  }, []);
+
+  const getDefaultInitials = (info) => {
+    if (info?.first_name && info?.last_name) {
+      return `${info.first_name[0]}${info.last_name[0]}`.toUpperCase();
+    }
+    const email = user?.email || info?.email || '';
+    const display = (email.split('@')[0] || '').trim();
+    if (!display) return 'U';
+    return display.slice(0, 2).toUpperCase();
+  };
 
   React.useEffect(() => {
     const handleHashChange = () => {

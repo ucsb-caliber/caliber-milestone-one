@@ -324,3 +324,47 @@ export async function completeOnboarding(onboardingData) {
     throw error;
   }
 }
+
+/**
+ * Update user preferences (icon shape, color, and initials)
+ */
+export async function updateUserPreferences(preferencesData) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/user/preferences`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(preferencesData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update preferences');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+      body: JSON.stringify(onboardingData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to complete onboarding');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}

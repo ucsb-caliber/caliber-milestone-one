@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '../AuthContext.jsx';
-import { loadProfilePrefs, saveProfilePrefs, getUserInitials } from '../profilePrefs.js';
-import { getUserInfo } from '../api.js';
+import { getUserInfo, updateUserPreferences } from '../api.js';
 
 function getAccountStatus(user) {
   const supabaseRole = user?.role || 'unknown';
@@ -53,7 +52,11 @@ export default function Profile() {
   const { user } = useAuth();
   const [userInfo, setUserInfo] = React.useState(null);
   const [loadingUserInfo, setLoadingUserInfo] = React.useState(true);
-  const [prefs, setPrefs] = React.useState(() => loadProfilePrefs(user));
+  const [prefs, setPrefs] = React.useState({
+    iconShape: 'circle',
+    color: '#4f46e5',
+    initials: ''
+  });
 
   // Fetch user info from backend
   React.useEffect(() => {
@@ -66,8 +69,12 @@ export default function Profile() {
       try {
         const info = await getUserInfo();
         setUserInfo(info);
-        // Update prefs with userInfo-based initials
-        setPrefs(loadProfilePrefs(user, info));
+        // Set prefs from backend data
+        setPrefs({
+          iconShape: info.icon_shape || 'circle',
+          color: info.icon_color || '#4f46e5',
+          initials: info.initials || getDefaultInitials(info)
+        });
       } catch (error) {
         console.error('Error fetching user info:', error);
       } finally {
@@ -82,13 +89,39 @@ export default function Profile() {
 
   const status = getAccountStatus(user);
 
-  const updatePrefs = (next) => {
+  const getDefaultInitials = (info) => {
+    if (info?.first_name && info?.last_name) {
+      return `${info.first_name[0]}${info.last_name[0]}`.toUpperCase();
+    }
+    const email = user?.email || '';
+    const display = (email.split('@')[0] || '').trim();
+    if (!display) return 'U';
+    return display.slice(0, 2).toUpperCase();
+  };
+
+  const updatePrefs = async (next) => {
     // If initials are cleared, reset to default
     if (!next.initials || !next.initials.trim()) {
-      next = { ...next, initials: getUserInitials(user, userInfo) };
+      next = { ...next, initials: getDefaultInitials(userInfo) };
     }
+    
     setPrefs(next);
-    saveProfilePrefs(user, next);
+    
+    // Save to backend
+    try {
+      await updateUserPreferences({
+        icon_shape: next.iconShape,
+        icon_color: next.color,
+        initials: next.initials
+      });
+      
+      // Trigger a custom event to notify other components
+      window.dispatchEvent(new CustomEvent('profilePreferencesUpdated', { 
+        detail: next 
+      }));
+    } catch (error) {
+      console.error('Error updating preferences:', error);
+    }
   };
 
   return (

@@ -192,3 +192,25 @@ def update_user_profile(session: Session, user_id: str, first_name: Optional[str
     session.refresh(user)
     return user
 
+
+def update_user_preferences(session: Session, user_id: str, icon_shape: Optional[str] = None,
+                           icon_color: Optional[str] = None, initials: Optional[str] = None) -> Optional[User]:
+    """Update user profile preferences (icon shape, color, and initials)."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        return None
+    
+    if icon_shape is not None:
+        user.icon_shape = icon_shape
+    if icon_color is not None:
+        user.icon_color = icon_color
+    if initials is not None:
+        # Allow empty string to reset initials
+        user.initials = initials.strip() if initials else None
+    
+    user.updated_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+

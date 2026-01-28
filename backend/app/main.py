@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
 from .models import Question, User
-from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate
-from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, update_user_profile
+from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate
+from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, update_user_profile, update_user_preferences
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -284,6 +284,9 @@ def get_user_info(
         "last_name": user.last_name,
         "admin": user.admin,
         "teacher": user.teacher,
+        "icon_shape": user.icon_shape,
+        "icon_color": user.icon_color,
+        "initials": user.initials,
         "profile_complete": profile_complete
     }
 
@@ -301,6 +304,25 @@ def update_user_profile_endpoint(
         first_name=profile_data.first_name,
         last_name=profile_data.last_name,
         teacher=None  # Don't allow changing teacher status after onboarding
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@app.put("/api/user/preferences", response_model=UserResponse)
+def update_user_preferences_endpoint(
+    preferences_data: UserPreferencesUpdate,
+    user_id: str = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Update the authenticated user's profile preferences (icon shape, color, and initials)."""
+    user = update_user_preferences(
+        session=session,
+        user_id=user_id,
+        icon_shape=preferences_data.icon_shape,
+        icon_color=preferences_data.icon_color,
+        initials=preferences_data.initials
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -412,6 +434,7 @@ def root():
             "DELETE /api/questions/{question_id}",
             "/api/user",
             "PUT /api/user/profile",
+            "PUT /api/user/preferences",
             "POST /api/user/onboarding",
             "GET /api/users/{user_id}",
             "PUT /api/users/{user_id}"

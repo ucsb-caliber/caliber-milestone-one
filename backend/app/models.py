@@ -14,6 +14,9 @@ class User(SQLModel, table=True):
     last_name: Optional[str] = Field(default=None)  # User's last name
     admin: bool = Field(default=False)  # Whether user is an admin
     teacher: bool = Field(default=False)  # Whether user is a teacher/instructor
+    icon_shape: str = Field(default="circle")  # Profile icon shape: circle, square, or hex
+    icon_color: str = Field(default="#4f46e5")  # Profile icon color (hex code)
+    initials: Optional[str] = Field(default=None, max_length=2)  # User's custom initials (max 2 chars)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

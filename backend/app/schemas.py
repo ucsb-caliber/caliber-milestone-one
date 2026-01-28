@@ -12,6 +12,9 @@ class UserResponse(BaseModel):
     last_name: Optional[str]
     admin: bool
     teacher: bool
+    icon_shape: str
+    icon_color: str
+    initials: Optional[str]
     created_at: datetime
     updated_at: datetime
 
@@ -29,6 +32,13 @@ class UserProfileUpdate(BaseModel):
     """Schema for updating user profile (first/last name only - used after onboarding)."""
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+
+
+class UserPreferencesUpdate(BaseModel):
+    """Schema for updating user profile preferences (icon shape, color, initials)."""
+    icon_shape: Optional[str] = Field(None, pattern="^(circle|square|hex)$")
+    icon_color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+    initials: Optional[str] = Field(None, min_length=0, max_length=2)
 
 
 class UserOnboardingUpdate(BaseModel):
