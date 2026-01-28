@@ -2,7 +2,7 @@ import os
 import logging
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Form, File, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlmodel import Session, select, func
@@ -14,6 +14,12 @@ from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, Que
 from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, update_user_profile, update_user_preferences
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, upload_image_to_supabase
 from .auth import get_current_user
+from .storage import upload_question_image, get_signed_url, delete_question_image
+
+# Simple flag to gate image uploads when storage env vars are missing
+STORAGE_ENABLED = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY"))
+if not STORAGE_ENABLED:
+    print("Warning: Storage not configured. Image uploads will be disabled.")
 
 load_dotenv()
 
@@ -200,7 +206,7 @@ def get_question_by_id(
 
 
 @app.post("/api/questions", response_model=QuestionResponse, status_code=201)
-async def create_new_question(
+async def create_question_endpoint(
     text: str = Form(...),
     tags: str = Form(""),
     keywords: str = Form(""),
@@ -215,55 +221,38 @@ async def create_new_question(
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
-    """Create a new question using form parameters. Requires authentication. Supports image upload."""
+    """Create a new question with optional image upload."""
+    image_path = None
+    
     # Handle image upload if provided
-    image_url = None
-    if image_file:
+    if image_file and image_file.filename:
+        if not STORAGE_ENABLED:
+            raise HTTPException(
+                status_code=503, 
+                detail="Image uploads not configured. Set SUPABASE_SERVICE_KEY in environment."
+            )
         try:
-            # Server-side validation
-            ALLOWED_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
-            MAX_SIZE = 5 * 1024 * 1024  # 5MB
-            
-            # Validate file type
-            if image_file.content_type not in ALLOWED_TYPES:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid file type. Allowed types: {', '.join(ALLOWED_TYPES)}"
-                )
-            
-            # Read file content
-            file_content = await image_file.read()
-            
-            # Validate file size
-            if len(file_content) > MAX_SIZE:
-                raise HTTPException(
-                    status_code=400,
-                    detail="File too large. Maximum size is 5MB"
-                )
-            
-            # Upload to Supabase
-            image_url = await upload_image_to_supabase(file_content, image_file.filename, user_id)
-            logging.info(f"Image URL after upload: {image_url}")
+            image_path = await upload_question_image(image_file, user_id)
         except HTTPException:
-            raise  # Re-raise validation errors
+            raise
         except Exception as e:
-            logging.error(f"Error uploading image: {e}")
-            # Continue without image if upload fails
+            raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
     
     question = create_question(
         session=session,
         text=text,
         tags=tags,
         keywords=keywords,
+        user_id=user_id,
         course=course,
         course_type=course_type,
         question_type=question_type,
         blooms_taxonomy=blooms_taxonomy,
-        image_url=image_url,
+        image_url=image_path,  # Store the path, not URL
         answer_choices=answer_choices,
         correct_answer=correct_answer,
         source_pdf=source_pdf,
-        user_id=user_id
+        is_verified=True
     )
     return question
 
@@ -466,24 +455,25 @@ def update_user(
     return user
 
 
-@app.get("/")
-def root():
-    """Root endpoint."""
-    return {
-        "message": "Caliber Milestone One API",
-        "version": "1.0.0",
-        "endpoints": [
-            "/api/upload-pdf",
-            "/api/questions",
-            "/api/questions/{question_id}",
-            "POST /api/questions",
-            "PUT /api/questions/{question_id}",
-            "DELETE /api/questions/{question_id}",
-            "/api/user",
-            "PUT /api/user/profile",
-            "PUT /api/user/preferences",
-            "POST /api/user/onboarding",
-            "GET /api/users/{user_id}",
-            "PUT /api/users/{user_id}"
-        ]
-    }
+@app.get("/api/image/{question_id}")
+async def get_image_url(
+    question_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Get a signed URL for a question's image.
+    Requires authentication - only logged-in users can view images.
+    URLs expire after 1 hour for security.
+    """
+    question = get_question(session, question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if not question.image_url:
+        raise HTTPException(status_code=404, detail="No image for this question")
+    
+    signed_url = get_signed_url(question.image_url, expires_in=3600)
+    if not signed_url:
+        raise HTTPException(status_code=500, detail="Failed to generate image URL")
+    
+    return {"url": signed_url, "expires_in": 3600}

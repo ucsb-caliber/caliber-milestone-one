@@ -33,21 +33,25 @@ export default function CreateQuestion() {
     }));
   };
 
+  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+  const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       // Validate file type
-      if (!file.type.startsWith('image/')) {
-        setError('Please select an image file');
-        e.target.value = ''; // Reset file input
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        setError(`Invalid file type. Allowed types: JPEG, PNG, GIF, WebP, SVG`);
+        e.target.value = '';
         return;
       }
       // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > MAX_IMAGE_SIZE) {
         setError('Image must be less than 5MB');
-        e.target.value = ''; // Reset file input
+        e.target.value = '';
         return;
       }
+      setError(''); // Clear any previous error
       setFormData(prev => ({
         ...prev,
         image_file: file
@@ -379,7 +383,7 @@ export default function CreateQuestion() {
           </label>
           <input
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
             onChange={handleImageChange}
             style={{
               width: '100%',
@@ -402,10 +406,30 @@ export default function CreateQuestion() {
                   borderRadius: '4px'
                 }} 
               />
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({ ...prev, image_file: null }));
+                  setImagePreview(null);
+                }}
+                style={{
+                  display: 'block',
+                  marginTop: '0.5rem',
+                  padding: '0.25rem 0.5rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem'
+                }}
+              >
+                Remove Image
+              </button>
             </div>
           )}
           <small style={{ color: '#666', fontSize: '0.875rem' }}>
-            Upload an image to display with the question (max 5MB)
+            Allowed: JPEG, PNG, GIF, WebP, SVG (max 5MB)
           </small>
         </div>
 

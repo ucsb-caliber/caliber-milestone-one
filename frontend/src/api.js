@@ -359,3 +359,26 @@ export async function updateUserPreferences(preferencesData) {
     throw error;
   }
 }
+
+/**
+ * Get a signed URL for a question's image (for private bucket)
+ */
+export async function getImageUrl(questionId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/image/${questionId}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return data.url;
+  } catch (error) {
+    console.error('Error fetching image URL:', error);
+    return null;
+  }
+}

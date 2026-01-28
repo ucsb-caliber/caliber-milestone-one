@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
+import { getQuestions, getAllQuestions, deleteQuestion, getImageUrl } from '../api';
 import { useAuth } from '../AuthContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,6 +13,48 @@ const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
 // Sort function for newest-first ordering
 const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+
+// Add a component for lazy-loading signed image URLs
+function QuestionImage({ questionId, imagePath }) {
+  const [imageUrl, setImageUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (imagePath) {
+      getImageUrl(questionId).then(url => {
+        setImageUrl(url);
+        setLoading(false);
+      });
+    } else {
+      setLoading(false);
+    }
+  }, [questionId, imagePath]);
+
+  if (!imagePath) return null;
+  if (loading) return <div style={{ padding: '1rem', color: '#666' }}>Loading image...</div>;
+  if (!imageUrl) return null;
+
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <img 
+        src={imageUrl} 
+        alt="Question illustration"
+        style={{ 
+          maxWidth: '100%', 
+          maxHeight: '300px',
+          height: 'auto', 
+          borderRadius: '4px',
+          border: '1px solid #ddd',
+          objectFit: 'contain'
+        }}
+        onError={(e) => {
+          console.error('Failed to load image');
+          e.target.style.display = 'none';
+        }}
+      />
+    </div>
+  );
+}
 
 export default function QuestionBank() {
   const { user } = useAuth();
@@ -196,24 +238,8 @@ export default function QuestionBank() {
           </div>
         </div>
 
-        {/* Image display if URL is provided */}
-        {question.image_url && (
-          <div style={{ marginBottom: '1rem' }}>
-            <img 
-              src={question.image_url} 
-              alt="Question illustration"
-              style={{ 
-                maxWidth: '100%', 
-                height: 'auto', 
-                borderRadius: '4px',
-                border: '1px solid #ddd'
-              }}
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          </div>
-        )}
+        {/* Image display - use the new component for private bucket */}
+        <QuestionImage questionId={question.id} imagePath={question.image_url} />
 
         {/* Answer choices */}
         {answerChoices.length > 0 && (

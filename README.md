@@ -296,3 +296,45 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 - Deploy to production with Cloudflare Zero Trust as additional security layer
 - Add unit and integration tests
 - Implement proper error handling and logging
+
+## Supabase Storage Setup
+
+To enable image uploads for questions, you need to set up a Supabase Storage bucket:
+
+1. Go to your Supabase project dashboard
+2. Navigate to **Storage** in the left sidebar
+3. Click **New bucket** and create a bucket named `question-images`
+4. **Keep the bucket Private** (this ensures only authenticated users can view images)
+5. Go to **Settings** > **API** and copy your **service_role** key (not the anon key)
+6. Add the service role key to your `backend/.env` file:
+   ```
+   SUPABASE_SERVICE_KEY=your-service-role-key-here
+   ```
+
+**Important**: The service role key has admin privileges. Never expose it in frontend code or commit it to version control.
+
+### How Private Storage Works
+
+- **Upload**: Images are uploaded to the private bucket via the backend using the service role key
+- **Storage**: Only the file path is stored in the database (not a public URL)
+- **Access**: When viewing a question, the frontend requests a signed URL from `/api/image/{question_id}`
+- **Signed URLs**: The backend generates temporary URLs that expire after 1 hour
+- **Security**: Only authenticated users can request signed URLs, ensuring images are protected
+
+### File Upload Restrictions
+
+The following restrictions are enforced on both frontend and backend:
+
+| Restriction | Value |
+|-------------|-------|
+| **Max file size** | 5 MB |
+| **Allowed types** | JPEG, PNG, GIF, WebP, SVG |
+| **MIME types** | `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/svg+xml` |
+
+### Storage Bucket Policies (Optional)
+
+Since the bucket is private and all access goes through the backend with the service role key, you don't need to configure bucket policies. However, if you want to add an extra layer of security, you can add these policies in the Supabase dashboard under Storage > Policies:
+
+- **INSERT (upload)**: Restrict to service role only (default for private buckets)
+- **SELECT (read)**: Restrict to service role only (default for private buckets)
+- **DELETE**: Restrict to service role only (default for private buckets)
