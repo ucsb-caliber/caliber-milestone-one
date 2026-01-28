@@ -119,16 +119,24 @@ def delete_question(session: Session, question_id: int, user_id: str) -> bool:
 
 # User CRUD operations
 
-def get_or_create_user(session: Session, user_id: str) -> User:
-    """Get a user by user_id or create if it doesn't exist."""
+def get_or_create_user(session: Session, user_id: str, email: Optional[str] = None) -> User:
+    """Get a user by user_id or create if it doesn't exist. Updates email if provided."""
     statement = select(User).where(User.user_id == user_id)
     user = session.exec(statement).first()
     
     if not user:
-        user = User(user_id=user_id, admin=False, teacher=False)
+        user = User(user_id=user_id, email=email, admin=False, teacher=False)
         session.add(user)
         session.commit()
         session.refresh(user)
+    else:
+        # Update email if provided and different
+        if email and user.email != email:
+            user.email = email
+            user.updated_at = datetime.utcnow()
+            session.add(user)
+            session.commit()
+            session.refresh(user)
     
     return user
 
@@ -150,6 +158,55 @@ def update_user_roles(session: Session, user_id: str, admin: Optional[bool] = No
         user.admin = admin
     if teacher is not None:
         user.teacher = teacher
+    
+    user.updated_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def update_user_profile(session: Session, user_id: str, first_name: Optional[str] = None,
+                       last_name: Optional[str] = None, teacher: Optional[bool] = None) -> Optional[User]:
+    """Update user profile information (first/last name and teacher status)."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        return None
+    
+    if first_name is not None:
+        # Strip whitespace and validate
+        first_name = first_name.strip()
+        if first_name:  # Only update if not empty after stripping
+            user.first_name = first_name
+    if last_name is not None:
+        # Strip whitespace and validate
+        last_name = last_name.strip()
+        if last_name:  # Only update if not empty after stripping
+            user.last_name = last_name
+    if teacher is not None:
+        user.teacher = teacher
+    
+    user.updated_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def update_user_preferences(session: Session, user_id: str, icon_shape: Optional[str] = None,
+                           icon_color: Optional[str] = None, initials: Optional[str] = None) -> Optional[User]:
+    """Update user profile preferences (icon shape, color, and initials)."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        return None
+    
+    if icon_shape is not None:
+        user.icon_shape = icon_shape
+    if icon_color is not None:
+        user.icon_color = icon_color
+    if initials is not None:
+        # Allow empty string to reset initials
+        user.initials = initials.strip() if initials else None
     
     user.updated_at = datetime.utcnow()
     session.add(user)

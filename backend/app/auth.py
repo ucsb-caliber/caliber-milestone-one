@@ -58,9 +58,9 @@ def get_jwks_client():
 security = HTTPBearer(auto_error=False)
 
 
-def verify_jwt_token(token: str) -> str:
+def verify_jwt_token(token: str) -> tuple[str, Optional[str]]:
     """
-    Verify a JWT token and return the user ID.
+    Verify a JWT token and return the user ID and email.
     
     Supports:
     - Test tokens for development (e.g., "test-token-1")
@@ -71,7 +71,7 @@ def verify_jwt_token(token: str) -> str:
         token: The JWT token string
         
     Returns:
-        str: The user ID from the validated token
+        tuple: (user_id, email) from the validated token
         
     Raises:
         HTTPException: If the token is invalid or expired
@@ -81,7 +81,7 @@ def verify_jwt_token(token: str) -> str:
     mock_user = get_mock_user_id(token)
     if mock_user:
         logging.info(f"Using mock authentication for test token")
-        return mock_user
+        return (mock_user, f"{mock_user}@example.com")
     
     try:
         # First, try to decode the token header to see what algorithm it uses
@@ -135,7 +135,10 @@ def verify_jwt_token(token: str) -> str:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        return user_id
+        # Extract email from the 'email' claim (Supabase includes this in JWT)
+        email = payload.get("email")
+        
+        return (user_id, email)
         
     except jwt.ExpiredSignatureError:
         logging.warning("Token expired")
@@ -206,11 +209,11 @@ async def get_current_user(
         )
     
     # Verify the token using the common verification function
-    user_id = verify_jwt_token(token)
+    user_id, email = verify_jwt_token(token)
     
-    # Ensure user record exists in database
+    # Ensure user record exists in database with email
     with Session(engine) as session:
-        get_or_create_user(session, user_id)
+        get_or_create_user(session, user_id, email)
     
     return user_id
 
@@ -239,6 +242,7 @@ async def get_optional_user(
         return None
     
     try:
-        return verify_jwt_token(token)
+        user_id, _ = verify_jwt_token(token)
+        return user_id
     except Exception:
         return None

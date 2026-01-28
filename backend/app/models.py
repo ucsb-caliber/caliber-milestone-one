@@ -9,8 +9,14 @@ class User(SQLModel, table=True):
     """User model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: str = Field(index=True, unique=True)  # Supabase user ID
+    email: Optional[str] = Field(default=None, index=True)  # User's email address
+    first_name: Optional[str] = Field(default=None)  # User's first name
+    last_name: Optional[str] = Field(default=None)  # User's last name
     admin: bool = Field(default=False)  # Whether user is an admin
     teacher: bool = Field(default=False)  # Whether user is a teacher/instructor
+    icon_shape: str = Field(default="circle")  # Profile icon shape: circle, square, or hex
+    icon_color: str = Field(default="#4f46e5")  # Profile icon color (hex code)
+    initials: Optional[str] = Field(default=None, max_length=2)  # User's custom initials (max 2 chars)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
