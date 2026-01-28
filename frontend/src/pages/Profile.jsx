@@ -62,15 +62,18 @@ export default function Profile() {
   // Fetch user info from backend
   React.useEffect(() => {
     async function fetchUserInfo() {
-      if (user) {
-        try {
-          const info = await getUserInfo();
-          setUserInfo(info);
-        } catch (error) {
-          console.error('Error fetching user info:', error);
-        } finally {
-          setLoadingUserInfo(false);
-        }
+      if (!user) {
+        setLoadingUserInfo(false);
+        return;
+      }
+      
+      try {
+        const info = await getUserInfo();
+        setUserInfo(info);
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+      } finally {
+        setLoadingUserInfo(false);
       }
     }
     
@@ -126,7 +129,7 @@ export default function Profile() {
                 Name
               </div>
               <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
-                {userInfo.first_name} {userInfo.last_name}
+                {[userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ')}
               </div>
               {userInfo.teacher && (
                 <div style={{ 

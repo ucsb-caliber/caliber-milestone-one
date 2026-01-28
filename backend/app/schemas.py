@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class UserResponse(BaseModel):
@@ -25,10 +25,16 @@ class UserUpdate(BaseModel):
 
 
 class UserProfileUpdate(BaseModel):
-    """Schema for updating user profile (first/last name and teacher status)."""
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    teacher: Optional[bool] = None
+    """Schema for updating user profile (first/last name only - used after onboarding)."""
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+
+
+class UserOnboardingUpdate(BaseModel):
+    """Schema for onboarding user profile (first/last name and teacher status)."""
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    teacher: bool = False
 
 
 class QuestionCreate(BaseModel):

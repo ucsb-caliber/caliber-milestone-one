@@ -166,9 +166,15 @@ def update_user_profile(session: Session, user_id: str, first_name: Optional[str
         return None
     
     if first_name is not None:
-        user.first_name = first_name
+        # Strip whitespace and validate
+        first_name = first_name.strip()
+        if first_name:  # Only update if not empty after stripping
+            user.first_name = first_name
     if last_name is not None:
-        user.last_name = last_name
+        # Strip whitespace and validate
+        last_name = last_name.strip()
+        if last_name:  # Only update if not empty after stripping
+            user.last_name = last_name
     if teacher is not None:
         user.teacher = teacher
     

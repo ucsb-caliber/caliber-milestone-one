@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
 from .models import Question, User
-from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate, UserProfileUpdate
+from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate
 from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, update_user_profile
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
@@ -272,8 +272,9 @@ def get_user_info(
     # User should exist since get_current_user creates it, but use get_or_create for safety
     user = get_or_create_user(session, user_id)
     
-    # Check if profile is complete (first_name and last_name are set)
-    profile_complete = bool(user.first_name and user.last_name)
+    # Check if profile is complete (first_name and last_name are set and not empty)
+    profile_complete = bool(user.first_name and user.first_name.strip() and 
+                           user.last_name and user.last_name.strip())
     
     return {
         "user_id": user_id,
@@ -292,13 +293,44 @@ def update_user_profile_endpoint(
     user_id: str = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    """Update the authenticated user's profile (first name, last name, and teacher status)."""
+    """Update the authenticated user's profile (first name and last name only - not teacher status)."""
     user = update_user_profile(
         session=session,
         user_id=user_id,
         first_name=profile_data.first_name,
         last_name=profile_data.last_name,
-        teacher=profile_data.teacher
+        teacher=None  # Don't allow changing teacher status after onboarding
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@app.post("/api/user/onboarding", response_model=UserResponse)
+def complete_user_onboarding(
+    onboarding_data: UserOnboardingUpdate,
+    user_id: str = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Complete user onboarding with first name, last name, and teacher status. Only works if profile is incomplete."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if profile is already complete
+    if user.first_name and user.first_name.strip() and user.last_name and user.last_name.strip():
+        raise HTTPException(
+            status_code=400, 
+            detail="Profile already completed. Use PUT /api/user/profile to update name."
+        )
+    
+    # Complete onboarding
+    user = update_user_profile(
+        session=session,
+        user_id=user_id,
+        first_name=onboarding_data.first_name,
+        last_name=onboarding_data.last_name,
+        teacher=onboarding_data.teacher
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -379,6 +411,7 @@ def root():
             "DELETE /api/questions/{question_id}",
             "/api/user",
             "PUT /api/user/profile",
+            "POST /api/user/onboarding",
             "GET /api/users/{user_id}",
             "PUT /api/users/{user_id}"
         ]

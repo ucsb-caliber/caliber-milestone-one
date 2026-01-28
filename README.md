@@ -252,22 +252,8 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 ├── .gitignore
 └── README.md
 ```
-│   │   ├── pages/
-│   │   │   ├── Home.jsx           # PDF upload page (protected)
-│   │   │   ├── QuestionBank.jsx   # Questions list page (protected)
-│   │   │   └── Auth.jsx           # Login/signup page
-│   │   ├── main.jsx         # App entry point with routing and auth
-│   │   ├── AuthContext.jsx  # Authentication state management
-│   │   ├── supabaseClient.js # Supabase client configuration
-│   │   └── api.js           # API helper functions with auth
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── package.json
-│   └── .env.example         # Frontend environment variables
-├── .gitignore
-└── README.md
-```
 
+## Testing
 ## Testing
 
 **Authentication and Upload Flow:**

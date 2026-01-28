@@ -270,7 +270,7 @@ export async function getUserInfo() {
 }
 
 /**
- * Update user profile (first name, last name, teacher status)
+ * Update user profile (first name, last name only - not teacher status)
  */
 export async function updateUserProfile(profileData) {
   try {
@@ -286,6 +286,34 @@ export async function updateUserProfile(profileData) {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to update profile');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Complete user onboarding (first name, last name, and teacher status)
+ */
+export async function completeOnboarding(onboardingData) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/user/onboarding`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(onboardingData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to complete onboarding');
     }
 
     return response.json();

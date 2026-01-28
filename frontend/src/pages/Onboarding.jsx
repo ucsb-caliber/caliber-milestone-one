@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { updateUserProfile } from '../api';
+import { completeOnboarding } from '../api';
 
 export default function Onboarding({ onComplete }) {
   const [firstName, setFirstName] = useState('');
@@ -21,8 +21,8 @@ export default function Onboarding({ onComplete }) {
     }
 
     try {
-      // Update user profile via API
-      await updateUserProfile({
+      // Complete onboarding via API
+      await completeOnboarding({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         teacher: isTeacher
@@ -33,8 +33,8 @@ export default function Onboarding({ onComplete }) {
         onComplete();
       }
     } catch (err) {
-      console.error('Error updating profile:', err);
-      setError(err.message || 'Failed to update profile. Please try again.');
+      console.error('Error completing onboarding:', err);
+      setError(err.message || 'Failed to complete onboarding. Please try again.');
     } finally {
       setLoading(false);
     }
