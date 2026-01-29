@@ -185,8 +185,9 @@ export default function QuestionBank() {
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           display: 'flex',
           flexDirection: 'column',
-          height: '100%',
-          position: 'relative'
+          position: 'relative',
+          breakInside: 'avoid',
+          marginBottom: '1.5rem'
         }}
       >
         {/* User Icon in top right corner */}
@@ -233,6 +234,8 @@ export default function QuestionBank() {
               </span>
             )}
           </div>
+
+          {/* Question title sits just above keywords */}
           
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
             {question.question_type && (
@@ -259,6 +262,21 @@ export default function QuestionBank() {
             )}
           </div>
           
+          {question.title && (
+            <div style={{ marginBottom: '0.9rem', marginTop: '0.35rem' }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '1.5rem',
+                fontWeight: 800,
+                color: '#222',
+                lineHeight: '1.35',
+                letterSpacing: '-0.01em'
+              }}>
+                {question.title}
+              </h3>
+            </div>
+          )}
+
           {keywords.length > 0 && (
             <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
               <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
@@ -303,23 +321,8 @@ export default function QuestionBank() {
           )}
         </div>
 
-        {/* Question title */}
-        {question.title && (
-          <div style={{ marginBottom: '0.75rem' }}>
-            <h3 style={{
-              margin: 0,
-              fontSize: '1.25rem',
-              fontWeight: 'bold',
-              color: '#333',
-              lineHeight: '1.4'
-            }}>
-              {question.title}
-            </h3>
-          </div>
-        )}
-
         {/* Question text with markdown rendering */}
-        <div style={{ marginBottom: '1rem', flex: 1 }}>
+        <div style={{ marginBottom: '1rem' }}>
           {(() => {
             try {
               return (
@@ -428,7 +431,7 @@ export default function QuestionBank() {
 
         {/* Delete button in bottom corner - only show if permitted */}
         {showDeleteButton && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
             <button
               onClick={() => setDeleteConfirm(question.id)}
               style={{
@@ -614,9 +617,8 @@ export default function QuestionBank() {
                 </div>
               ) : (
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '4rem 1.5rem'
+                  columnWidth: '360px',
+                  columnGap: '1.5rem'
                 }}>
                   {myQuestions.map(question => renderQuestionCard(question, true))}
                 </div>
@@ -662,9 +664,8 @@ export default function QuestionBank() {
                 </div>
               ) : (
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '4rem 1.5rem'
+                  columnWidth: '360px',
+                  columnGap: '1.5rem'
                 }}>
                   {allQuestions.map(question => {
                     // Only show delete button if this question belongs to the current user
