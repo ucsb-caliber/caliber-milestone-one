@@ -69,18 +69,23 @@ def on_startup():
     create_db_and_tables()
 
 
-def process_pdf_background(filename: str, file_content: bytes, user_id: str):
+def process_pdf_background(storage_path: str, file_content: bytes, user_id: str):
     """
     Background task to process PDF and create question records.
     
     This runs asynchronously after the upload endpoint returns.
+    
+    Args:
+        storage_path: The Supabase Storage path of the PDF (e.g., "user123/1234567890.pdf")
+        file_content: The PDF file content as bytes
+        user_id: The Supabase user ID
     """
     try:
         # Extract text from PDF
         text = extract_text_from_pdf(file_content)
         
         # Send to stubbed agent pipeline
-        question_dicts = send_to_agent_pipeline(text, filename)
+        question_dicts = send_to_agent_pipeline(text, storage_path)
         
         # Create a new session for the background task
         with Session(engine) as session:
@@ -91,43 +96,41 @@ def process_pdf_background(filename: str, file_content: bytes, user_id: str):
                     text=q_dict["text"],
                     tags=q_dict["tags"],
                     keywords=q_dict["keywords"],
-                    source_pdf=filename,
+                    source_pdf=storage_path,  # Store the Supabase Storage path
                     user_id=user_id,
                     is_verified=False  # applies pending status to new questions
                 )
         
-        print(f"Successfully processed {filename}: created {len(question_dicts)} questions for user {user_id}")
+        print(f"Successfully processed {storage_path}: created {len(question_dicts)} questions for user {user_id}")
     except Exception as e:
-        print(f"Error processing PDF {filename}: {e}")
+        print(f"Error processing PDF {storage_path}: {e}")
 
 
 @app.post("/api/upload-pdf", response_model=UploadResponse)
 async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    storage_path: str = Form(...),
     user_id: str = Depends(get_current_user)
 ):
     """
     Upload a PDF file for processing. Requires authentication.
     
-    The file is saved and a background task is queued to:
+    The PDF is already uploaded to Supabase Storage, and storage_path is provided.
+    A background task is queued to:
     1. Extract text from the PDF
     2. Send to agent pipeline (stubbed)
     3. Store questions in the database associated with the user
+       with the storage_path as source_pdf
     """
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
-    # Read file content
+    # Read file content for processing
     file_content = await file.read()
     
-    # Save file to uploads directory
-    file_path = Path(UPLOAD_DIR) / file.filename
-    with open(file_path, "wb") as f:
-        f.write(file_content)
-    
-    # Queue background processing with user_id
-    background_tasks.add_task(process_pdf_background, file.filename, file_content, user_id)
+    # Queue background processing with user_id and storage_path
+    background_tasks.add_task(process_pdf_background, storage_path, file_content, user_id)
     
     return UploadResponse(
         status="queued",

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { uploadPDF } from '../api';
+import { uploadPDF, uploadPDFToStorage } from '../api';
 
 export default function Home() {
   const [file, setFile] = useState(null);
@@ -30,7 +30,11 @@ export default function Home() {
     setError('');
 
     try {
-      const result = await uploadPDF(file);
+      // First upload PDF to Supabase Storage
+      const storagePath = await uploadPDFToStorage(file);
+      
+      // Then upload to backend for processing with the storage path
+      const result = await uploadPDF(file, storagePath);
       if (result.status === "queued") {
       // This changes the hash, which triggers your useEffect in main.jsx to change the 'page' state
         window.location.hash = `verify?file=${encodeURIComponent(result.filename)}`;

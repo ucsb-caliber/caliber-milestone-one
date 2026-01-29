@@ -29,11 +29,59 @@ async function getAuthHeaders() {
 }
 
 /**
- * Upload a PDF file to the backend
+ * Upload a PDF file to Supabase Storage
+ * @param {File} file - The PDF file to upload
+ * @returns {Promise<string>} - The storage path of the uploaded PDF
  */
-export async function uploadPDF(file) {
+export async function uploadPDFToStorage(file) {
+  try {
+    // Get the current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Create a unique filename with user ID and timestamp
+    const fileExt = file.name.split('.').pop();
+    
+    // Validate file extension exists and is safe
+    if (!fileExt || fileExt.length > 10) {
+      throw new Error('Invalid file extension');
+    }
+    
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('question-pdfs')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    // Return the storage path (not a URL)
+    return data.path;
+  } catch (error) {
+    console.error('PDF upload error:', error);
+    throw new Error(error.message || 'Failed to upload PDF');
+  }
+}
+
+/**
+ * Upload a PDF file to the backend for processing
+ * @param {File} file - The PDF file to upload and process
+ * @param {string} storagePath - The Supabase Storage path of the PDF
+ * @returns {Promise<Object>} - Upload response with status and message
+ */
+export async function uploadPDF(file, storagePath) {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('storage_path', storagePath);
   
   try {
     const headers = await getAuthHeaders();
@@ -120,6 +168,35 @@ export async function getImageSignedUrl(imagePath) {
     const { data, error } = await supabase.storage
       .from('question-images')
       .createSignedUrl(imagePath, 3600); // 1 hour in seconds
+
+    if (error) {
+      console.error('Error creating signed URL:', error);
+      return null;
+    }
+
+    return data.signedUrl;
+  } catch (error) {
+    console.error('Error getting signed URL:', error);
+    return null;
+  }
+}
+
+/**
+ * Get a signed URL for a PDF stored in Supabase Storage
+ * @param {string} pdfPath - The storage path of the PDF
+ * @returns {Promise<string>} - A signed URL valid for 1 hour
+ */
+export async function getPDFSignedUrl(pdfPath) {
+  try {
+    if (!pdfPath) {
+      return null;
+    }
+
+    // Generate a signed URL that expires in 1 hour
+    // This ensures only currently authenticated users can access PDFs
+    const { data, error } = await supabase.storage
+      .from('question-pdfs')
+      .createSignedUrl(pdfPath, 3600); // 1 hour in seconds
 
     if (error) {
       console.error('Error creating signed URL:', error);
