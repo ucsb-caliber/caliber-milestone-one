@@ -32,10 +32,18 @@ const UserIcon = ({ userInfo, size = 40 }) => {
   const shape = userInfo.icon_shape || 'circle';
   const color = userInfo.icon_color || '#4f46e5';
   
-  const shapeStyles = {
-    circle: { borderRadius: '50%' },
-    square: { borderRadius: '4px' },
-    hex: { borderRadius: '8px' }
+  const getShapeStyles = () => {
+    if (shape === 'circle') {
+      return { borderRadius: '50%' };
+    } else if (shape === 'square') {
+      return { borderRadius: '4px' };
+    } else if (shape === 'hex') {
+      // True hexagon using clip-path
+      return { 
+        clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
+      };
+    }
+    return { borderRadius: '50%' };
   };
   
   return (
@@ -50,7 +58,7 @@ const UserIcon = ({ userInfo, size = 40 }) => {
         justifyContent: 'center',
         fontSize: `${size / 2.5}px`,
         fontWeight: 'bold',
-        ...shapeStyles[shape],
+        ...getShapeStyles(),
         flexShrink: 0
       }}
       title={getName()}
