@@ -309,7 +309,11 @@ export async function createQuestion(questionData) {
     formData.append('text', questionData.text);
     formData.append('tags', questionData.tags || '');
     formData.append('keywords', questionData.keywords || '');
+    formData.append('school', questionData.school || '');
     formData.append('course', questionData.course || '');
+    formData.append('course_type', questionData.course_type || '');
+    formData.append('question_type', questionData.question_type || '');
+    formData.append('blooms_taxonomy', questionData.blooms_taxonomy || '');
     formData.append('answer_choices', questionData.answer_choices || '[]');
     formData.append('correct_answer', questionData.correct_answer || '');
     if (questionData.source_pdf) {
@@ -496,6 +500,31 @@ export async function updateUserPreferences(preferencesData) {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to update preferences');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get user by user ID
+ */
+export async function getUserById(userId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/users/${userId}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch user');
     }
 
     return response.json();

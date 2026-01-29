@@ -206,9 +206,14 @@ def create_new_question(
     text: str = Form(...),
     tags: str = Form(""),
     keywords: str = Form(""),
+    school: str = Form(""),
     course: str = Form(""),
+    course_type: str = Form(""),
+    question_type: str = Form(""),
+    blooms_taxonomy: str = Form(""),
     answer_choices: str = Form("[]"),
     correct_answer: str = Form(""),
+    pdf_url: Optional[str] = Form(None),
     source_pdf: Optional[str] = Form(None),
     image_url: Optional[str] = Form(None),
     session: Session = Depends(get_session),
@@ -220,9 +225,14 @@ def create_new_question(
         text=text,
         tags=tags,
         keywords=keywords,
+        school=school,
         course=course,
+        course_type=course_type,
+        question_type=question_type,
+        blooms_taxonomy=blooms_taxonomy,
         answer_choices=answer_choices,
         correct_answer=correct_answer,
+        pdf_url=pdf_url,
         source_pdf=source_pdf,
         image_url=image_url,
         user_id=user_id
@@ -245,9 +255,14 @@ def update_existing_question(
         text=question_data.text,
         tags=question_data.tags,
         keywords=question_data.keywords,
+        school=question_data.school,
         course=question_data.course,
+        course_type=question_data.course_type,
+        question_type=question_data.question_type,
+        blooms_taxonomy=question_data.blooms_taxonomy,
         answer_choices=question_data.answer_choices,
         correct_answer=question_data.correct_answer,
+        pdf_url=question_data.pdf_url,
         source_pdf=question_data.source_pdf,
         image_url=question_data.image_url,
         is_verified=question_data.is_verified
@@ -374,17 +389,8 @@ def get_user_by_id(
 ):
     """
     Get user information by user_id. Requires authentication.
-    Users can only view their own information unless they are an admin.
+    All authenticated users can view basic profile information (for displaying user icons).
     """
-    # Check if user is trying to view their own info or if they're an admin
-    if current_user_id != user_id:
-        current_user = get_user_by_user_id(session, current_user_id)
-        if not current_user or not current_user.admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to view other users' information"
-            )
-    
     user = get_user_by_user_id(session, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
