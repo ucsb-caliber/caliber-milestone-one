@@ -50,6 +50,7 @@ class UserOnboardingUpdate(BaseModel):
 
 class QuestionCreate(BaseModel):
     """Schema for creating a new question."""
+    title: str
     text: str
     tags: str = ""
     keywords: str = ""
@@ -67,6 +68,7 @@ class QuestionCreate(BaseModel):
 
 class QuestionUpdate(BaseModel):
     """Schema for updating a question."""
+    title: Optional[str] = None
     text: Optional[str] = None
     tags: Optional[str] = None
     keywords: Optional[str] = None
@@ -87,6 +89,7 @@ class QuestionUpdate(BaseModel):
 class QuestionResponse(BaseModel):
     """Schema for question response."""
     id: int
+    title: str
     text: str
     tags: str
     keywords: str

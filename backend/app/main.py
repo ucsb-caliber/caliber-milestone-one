@@ -203,6 +203,7 @@ def get_question_by_id(
 
 @app.post("/api/questions", response_model=QuestionResponse, status_code=201)
 def create_new_question(
+    title: str = Form(...),
     text: str = Form(...),
     tags: str = Form(""),
     keywords: str = Form(""),
@@ -222,6 +223,7 @@ def create_new_question(
     """Create a new question using form parameters. Requires authentication."""
     question = create_question(
         session=session,
+        title=title,
         text=text,
         tags=tags,
         keywords=keywords,
@@ -252,6 +254,7 @@ def update_existing_question(
         session=session,
         question_id=question_id,
         user_id=user_id,
+        title=question_data.title,
         text=question_data.text,
         tags=question_data.tags,
         keywords=question_data.keywords,

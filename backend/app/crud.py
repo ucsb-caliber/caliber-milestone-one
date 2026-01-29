@@ -5,13 +5,14 @@ from .models import Question, User
 
 
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
-                   school: str = "", course: str = "", course_type: str = "",
+                   title: str = "", school: str = "", course: str = "", course_type: str = "",
                    question_type: str = "", blooms_taxonomy: str = "",
                    answer_choices: str = "[]", correct_answer: str = "",
                    pdf_url: Optional[str] = None, source_pdf: Optional[str] = None,
                    image_url: Optional[str] = None, is_verified: bool = False) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     question = Question(
+        title=title,
         text=text,
         tags=tags,
         keywords=keywords,
@@ -82,8 +83,8 @@ def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List
     return list(session.exec(statement).all())
 
 
-def update_question(session: Session, question_id: int, user_id: str, text: Optional[str] = None, 
-                   tags: Optional[str] = None, keywords: Optional[str] = None, 
+def update_question(session: Session, question_id: int, user_id: str, title: Optional[str] = None,
+                   text: Optional[str] = None, tags: Optional[str] = None, keywords: Optional[str] = None, 
                    school: Optional[str] = None, course: Optional[str] = None,
                    course_type: Optional[str] = None, question_type: Optional[str] = None,
                    blooms_taxonomy: Optional[str] = None, answer_choices: Optional[str] = None, 
@@ -95,6 +96,8 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
     if not question or question.user_id != user_id:
         return None
     
+    if title is not None:
+        question.title = title
     if text is not None:
         question.text = text
     if tags is not None:

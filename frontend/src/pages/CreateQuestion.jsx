@@ -8,6 +8,7 @@ import { createQuestion, uploadImage } from '../api';
 
 export default function CreateQuestion() {
   const [formData, setFormData] = useState({
+    title: '',
     text: '',
     school: 'UCSB',
     course: '',
@@ -130,6 +131,12 @@ export default function CreateQuestion() {
     setSuccess(false);
 
     // Validation
+    if (!formData.title.trim()) {
+      setError('Question title is required');
+      setLoading(false);
+      return;
+    }
+
     if (!formData.text.trim()) {
       setError('Question text is required');
       setLoading(false);
@@ -170,6 +177,7 @@ export default function CreateQuestion() {
       }
       
       await createQuestion({
+        title: formData.title,
         text: formData.text,
         school: formData.school,
         course: formData.course,
@@ -186,6 +194,7 @@ export default function CreateQuestion() {
       setSuccess(true);
       // Reset form
       setFormData({
+        title: '',
         text: '',
         school: 'UCSB',
         course: '',
@@ -245,6 +254,27 @@ export default function CreateQuestion() {
       )}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+            Question Title *
+          </label>
+          <input
+            type="text"
+            name="title"
+            value={formData.title}
+            onChange={handleInputChange}
+            required
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '1rem'
+            }}
+            placeholder="e.g. Invert a Linked List, Analyze Time Complexity, Merge Sort Algorithm, etc."
+          />
+        </div>
+
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <label style={{ fontWeight: 'bold' }}>
