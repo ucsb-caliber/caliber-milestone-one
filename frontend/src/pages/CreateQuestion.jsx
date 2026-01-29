@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css'; // Import KaTeX CSS for LaTeX rendering
 import { createQuestion, uploadImage } from '../api';
 
 export default function CreateQuestion() {
   const [formData, setFormData] = useState({
     text: '',
-    class_tag: '',
+    school: 'UCSB',
     course: '',
     course_type: '',
     question_type: '',
@@ -12,10 +17,7 @@ export default function CreateQuestion() {
     keywords: '',
     tags: '',
     answer_choices: ['', '', '', ''],
-    correct_answer: '',
-    pdf_page: '',
-    pdf_start_page: '',
-    pdf_end_page: ''
+    correct_answer: ''
   });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -23,6 +25,7 @@ export default function CreateQuestion() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -133,35 +136,6 @@ export default function CreateQuestion() {
       return;
     }
 
-    // Validate PDF page fields
-    const pdfPage = formData.pdf_page ? parseInt(formData.pdf_page) : null;
-    const pdfStartPage = formData.pdf_start_page ? parseInt(formData.pdf_start_page) : null;
-    const pdfEndPage = formData.pdf_end_page ? parseInt(formData.pdf_end_page) : null;
-
-    if (pdfPage !== null && pdfPage < 1) {
-      setError('PDF page must be a positive number');
-      setLoading(false);
-      return;
-    }
-
-    if (pdfStartPage !== null && pdfStartPage < 1) {
-      setError('PDF start page must be a positive number');
-      setLoading(false);
-      return;
-    }
-
-    if (pdfEndPage !== null && pdfEndPage < 1) {
-      setError('PDF end page must be a positive number');
-      setLoading(false);
-      return;
-    }
-
-    if (pdfStartPage !== null && pdfEndPage !== null && pdfStartPage > pdfEndPage) {
-      setError('PDF start page must be less than or equal to end page');
-      setLoading(false);
-      return;
-    }
-
     try {
       let imageUrl = null;
       
@@ -178,7 +152,7 @@ export default function CreateQuestion() {
       
       await createQuestion({
         text: formData.text,
-        class_tag: formData.class_tag,
+        school: formData.school,
         course: formData.course,
         course_type: formData.course_type,
         question_type: formData.question_type,
@@ -187,9 +161,6 @@ export default function CreateQuestion() {
         tags: formData.tags,
         answer_choices: JSON.stringify(validAnswers),
         correct_answer: formData.correct_answer,
-        pdf_page: formData.pdf_page ? parseInt(formData.pdf_page) : null,
-        pdf_start_page: formData.pdf_start_page ? parseInt(formData.pdf_start_page) : null,
-        pdf_end_page: formData.pdf_end_page ? parseInt(formData.pdf_end_page) : null,
         image_url: imageUrl
       });
 
@@ -197,7 +168,7 @@ export default function CreateQuestion() {
       // Reset form
       setFormData({
         text: '',
-        class_tag: '',
+        school: 'UCSB',
         course: '',
         course_type: '',
         question_type: '',
@@ -205,10 +176,7 @@ export default function CreateQuestion() {
         keywords: '',
         tags: '',
         answer_choices: ['', '', '', ''],
-        correct_answer: '',
-        pdf_page: '',
-        pdf_start_page: '',
-        pdf_end_page: ''
+        correct_answer: ''
       });
       setImageFile(null);
       setImagePreview(null);
@@ -259,35 +227,96 @@ export default function CreateQuestion() {
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Question Text *
-          </label>
-          <textarea
-            name="text"
-            value={formData.text}
-            onChange={handleInputChange}
-            required
-            rows={4}
-            style={{
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <label style={{ fontWeight: 'bold' }}>
+              Question Text * <span style={{ fontSize: '0.875rem', fontWeight: 'normal', color: '#666' }}>(Supports Markdown, LaTeX, and code blocks)</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowPreview(!showPreview)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: showPreview ? '#6c757d' : '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem'
+              }}
+            >
+              {showPreview ? 'Edit' : 'Preview'}
+            </button>
+          </div>
+          {!showPreview ? (
+            <textarea
+              name="text"
+              value={formData.text}
+              onChange={handleInputChange}
+              required
+              rows={8}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem',
+                fontFamily: 'monospace'
+              }}
+              placeholder="Enter your question here... Use **bold**, *italic*, `code`, $$LaTeX$$, etc."
+            />
+          ) : (
+            <div style={{
               width: '100%',
+              minHeight: '200px',
               padding: '0.75rem',
               border: '1px solid #ddd',
               borderRadius: '4px',
               fontSize: '1rem',
-              fontFamily: 'inherit'
-            }}
-            placeholder="Enter your question here..."
-          />
+              background: '#f8f9fa'
+            }}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  code({node, inline, className, children, ...props}) {
+                    return inline ? (
+                      <code style={{
+                        background: '#e9ecef',
+                        padding: '0.2rem 0.4rem',
+                        borderRadius: '3px',
+                        fontSize: '0.9em'
+                      }} {...props}>
+                        {children}
+                      </code>
+                    ) : (
+                      <pre style={{
+                        background: '#2d2d2d',
+                        color: '#f8f8f2',
+                        padding: '1rem',
+                        borderRadius: '4px',
+                        overflow: 'auto'
+                      }}>
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      </pre>
+                    );
+                  }
+                }}
+              >
+                {formData.text || '*Preview will appear here...*'}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
 
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            UCSB Class Tag
+            School
           </label>
-          <input
-            type="text"
-            name="class_tag"
-            value={formData.class_tag}
+          <select
+            name="school"
+            value={formData.school}
             onChange={handleInputChange}
             style={{
               width: '100%',
@@ -296,8 +325,9 @@ export default function CreateQuestion() {
               borderRadius: '4px',
               fontSize: '1rem'
             }}
-            placeholder="e.g., CS16, CS24, MATH8"
-          />
+          >
+            <option value="UCSB">UCSB</option>
+          </select>
         </div>
 
         <div>
@@ -428,69 +458,6 @@ export default function CreateQuestion() {
             }}
             placeholder="e.g., midterm, important, chapter-3"
           />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              PDF Page
-            </label>
-            <input
-              type="number"
-              name="pdf_page"
-              value={formData.pdf_page}
-              onChange={handleInputChange}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '1rem'
-              }}
-              placeholder="e.g., 5"
-              min="1"
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              PDF Start Page
-            </label>
-            <input
-              type="number"
-              name="pdf_start_page"
-              value={formData.pdf_start_page}
-              onChange={handleInputChange}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '1rem'
-              }}
-              placeholder="e.g., 1"
-              min="1"
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              PDF End Page
-            </label>
-            <input
-              type="number"
-              name="pdf_end_page"
-              value={formData.pdf_end_page}
-              onChange={handleInputChange}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '1rem'
-              }}
-              placeholder="e.g., 10"
-              min="1"
-            />
-          </div>
         </div>
 
         <div>

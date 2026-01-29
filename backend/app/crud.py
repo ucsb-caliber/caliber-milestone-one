@@ -5,27 +5,24 @@ from .models import Question, User
 
 
 def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
-                   class_tag: str = "", course: str = "", course_type: str = "",
+                   school: str = "", course: str = "", course_type: str = "",
                    question_type: str = "", blooms_taxonomy: str = "",
                    answer_choices: str = "[]", correct_answer: str = "",
-                   pdf_page: Optional[int] = None, pdf_start_page: Optional[int] = None,
-                   pdf_end_page: Optional[int] = None, source_pdf: Optional[str] = None,
+                   pdf_url: Optional[str] = None, source_pdf: Optional[str] = None,
                    image_url: Optional[str] = None, is_verified: bool = False) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     question = Question(
         text=text,
         tags=tags,
         keywords=keywords,
-        class_tag=class_tag,
+        school=school,
         course=course,
         course_type=course_type,
         question_type=question_type,
         blooms_taxonomy=blooms_taxonomy,
         answer_choices=answer_choices,
         correct_answer=correct_answer,
-        pdf_page=pdf_page,
-        pdf_start_page=pdf_start_page,
-        pdf_end_page=pdf_end_page,
+        pdf_url=pdf_url,
         source_pdf=source_pdf,
         image_url=image_url,
         user_id=user_id,
@@ -87,11 +84,10 @@ def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List
 
 def update_question(session: Session, question_id: int, user_id: str, text: Optional[str] = None, 
                    tags: Optional[str] = None, keywords: Optional[str] = None, 
-                   class_tag: Optional[str] = None, course: Optional[str] = None,
+                   school: Optional[str] = None, course: Optional[str] = None,
                    course_type: Optional[str] = None, question_type: Optional[str] = None,
                    blooms_taxonomy: Optional[str] = None, answer_choices: Optional[str] = None, 
-                   correct_answer: Optional[str] = None, pdf_page: Optional[int] = None,
-                   pdf_start_page: Optional[int] = None, pdf_end_page: Optional[int] = None,
+                   correct_answer: Optional[str] = None, pdf_url: Optional[str] = None,
                    source_pdf: Optional[str] = None, image_url: Optional[str] = None,
                    is_verified: Optional[bool] = None) -> Optional[Question]:
     """Update an existing question in the database. Only the owner can update."""
@@ -105,8 +101,8 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
         question.tags = tags
     if keywords is not None:
         question.keywords = keywords
-    if class_tag is not None:
-        question.class_tag = class_tag
+    if school is not None:
+        question.school = school
     if course is not None:
         question.course = course
     if course_type is not None:
@@ -119,12 +115,8 @@ def update_question(session: Session, question_id: int, user_id: str, text: Opti
         question.answer_choices = answer_choices
     if correct_answer is not None:
         question.correct_answer = correct_answer
-    if pdf_page is not None:
-        question.pdf_page = pdf_page
-    if pdf_start_page is not None:
-        question.pdf_start_page = pdf_start_page
-    if pdf_end_page is not None:
-        question.pdf_end_page = pdf_end_page
+    if pdf_url is not None:
+        question.pdf_url = pdf_url
     if source_pdf is not None:
         question.source_pdf = source_pdf
     if image_url is not None:

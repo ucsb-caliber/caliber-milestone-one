@@ -206,47 +206,33 @@ def create_new_question(
     text: str = Form(...),
     tags: str = Form(""),
     keywords: str = Form(""),
-    class_tag: str = Form(""),
+    school: str = Form(""),
     course: str = Form(""),
     course_type: str = Form(""),
     question_type: str = Form(""),
     blooms_taxonomy: str = Form(""),
     answer_choices: str = Form("[]"),
     correct_answer: str = Form(""),
-    pdf_page: Optional[int] = Form(None),
-    pdf_start_page: Optional[int] = Form(None),
-    pdf_end_page: Optional[int] = Form(None),
+    pdf_url: Optional[str] = Form(None),
     source_pdf: Optional[str] = Form(None),
     image_url: Optional[str] = Form(None),
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
     """Create a new question using form parameters. Requires authentication."""
-    # Validate PDF page fields
-    if pdf_page is not None and pdf_page < 1:
-        raise HTTPException(status_code=400, detail="PDF page must be a positive integer")
-    if pdf_start_page is not None and pdf_start_page < 1:
-        raise HTTPException(status_code=400, detail="PDF start page must be a positive integer")
-    if pdf_end_page is not None and pdf_end_page < 1:
-        raise HTTPException(status_code=400, detail="PDF end page must be a positive integer")
-    if pdf_start_page is not None and pdf_end_page is not None and pdf_start_page > pdf_end_page:
-        raise HTTPException(status_code=400, detail="PDF start page must be less than or equal to end page")
-    
     question = create_question(
         session=session,
         text=text,
         tags=tags,
         keywords=keywords,
-        class_tag=class_tag,
+        school=school,
         course=course,
         course_type=course_type,
         question_type=question_type,
         blooms_taxonomy=blooms_taxonomy,
         answer_choices=answer_choices,
         correct_answer=correct_answer,
-        pdf_page=pdf_page,
-        pdf_start_page=pdf_start_page,
-        pdf_end_page=pdf_end_page,
+        pdf_url=pdf_url,
         source_pdf=source_pdf,
         image_url=image_url,
         user_id=user_id
@@ -269,16 +255,14 @@ def update_existing_question(
         text=question_data.text,
         tags=question_data.tags,
         keywords=question_data.keywords,
-        class_tag=question_data.class_tag,
+        school=question_data.school,
         course=question_data.course,
         course_type=question_data.course_type,
         question_type=question_data.question_type,
         blooms_taxonomy=question_data.blooms_taxonomy,
         answer_choices=question_data.answer_choices,
         correct_answer=question_data.correct_answer,
-        pdf_page=question_data.pdf_page,
-        pdf_start_page=question_data.pdf_start_page,
-        pdf_end_page=question_data.pdf_end_page,
+        pdf_url=question_data.pdf_url,
         source_pdf=question_data.source_pdf,
         image_url=question_data.image_url,
         is_verified=question_data.is_verified
