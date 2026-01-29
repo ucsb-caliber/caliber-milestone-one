@@ -22,13 +22,20 @@ const UserIcon = ({ userInfo, size = 40 }) => {
     return 'U';
   };
   
+  const getName = () => {
+    if (userInfo.first_name && userInfo.last_name) {
+      return `${userInfo.first_name} ${userInfo.last_name}`;
+    }
+    return userInfo.email || userInfo.user_id;
+  };
+  
   const shape = userInfo.icon_shape || 'circle';
   const color = userInfo.icon_color || '#4f46e5';
   
   const shapeStyles = {
     circle: { borderRadius: '50%' },
     square: { borderRadius: '4px' },
-    hex: { borderRadius: '8px', transform: 'rotate(0deg)' }
+    hex: { borderRadius: '8px' }
   };
   
   return (
@@ -46,7 +53,9 @@ const UserIcon = ({ userInfo, size = 40 }) => {
         ...shapeStyles[shape],
         flexShrink: 0
       }}
-      title={userInfo.email || userInfo.user_id}
+      title={getName()}
+      aria-label={`Question created by ${getName()}`}
+      role="img"
     >
       {getInitials()}
     </div>
@@ -104,7 +113,7 @@ export default function QuestionBank() {
       setImageUrls(urlMap);
       
       // Fetch user info for all questions
-      const uniqueUserIds = [...new Set([...allQuestionsList].map(q => q.user_id))];
+      const uniqueUserIds = [...new Set([...myQuestionsList, ...allQuestionsList].map(q => q.user_id))];
       const userPromises = uniqueUserIds.map(async (userId) => {
         try {
           const userInfo = await getUserById(userId);
@@ -288,43 +297,53 @@ export default function QuestionBank() {
 
         {/* Question text with markdown rendering */}
         <div style={{ marginBottom: '1rem', flex: 1 }}>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-            components={{
-              code({node, inline, className, children, ...props}) {
-                return inline ? (
-                  <code style={{
-                    background: '#e9ecef',
-                    padding: '0.2rem 0.4rem',
-                    borderRadius: '3px',
-                    fontSize: '0.9em',
-                    fontFamily: 'monospace'
-                  }} {...props}>
-                    {children}
-                  </code>
-                ) : (
-                  <pre style={{
-                    background: '#2d2d2d',
-                    color: '#f8f8f2',
-                    padding: '1rem',
-                    borderRadius: '4px',
-                    overflow: 'auto',
-                    fontSize: '0.875rem'
-                  }}>
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  </pre>
-                );
-              },
-              p({children}) {
-                return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
-              }
-            }}
-          >
-            {question.text}
-          </ReactMarkdown>
+          {(() => {
+            try {
+              return (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    code({node, inline, className, children, ...props}) {
+                      return inline ? (
+                        <code style={{
+                          background: '#e9ecef',
+                          padding: '0.2rem 0.4rem',
+                          borderRadius: '3px',
+                          fontSize: '0.9em',
+                          fontFamily: 'monospace'
+                        }} {...props}>
+                          {children}
+                        </code>
+                      ) : (
+                        <pre style={{
+                          background: '#2d2d2d',
+                          color: '#f8f8f2',
+                          padding: '1rem',
+                          borderRadius: '4px',
+                          overflow: 'auto',
+                          fontSize: '0.875rem',
+                          border: '1px solid #444'
+                        }}>
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        </pre>
+                      );
+                    },
+                    p({children}) {
+                      return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
+                    }
+                  }}
+                >
+                  {question.text}
+                </ReactMarkdown>
+              );
+            } catch (error) {
+              console.error('Error rendering markdown:', error);
+              return <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5' }}>{question.text}</p>;
+            }
+          })()}
         </div>
 
         {/* Image if present */}
