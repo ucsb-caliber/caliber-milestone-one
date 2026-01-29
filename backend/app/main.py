@@ -389,17 +389,8 @@ def get_user_by_id(
 ):
     """
     Get user information by user_id. Requires authentication.
-    Users can only view their own information unless they are an admin.
+    All authenticated users can view basic profile information (for displaying user icons).
     """
-    # Check if user is trying to view their own info or if they're an admin
-    if current_user_id != user_id:
-        current_user = get_user_by_user_id(session, current_user_id)
-        if not current_user or not current_user.admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to view other users' information"
-            )
-    
     user = get_user_by_user_id(session, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
