@@ -306,6 +306,7 @@ export async function createQuestion(questionData) {
     const headers = await getAuthHeaders();
     
     const formData = new FormData();
+    formData.append('title', questionData.title);
     formData.append('text', questionData.text);
     formData.append('tags', questionData.tags || '');
     formData.append('keywords', questionData.keywords || '');
