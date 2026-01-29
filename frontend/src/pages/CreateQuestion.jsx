@@ -234,6 +234,8 @@ export default function CreateQuestion() {
             <button
               type="button"
               onClick={() => setShowPreview(!showPreview)}
+              aria-pressed={showPreview}
+              aria-label={showPreview ? 'Switch to edit mode' : 'Switch to preview mode'}
               style={{
                 padding: '0.5rem 1rem',
                 background: showPreview ? '#6c757d' : '#007bff',
@@ -247,24 +249,24 @@ export default function CreateQuestion() {
               {showPreview ? 'Edit' : 'Preview'}
             </button>
           </div>
-          {!showPreview ? (
-            <textarea
-              name="text"
-              value={formData.text}
-              onChange={handleInputChange}
-              required
-              rows={8}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '1rem',
-                fontFamily: 'monospace'
-              }}
-              placeholder="Enter your question here... Use **bold**, *italic*, `code`, $$LaTeX$$, etc."
-            />
-          ) : (
+          <textarea
+            name="text"
+            value={formData.text}
+            onChange={handleInputChange}
+            required
+            rows={8}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '1rem',
+              fontFamily: 'monospace',
+              display: showPreview ? 'none' : 'block'
+            }}
+            placeholder="Enter your question here... Use **bold**, *italic*, `code`, $math$, etc."
+          />
+          {showPreview && (
             <div style={{
               width: '100%',
               minHeight: '200px',
