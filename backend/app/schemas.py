@@ -53,9 +53,16 @@ class QuestionCreate(BaseModel):
     text: str
     tags: str = ""
     keywords: str = ""
+    class_tag: str = ""
     course: str = ""
+    course_type: str = ""
+    question_type: str = ""
+    blooms_taxonomy: str = ""
     answer_choices: str = "[]"  # JSON string of answer choices
     correct_answer: str = ""
+    pdf_page: Optional[int] = None
+    pdf_start_page: Optional[int] = None
+    pdf_end_page: Optional[int] = None
     source_pdf: Optional[str] = None
     image_url: Optional[str] = None
 
@@ -65,9 +72,16 @@ class QuestionUpdate(BaseModel):
     text: Optional[str] = None
     tags: Optional[str] = None
     keywords: Optional[str] = None
+    class_tag: Optional[str] = None
     course: Optional[str] = None
+    course_type: Optional[str] = None
+    question_type: Optional[str] = None
+    blooms_taxonomy: Optional[str] = None
     answer_choices: Optional[str] = None
     correct_answer: Optional[str] = None
+    pdf_page: Optional[int] = None
+    pdf_start_page: Optional[int] = None
+    pdf_end_page: Optional[int] = None
     source_pdf: Optional[str] = None
     image_url: Optional[str] = None
     is_verified: Optional[bool] = None
@@ -80,9 +94,16 @@ class QuestionResponse(BaseModel):
     text: str
     tags: str
     keywords: str
+    class_tag: str
     course: str
+    course_type: str
+    question_type: str
+    blooms_taxonomy: str
     answer_choices: str
     correct_answer: str
+    pdf_page: Optional[int]
+    pdf_start_page: Optional[int]
+    pdf_end_page: Optional[int]
     source_pdf: Optional[str]
     image_url: Optional[str]
     user_id: str
