@@ -4,8 +4,8 @@ from datetime import datetime
 from .models import Question, User
 
 
-def create_question(session: Session, text: str, tags: str, keywords: str, user_id: str, 
-                   title: str = "", school: str = "", course: str = "", course_type: str = "",
+def create_question(session: Session, text: str, title: str, tags: str, keywords: str, user_id: str, 
+                   school: str = "", course: str = "", course_type: str = "",
                    question_type: str = "", blooms_taxonomy: str = "",
                    answer_choices: str = "[]", correct_answer: str = "",
                    pdf_url: Optional[str] = None, source_pdf: Optional[str] = None,

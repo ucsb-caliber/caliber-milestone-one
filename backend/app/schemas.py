@@ -50,7 +50,7 @@ class UserOnboardingUpdate(BaseModel):
 
 class QuestionCreate(BaseModel):
     """Schema for creating a new question."""
-    title: str
+    title: str = Field(..., min_length=1)
     text: str
     tags: str = ""
     keywords: str = ""

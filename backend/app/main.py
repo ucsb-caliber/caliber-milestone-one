@@ -94,6 +94,7 @@ def process_pdf_background(storage_path: str, file_content: bytes, user_id: str)
                 create_question(
                     session=session,
                     text=q_dict["text"],
+                    title=q_dict.get("title", "Untitled Question"),  # Use provided title or default
                     tags=q_dict["tags"],
                     keywords=q_dict["keywords"],
                     source_pdf=storage_path,  # Store the Supabase Storage path
