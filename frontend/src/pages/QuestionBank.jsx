@@ -303,6 +303,21 @@ export default function QuestionBank() {
           )}
         </div>
 
+        {/* Question title */}
+        {question.title && (
+          <div style={{ marginBottom: '0.75rem' }}>
+            <h3 style={{
+              margin: 0,
+              fontSize: '1.25rem',
+              fontWeight: 'bold',
+              color: '#333',
+              lineHeight: '1.4'
+            }}>
+              {question.title}
+            </h3>
+          </div>
+        )}
+
         {/* Question text with markdown rendering */}
         <div style={{ marginBottom: '1rem', flex: 1 }}>
           {(() => {
