@@ -13,7 +13,7 @@ This prototype demonstrates:
 ## Architecture
 
 ### Backend (FastAPI)
-- **POST /api/upload-pdf**: Accepts multipart PDF uploads, saves file to UPLOAD_DIR, and schedules a background task to process the PDF and create Question records
+- **POST /api/upload-pdf**: Accepts multipart PDF uploads, uploads to Supabase Storage bucket, and schedules a background task to process the PDF and create Question records
 - **GET /api/questions**: List all questions (supports optional `skip` and `limit` query parameters)
 - **GET /api/questions/{id}**: Get a specific question by ID
 - **POST /api/questions**: Create a new question using individual form fields (`text` required, `tags`, `keywords`, and `source_pdf` optional)
@@ -22,6 +22,8 @@ This prototype demonstrates:
 - Uses SQLModel with SQLite (default) for easy local development
 - Can be switched to PostgreSQL via DATABASE_URL in .env
 - Uses PyPDF2 to extract text from PDFs
+- **PDF Storage**: PDFs are stored in Supabase Storage bucket `question-pdfs` with private access
+- **Image Storage**: Question images are stored in Supabase Storage bucket `question-images` with private access
 - Implements `send_to_agent_pipeline` as a stub that splits text into chunks and returns question dictionaries
 - Background processing uses FastAPI BackgroundTasks
 - CORS enabled for http://localhost:5173
@@ -277,10 +279,11 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 
 - **Authentication**: All endpoints (except root) require valid JWT tokens from Supabase
 - **User Data Isolation**: Questions are automatically filtered by user_id
+- **PDF Storage**: PDFs are stored in Supabase Storage bucket `question-pdfs` (see PDF_STORAGE_SETUP.md)
+- **Image Storage**: Question images are stored in Supabase Storage bucket `question-images` (see SUPABASE_STORAGE_SETUP.md)
 - Background processing may take a few seconds depending on PDF size
 - The stubbed agent pipeline is intentionally simple - replace it with your AI pipeline
 - CORS is configured for localhost:5173 - update for production domains
-- All uploaded PDFs are stored in `backend/uploads/` (gitignored)
 - User sessions are stored in browser local storage
 - The Supabase client automatically handles token refresh
 
