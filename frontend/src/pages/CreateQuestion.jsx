@@ -133,6 +133,35 @@ export default function CreateQuestion() {
       return;
     }
 
+    // Validate PDF page fields
+    const pdfPage = formData.pdf_page ? parseInt(formData.pdf_page) : null;
+    const pdfStartPage = formData.pdf_start_page ? parseInt(formData.pdf_start_page) : null;
+    const pdfEndPage = formData.pdf_end_page ? parseInt(formData.pdf_end_page) : null;
+
+    if (pdfPage !== null && pdfPage < 1) {
+      setError('PDF page must be a positive number');
+      setLoading(false);
+      return;
+    }
+
+    if (pdfStartPage !== null && pdfStartPage < 1) {
+      setError('PDF start page must be a positive number');
+      setLoading(false);
+      return;
+    }
+
+    if (pdfEndPage !== null && pdfEndPage < 1) {
+      setError('PDF end page must be a positive number');
+      setLoading(false);
+      return;
+    }
+
+    if (pdfStartPage !== null && pdfEndPage !== null && pdfStartPage > pdfEndPage) {
+      setError('PDF start page must be less than or equal to end page');
+      setLoading(false);
+      return;
+    }
+
     try {
       let imageUrl = null;
       

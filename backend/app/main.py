@@ -222,6 +222,16 @@ def create_new_question(
     user_id: str = Depends(get_current_user)
 ):
     """Create a new question using form parameters. Requires authentication."""
+    # Validate PDF page fields
+    if pdf_page is not None and pdf_page < 1:
+        raise HTTPException(status_code=400, detail="PDF page must be a positive integer")
+    if pdf_start_page is not None and pdf_start_page < 1:
+        raise HTTPException(status_code=400, detail="PDF start page must be a positive integer")
+    if pdf_end_page is not None and pdf_end_page < 1:
+        raise HTTPException(status_code=400, detail="PDF end page must be a positive integer")
+    if pdf_start_page is not None and pdf_end_page is not None and pdf_start_page > pdf_end_page:
+        raise HTTPException(status_code=400, detail="PDF start page must be less than or equal to end page")
+    
     question = create_question(
         session=session,
         text=text,

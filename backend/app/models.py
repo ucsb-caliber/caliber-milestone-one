@@ -34,9 +34,10 @@ class Question(SQLModel, table=True):
     blooms_taxonomy: str = Field(default="")  # Bloom's taxonomy level (e.g., Remembering, Understanding)
     answer_choices: str = Field(sa_column=Column(TEXT), default="[]")  # JSON array of answer choices
     correct_answer: str = Field(default="")  # The correct answer text
-    pdf_page: Optional[int] = Field(default=None)  # PDF page number
-    pdf_start_page: Optional[int] = Field(default=None)  # Starting PDF page
-    pdf_end_page: Optional[int] = Field(default=None)  # Ending PDF page
+    # PDF page fields: pdf_page is for single-page questions, start/end are for multi-page questions
+    pdf_page: Optional[int] = Field(default=None)  # PDF page number (for single-page questions)
+    pdf_start_page: Optional[int] = Field(default=None)  # Starting PDF page (for multi-page questions)
+    pdf_end_page: Optional[int] = Field(default=None)  # Ending PDF page (for multi-page questions)
     source_pdf: Optional[str] = Field(default=None)  # Original PDF filename
     image_url: Optional[str] = Field(default=None)  # URL to image stored in Supabase bucket
     user_id: str = Field(index=True)  # Supabase user ID
