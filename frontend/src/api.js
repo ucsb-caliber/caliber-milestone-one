@@ -309,7 +309,11 @@ export async function createQuestion(questionData) {
     formData.append('text', questionData.text);
     formData.append('tags', questionData.tags || '');
     formData.append('keywords', questionData.keywords || '');
+    formData.append('school', questionData.school || '');
     formData.append('course', questionData.course || '');
+    formData.append('course_type', questionData.course_type || '');
+    formData.append('question_type', questionData.question_type || '');
+    formData.append('blooms_taxonomy', questionData.blooms_taxonomy || '');
     formData.append('answer_choices', questionData.answer_choices || '[]');
     formData.append('correct_answer', questionData.correct_answer || '');
     if (questionData.source_pdf) {
