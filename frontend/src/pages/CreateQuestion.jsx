@@ -35,6 +35,25 @@ export default function CreateQuestion() {
     }));
   };
 
+  const handleTextareaKeyDown = (e) => {
+    // Enable Tab key for indentation in markdown editor
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const { selectionStart, selectionEnd, value } = e.target;
+      const newValue = value.substring(0, selectionStart) + '  ' + value.substring(selectionEnd);
+      
+      setFormData(prev => ({
+        ...prev,
+        text: newValue
+      }));
+      
+      // Set cursor position after the inserted spaces
+      setTimeout(() => {
+        e.target.selectionStart = e.target.selectionEnd = selectionStart + 2;
+      }, 0);
+    }
+  };
+
   const handleAnswerChange = (index, value) => {
     const newAnswers = [...formData.answer_choices];
     newAnswers[index] = value;
@@ -253,6 +272,7 @@ export default function CreateQuestion() {
             name="text"
             value={formData.text}
             onChange={handleInputChange}
+            onKeyDown={handleTextareaKeyDown}
             required
             rows={8}
             style={{
