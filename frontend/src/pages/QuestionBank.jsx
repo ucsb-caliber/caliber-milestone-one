@@ -18,6 +18,10 @@ export default function QuestionBank() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
+  const [myQuestionsPage, setMyQuestionsPage] = useState(1);
+  const [allQuestionsPage, setAllQuestionsPage] = useState(1);
+
+  const itemsPerPage = 3; // we can decide on this number later
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -208,6 +212,10 @@ export default function QuestionBank() {
     );
   };
 
+  // Paginated data
+  const paginatedMyQuestions = allQuestions.slice((myQuestionsPage - 1) * itemsPerPage, myQuestionsPage * itemsPerPage);
+  const paginatedAllQuestions = allQuestions.slice((allQuestionsPage - 1) * itemsPerPage, allQuestionsPage * itemsPerPage);
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '1.5rem' }}>
       {/* Header with Create button */}
@@ -371,17 +379,31 @@ export default function QuestionBank() {
                   </button>
                 </div>
               ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '4rem 1.5rem'
-                }}>
-                  {myQuestions.map(question => renderQuestionCard(question, true))}
+                <div>
+                  <button
+                    style={{
+                      marginTop: '1rem',
+                      padding: '0.5rem 1rem',
+                      background: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Page #
+                  </button>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '4rem 1.5rem'
+                  }}>
+                    {paginatedMyQuestions.map(question => renderQuestionCard(question, true))}
+                  </div>
                 </div>
               )
             )}
           </div>
-
           {/* All Questions Section */}
           <div>
             <h3 
@@ -419,16 +441,55 @@ export default function QuestionBank() {
                   <p>No questions found in the system.</p>
                 </div>
               ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '4rem 1.5rem'
-                }}>
-                  {allQuestions.map(question => {
-                    // Only show delete button if this question belongs to the current user
-                    const canDelete = user && question.user_id === user.id;
-                    return renderQuestionCard(question, canDelete);
-                  })}
+                <div>
+                  {/** Pagination */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => setAllQuestionsPage(prev => Math.max(prev - 1, 1))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: allQuestionsPage === 1 ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={allQuestionsPage === 1}
+                    >
+                      ←
+                    </button>
+                    <span>
+                      Page {allQuestionsPage} of {Math.ceil(allQuestions.length / itemsPerPage)}
+                    </span>
+                    <button
+                      onClick={() => setAllQuestionsPage(prev => Math.min(prev + 1, Math.ceil(allQuestions.length / itemsPerPage)))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage)}
+                    >
+                      →
+                    </button>
+                  </div>
+                  {/** Question Boxes */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '4rem 1.5rem'
+                  }}>
+                    {paginatedAllQuestions.map(question => {
+                      // Only show delete button if this question belongs to the current user
+                      const canDelete = user && question.user_id === user.id;
+                      return renderQuestionCard(question, canDelete);
+                    })}
+                  </div>
                 </div>
               )
             )}
