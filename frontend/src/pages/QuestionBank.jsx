@@ -1,6 +1,74 @@
 import React, { useState, useEffect } from 'react';
-import { getQuestions, getAllQuestions, deleteQuestion } from '../api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl, getUserById } from '../api';
 import { useAuth } from '../AuthContext';
+
+// User Icon Component
+const UserIcon = ({ userInfo, size = 40 }) => {
+  if (!userInfo) return null;
+  
+  const getInitials = () => {
+    if (userInfo.initials) return userInfo.initials;
+    if (userInfo.first_name && userInfo.last_name) {
+      return `${userInfo.first_name[0]}${userInfo.last_name[0]}`.toUpperCase();
+    }
+    if (userInfo.email) {
+      return userInfo.email.substring(0, 2).toUpperCase();
+    }
+    return 'U';
+  };
+  
+  const getName = () => {
+    if (userInfo.first_name && userInfo.last_name) {
+      return `${userInfo.first_name} ${userInfo.last_name}`;
+    }
+    return userInfo.email || userInfo.user_id;
+  };
+  
+  const shape = userInfo.icon_shape || 'circle';
+  const color = userInfo.icon_color || '#4f46e5';
+  
+  const getShapeStyles = () => {
+    if (shape === 'circle') {
+      return { borderRadius: '50%' };
+    } else if (shape === 'square') {
+      return { borderRadius: '4px' };
+    } else if (shape === 'hex') {
+      // True hexagon using clip-path
+      return { 
+        clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
+      };
+    }
+    return { borderRadius: '50%' };
+  };
+  
+  return (
+    <div
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        background: color,
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: `${size / 2.5}px`,
+        fontWeight: 'bold',
+        ...getShapeStyles(),
+        flexShrink: 0
+      }}
+      title={getName()}
+      aria-label={`Question created by ${getName()}`}
+      role="img"
+    >
+      {getInitials()}
+    </div>
+  );
+};
 
 // Color palettes for keyword and tag bubbles
 const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
@@ -18,6 +86,23 @@ export default function QuestionBank() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
+  const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
+  const [userInfoCache, setUserInfoCache] = useState({}); // Cache for user info
+
+  // Pagination stuff
+  const [myQuestionsPage, setMyQuestionsPage] = useState(1);
+  const [allQuestionsPage, setAllQuestionsPage] = useState(1);
+  const [pageInput, setPageInput] = useState(allQuestionsPage);
+  const [myPageInput, setMyPageInput] = useState(myQuestionsPage);
+  const itemsPerPage = 6;
+
+  useEffect(() => {
+    setPageInput(allQuestionsPage);
+  }, [allQuestionsPage]);
+
+  useEffect(() => {
+    setMyPageInput(myQuestionsPage);
+  }, [myQuestionsPage]);
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -37,9 +122,48 @@ export default function QuestionBank() {
       .sort(sortByNewest);
 
       // Sort questions by created_at descending (newest first)
-      setMyQuestions(verifiedMyQuestions);
-      setAllQuestions(verifiedAllQuestions);
-
+      const myQuestionsList = (myData.questions || []).sort(sortByNewest);
+      const allQuestionsList = (allData.questions || []).sort(sortByNewest);
+      
+      setMyQuestions(myQuestionsList);
+      setAllQuestions(allQuestionsList);
+      
+      // Generate signed URLs for all questions with images
+      const allQuestionsWithImages = [...myQuestionsList, ...allQuestionsList].filter(q => q.image_url);
+      const urlPromises = allQuestionsWithImages.map(async (q) => {
+        const signedUrl = await getImageSignedUrl(q.image_url);
+        return { id: q.id, url: signedUrl };
+      });
+      
+      const urls = await Promise.all(urlPromises);
+      const urlMap = {};
+      urls.forEach(({ id, url }) => {
+        if (url) {
+          urlMap[id] = url;
+        }
+      });
+      setImageUrls(urlMap);
+      
+      // Fetch user info for all questions
+      const uniqueUserIds = [...new Set([...myQuestionsList, ...allQuestionsList].map(q => q.user_id))];
+      const userPromises = uniqueUserIds.map(async (userId) => {
+        try {
+          const userInfo = await getUserById(userId);
+          return { userId, userInfo };
+        } catch (error) {
+          console.error(`Failed to fetch user ${userId}:`, error);
+          return { userId, userInfo: null };
+        }
+      });
+      
+      const users = await Promise.all(userPromises);
+      const userMap = {};
+      users.forEach(({ userId, userInfo }) => {
+        if (userInfo) {
+          userMap[userId] = userInfo;
+        }
+      });
+      setUserInfoCache(userMap);
     } catch (err) {
       setError(err.message || 'Failed to load questions');
     } finally {
@@ -69,9 +193,9 @@ export default function QuestionBank() {
       answerChoices = [];
     }
 
-    // Split keywords and tags into arrays
     const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
     const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+    const userInfo = userInfoCache[question.user_id];
 
     return (
       <div
@@ -84,14 +208,32 @@ export default function QuestionBank() {
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           display: 'flex',
           flexDirection: 'column',
-          height: '100%',
-          position: 'relative'
+          position: 'relative',
+          breakInside: 'avoid',
+          marginBottom: '1.5rem'
         }}
       >
-        {/* Header with course, keywords, tags */}
-        <div style={{ marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #eee' }}>
-          {question.course && (
-            <div style={{ marginBottom: '0.5rem' }}>
+        {/* User Icon in top right corner */}
+        <div style={{ position: 'absolute', top: '1rem', right: '1rem' }}>
+          <UserIcon userInfo={userInfo} size={40} />
+        </div>
+
+        {/* Header with school, course, and metadata */}
+        <div style={{ marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #eee', paddingRight: '50px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            {question.school && (
+              <span style={{
+                background: '#6f42c1',
+                color: 'white',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '4px',
+                fontSize: '0.875rem',
+                fontWeight: 'bold'
+              }}>
+                {question.school}
+              </span>
+            )}
+            {question.course && (
               <span style={{
                 background: '#007bff',
                 color: 'white',
@@ -102,8 +244,62 @@ export default function QuestionBank() {
               }}>
                 {question.course}
               </span>
+            )}
+            {question.course_type && (
+              <span style={{
+                background: '#17a2b8',
+                color: 'white',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '4px',
+                fontSize: '0.875rem'
+              }}>
+                {question.course_type}
+              </span>
+            )}
+          </div>
+
+          {/* Question title sits just above keywords */}
+          
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            {question.question_type && (
+              <span style={{
+                background: '#fd7e14',
+                color: 'white',
+                padding: '0.2rem 0.6rem',
+                borderRadius: '4px',
+                fontSize: '0.75rem'
+              }}>
+                {question.question_type.toUpperCase()}
+              </span>
+            )}
+            {question.blooms_taxonomy && (
+              <span style={{
+                background: '#20c997',
+                color: 'white',
+                padding: '0.2rem 0.6rem',
+                borderRadius: '4px',
+                fontSize: '0.75rem'
+              }}>
+                Bloom's: {question.blooms_taxonomy}
+              </span>
+            )}
+          </div>
+          
+          {question.title && (
+            <div style={{ marginBottom: '0.9rem', marginTop: '0.35rem' }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '1.5rem',
+                fontWeight: 800,
+                color: '#222',
+                lineHeight: '1.35',
+                letterSpacing: '-0.01em'
+              }}>
+                {question.title}
+              </h3>
             </div>
           )}
+
           {keywords.length > 0 && (
             <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
               <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
@@ -148,12 +344,74 @@ export default function QuestionBank() {
           )}
         </div>
 
-        {/* Question text */}
-        <div style={{ marginBottom: '1rem', flex: 1 }}>
-          <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5', fontWeight: '500' }}>
-            {question.text}
-          </p>
+        {/* Question text with markdown rendering */}
+        <div style={{ marginBottom: '1rem' }}>
+          {(() => {
+            try {
+              return (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    code({node, inline, className, children, ...props}) {
+                      return inline ? (
+                        <code style={{
+                          background: '#e9ecef',
+                          padding: '0.2rem 0.4rem',
+                          borderRadius: '3px',
+                          fontSize: '0.9em',
+                          fontFamily: 'monospace'
+                        }} {...props}>
+                          {children}
+                        </code>
+                      ) : (
+                        <pre style={{
+                          background: '#2d2d2d',
+                          color: '#f8f8f2',
+                          padding: '1rem',
+                          borderRadius: '4px',
+                          overflow: 'auto',
+                          fontSize: '0.875rem',
+                          border: '1px solid #444'
+                        }}>
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        </pre>
+                      );
+                    },
+                    p({children}) {
+                      return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
+                    }
+                  }}
+                >
+                  {question.text}
+                </ReactMarkdown>
+              );
+            } catch (error) {
+              console.error('Error rendering markdown:', error);
+              return <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5' }}>{question.text}</p>;
+            }
+          })()}
         </div>
+
+        {/* Image if present */}
+        {question.image_url && imageUrls[question.id] && (
+          <div style={{ marginBottom: '1rem' }}>
+            <img 
+              src={imageUrls[question.id]} 
+              alt="Question illustration" 
+              style={{ 
+                maxWidth: '100%', 
+                height: 'auto',
+                maxHeight: '300px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                objectFit: 'contain'
+              }} 
+            />
+          </div>
+        )}
 
         {/* Answer choices */}
         {answerChoices.length > 0 && (
@@ -194,9 +452,8 @@ export default function QuestionBank() {
           </div>
         )}
 
-        {/* Delete button in bottom corner - only show if permitted */}
         {showDeleteButton && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
             <button
               onClick={() => setDeleteConfirm(question.id)}
               style={{
@@ -218,9 +475,18 @@ export default function QuestionBank() {
     );
   };
 
+  // Fix paginated slices
+  const paginatedMyQuestions = myQuestions.slice(
+    (myQuestionsPage - 1) * itemsPerPage,
+    myQuestionsPage * itemsPerPage
+  );
+  const paginatedAllQuestions = allQuestions.slice(
+    (allQuestionsPage - 1) * itemsPerPage,
+    allQuestionsPage * itemsPerPage
+  );
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '1.5rem' }}>
-      {/* Header with Create button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2 style={{ margin: 0 }}>Question Bank</h2>
         <div style={{ display: 'flex', gap: '1rem' }}>
@@ -272,7 +538,6 @@ export default function QuestionBank() {
         </div>
       )}
 
-      {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div style={{
           position: 'fixed',
@@ -381,18 +646,82 @@ export default function QuestionBank() {
                   </button>
                 </div>
               ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '4rem 1.5rem'
-                }}>
-                  {myQuestions.map(question => renderQuestionCard(question, true))}
+                <div>
+                  {/* My Questions Pagination */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '15px' }}>
+                    <button
+                      onClick={() => setMyQuestionsPage(prev => Math.max(prev - 1, 1))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: myQuestionsPage === 1 ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={myQuestionsPage === 1}
+                    >
+                      ←
+                    </button>
+                    <span>
+                      Page
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={myPageInput}
+                        onChange={(e) => {
+                          const onlyDigits = e.target.value.replace(/\D/g, "");
+                          setMyPageInput(onlyDigits);
+                        }}
+                        onBlur={() => {
+                          const maxPage = Math.ceil(myQuestions.length / itemsPerPage);
+                          const num = Number(myPageInput);
+                          if (num >= 1 && num <= maxPage) setMyQuestionsPage(num);
+                          else setMyPageInput(myQuestionsPage);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const maxPage = Math.ceil(myQuestions.length / itemsPerPage);
+                            const num = Number(myPageInput);
+                            if (num >= 1 && num <= maxPage) setMyQuestionsPage(num);
+                            else setMyPageInput(myQuestionsPage);
+                          }
+                        }}
+                        style={{ width: "30px", margin: "0 6px", textAlign: "center" }}
+                      />
+                      of {Math.ceil(myQuestions.length / itemsPerPage)}
+                    </span>
+                    <button
+                      onClick={() => setMyQuestionsPage(prev => Math.min(prev + 1, Math.ceil(myQuestions.length / itemsPerPage)))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: myQuestionsPage === Math.ceil(myQuestions.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={myQuestionsPage === Math.ceil(myQuestions.length / itemsPerPage)}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '4rem 1.5rem'
+                  }}>
+                    {paginatedMyQuestions.map(question => renderQuestionCard(question, true))}
+                  </div>
                 </div>
               )
             )}
           </div>
 
-          {/* All Questions Section */}
+          {/* All Questions Section - unchanged */}
           <div>
             <h3 
               onClick={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
@@ -429,16 +758,78 @@ export default function QuestionBank() {
                   <p>No questions found in the system.</p>
                 </div>
               ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '4rem 1.5rem'
-                }}>
-                  {allQuestions.map(question => {
-                    // Only show delete button if this question belongs to the current user
-                    const canDelete = user && question.user_id === user.id;
-                    return renderQuestionCard(question, canDelete);
-                  })}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '15px' }}>
+                    <button
+                      onClick={() => setAllQuestionsPage(prev => Math.max(prev - 1, 1))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: allQuestionsPage === 1 ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={allQuestionsPage === 1}
+                    >
+                      ←
+                    </button>
+                    <span>
+                      Page
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={pageInput}
+                        onChange={(e) => {
+                          const onlyDigits = e.target.value.replace(/\D/g, "");
+                          setPageInput(onlyDigits);
+                        }}
+                        onBlur={() => {
+                          const maxPage = Math.ceil(allQuestions.length / itemsPerPage);
+                          const num = Number(pageInput);
+                          if (num >= 1 && num <= maxPage) setAllQuestionsPage(num);
+                          else setPageInput(allQuestionsPage);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const maxPage = Math.ceil(allQuestions.length / itemsPerPage);
+                            const num = Number(pageInput);
+                            if (num >= 1 && num <= maxPage) setAllQuestionsPage(num);
+                            else setPageInput(allQuestionsPage);
+                          }
+                        }}
+                        style={{ width: "30px", margin: "0 6px", textAlign: "center" }}
+                      />
+                      of {Math.ceil(allQuestions.length / itemsPerPage)}
+                    </span>
+                    <button
+                      onClick={() => setAllQuestionsPage(prev => Math.min(prev + 1, Math.ceil(allQuestions.length / itemsPerPage)))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage)}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '4rem 1.5rem'
+                  }}>
+                    {paginatedAllQuestions.map(question => {
+                      const canDelete = user && question.user_id === user.id;
+                      return renderQuestionCard(question, canDelete);
+                    })}
+                  </div>
                 </div>
               )
             )}

@@ -50,24 +50,38 @@ class UserOnboardingUpdate(BaseModel):
 
 class QuestionCreate(BaseModel):
     """Schema for creating a new question."""
+    title: str = Field(..., min_length=1)
     text: str
     tags: str = ""
     keywords: str = ""
+    school: str = ""
     course: str = ""
+    course_type: str = ""
+    question_type: str = ""
+    blooms_taxonomy: str = ""
     answer_choices: str = "[]"  # JSON string of answer choices
     correct_answer: str = ""
+    pdf_url: Optional[str] = None
     source_pdf: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class QuestionUpdate(BaseModel):
     """Schema for updating a question."""
+    title: Optional[str] = None
     text: Optional[str] = None
     tags: Optional[str] = None
     keywords: Optional[str] = None
+    school: Optional[str] = None
     course: Optional[str] = None
+    course_type: Optional[str] = None
+    question_type: Optional[str] = None
+    blooms_taxonomy: Optional[str] = None
     answer_choices: Optional[str] = None
     correct_answer: Optional[str] = None
+    pdf_url: Optional[str] = None
     source_pdf: Optional[str] = None
+    image_url: Optional[str] = None
     is_verified: Optional[bool] = None
 
 
@@ -75,13 +89,20 @@ class QuestionUpdate(BaseModel):
 class QuestionResponse(BaseModel):
     """Schema for question response."""
     id: int
+    title: str
     text: str
     tags: str
     keywords: str
+    school: str
     course: str
+    course_type: str
+    question_type: str
+    blooms_taxonomy: str
     answer_choices: str
     correct_answer: str
+    pdf_url: Optional[str]
     source_pdf: Optional[str]
+    image_url: Optional[str]
     user_id: str
     created_at: datetime
     is_verified: bool

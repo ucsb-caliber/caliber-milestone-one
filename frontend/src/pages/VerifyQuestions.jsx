@@ -155,6 +155,19 @@ const VerifyQuestions = () => {
         {questions.map((q, index) => (
           <div key={q.id} style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '8px' }}>
             <div style={{ fontWeight: 'bold', color: '#007bff', marginBottom: '0.5rem' }}>Question {index + 1}</div>
+            {q.title && (
+              <div style={{ 
+                fontSize: '1.1rem', 
+                fontWeight: 'bold', 
+                color: '#333', 
+                marginBottom: '0.5rem',
+                padding: '0.5rem',
+                background: '#f8f9fa',
+                borderRadius: '4px'
+              }}>
+                {q.title}
+              </div>
+            )}
             <textarea
               style={{ width: '100%', minHeight: '80px', padding: '0.5rem' }}
               value={q.text}
