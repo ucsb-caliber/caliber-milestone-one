@@ -64,6 +64,7 @@ class QuestionCreate(BaseModel):
     pdf_url: Optional[str] = None
     source_pdf: Optional[str] = None
     image_url: Optional[str] = None
+    is_verified: bool = False
 
 
 class QuestionUpdate(BaseModel):

@@ -188,7 +188,8 @@ export default function CreateQuestion() {
         tags: formData.tags,
         answer_choices: JSON.stringify(validAnswers),
         correct_answer: formData.correct_answer,
-        image_url: imageUrl
+        image_url: imageUrl,
+        is_verified: true
       });
 
       setSuccess(true);

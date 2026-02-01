@@ -221,7 +221,16 @@ def create_new_question(
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
-    """Create a new question using form parameters. Requires authentication."""
+    """
+    Create a new question using form parameters.
+
+    This endpoint requires authentication. If no ``source_pdf`` is provided
+    (i.e., the question is created manually and not extracted from a PDF),
+    the question is marked as verified by default.
+    """
+    # Manual questions (without a source PDF) are verified by default.
+    is_verified = source_pdf is None
+
     question = create_question(
         session=session,
         title=title,
@@ -238,7 +247,8 @@ def create_new_question(
         pdf_url=pdf_url,
         source_pdf=source_pdf,
         image_url=image_url,
-        user_id=user_id
+        user_id=user_id,
+        is_verified=is_verified
     )
     return question
 
