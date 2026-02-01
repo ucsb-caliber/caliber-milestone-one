@@ -89,6 +89,21 @@ export default function QuestionBank() {
   const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
   const [userInfoCache, setUserInfoCache] = useState({}); // Cache for user info
 
+  // Pagination stuff
+  const [myQuestionsPage, setMyQuestionsPage] = useState(1);
+  const [allQuestionsPage, setAllQuestionsPage] = useState(1);
+  const [pageInput, setPageInput] = useState(allQuestionsPage);
+  const [myPageInput, setMyPageInput] = useState(myQuestionsPage);
+  const itemsPerPage = 6;
+
+  useEffect(() => {
+    setPageInput(allQuestionsPage);
+  }, [allQuestionsPage]);
+
+  useEffect(() => {
+    setMyPageInput(myQuestionsPage);
+  }, [myQuestionsPage]);
+
   const loadQuestions = async () => {
     setLoading(true);
     setError('');
@@ -169,7 +184,6 @@ export default function QuestionBank() {
       answerChoices = [];
     }
 
-    // Split keywords and tags into arrays
     const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
     const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
     const userInfo = userInfoCache[question.user_id];
@@ -429,7 +443,6 @@ export default function QuestionBank() {
           </div>
         )}
 
-        {/* Delete button in bottom corner - only show if permitted */}
         {showDeleteButton && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
             <button
@@ -453,9 +466,18 @@ export default function QuestionBank() {
     );
   };
 
+  // Fix paginated slices
+  const paginatedMyQuestions = myQuestions.slice(
+    (myQuestionsPage - 1) * itemsPerPage,
+    myQuestionsPage * itemsPerPage
+  );
+  const paginatedAllQuestions = allQuestions.slice(
+    (allQuestionsPage - 1) * itemsPerPage,
+    allQuestionsPage * itemsPerPage
+  );
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '1.5rem' }}>
-      {/* Header with Create button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2 style={{ margin: 0 }}>Question Bank</h2>
         <div style={{ display: 'flex', gap: '1rem' }}>
@@ -507,7 +529,6 @@ export default function QuestionBank() {
         </div>
       )}
 
-      {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div style={{
           position: 'fixed',
@@ -616,17 +637,82 @@ export default function QuestionBank() {
                   </button>
                 </div>
               ) : (
-                <div style={{
-                  columnWidth: '360px',
-                  columnGap: '1.5rem'
-                }}>
-                  {myQuestions.map(question => renderQuestionCard(question, true))}
+                <div>
+                  {/* My Questions Pagination */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '15px' }}>
+                    <button
+                      onClick={() => setMyQuestionsPage(prev => Math.max(prev - 1, 1))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: myQuestionsPage === 1 ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={myQuestionsPage === 1}
+                    >
+                      ←
+                    </button>
+                    <span>
+                      Page
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={myPageInput}
+                        onChange={(e) => {
+                          const onlyDigits = e.target.value.replace(/\D/g, "");
+                          setMyPageInput(onlyDigits);
+                        }}
+                        onBlur={() => {
+                          const maxPage = Math.ceil(myQuestions.length / itemsPerPage);
+                          const num = Number(myPageInput);
+                          if (num >= 1 && num <= maxPage) setMyQuestionsPage(num);
+                          else setMyPageInput(myQuestionsPage);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const maxPage = Math.ceil(myQuestions.length / itemsPerPage);
+                            const num = Number(myPageInput);
+                            if (num >= 1 && num <= maxPage) setMyQuestionsPage(num);
+                            else setMyPageInput(myQuestionsPage);
+                          }
+                        }}
+                        style={{ width: "30px", margin: "0 6px", textAlign: "center" }}
+                      />
+                      of {Math.ceil(myQuestions.length / itemsPerPage)}
+                    </span>
+                    <button
+                      onClick={() => setMyQuestionsPage(prev => Math.min(prev + 1, Math.ceil(myQuestions.length / itemsPerPage)))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: myQuestionsPage === Math.ceil(myQuestions.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={myQuestionsPage === Math.ceil(myQuestions.length / itemsPerPage)}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '4rem 1.5rem'
+                  }}>
+                    {paginatedMyQuestions.map(question => renderQuestionCard(question, true))}
+                  </div>
                 </div>
               )
             )}
           </div>
 
-          {/* All Questions Section */}
+          {/* All Questions Section - unchanged */}
           <div>
             <h3 
               onClick={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
@@ -663,15 +749,78 @@ export default function QuestionBank() {
                   <p>No questions found in the system.</p>
                 </div>
               ) : (
-                <div style={{
-                  columnWidth: '360px',
-                  columnGap: '1.5rem'
-                }}>
-                  {allQuestions.map(question => {
-                    // Only show delete button if this question belongs to the current user
-                    const canDelete = user && question.user_id === user.id;
-                    return renderQuestionCard(question, canDelete);
-                  })}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '15px' }}>
+                    <button
+                      onClick={() => setAllQuestionsPage(prev => Math.max(prev - 1, 1))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: allQuestionsPage === 1 ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={allQuestionsPage === 1}
+                    >
+                      ←
+                    </button>
+                    <span>
+                      Page
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={pageInput}
+                        onChange={(e) => {
+                          const onlyDigits = e.target.value.replace(/\D/g, "");
+                          setPageInput(onlyDigits);
+                        }}
+                        onBlur={() => {
+                          const maxPage = Math.ceil(allQuestions.length / itemsPerPage);
+                          const num = Number(pageInput);
+                          if (num >= 1 && num <= maxPage) setAllQuestionsPage(num);
+                          else setPageInput(allQuestionsPage);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const maxPage = Math.ceil(allQuestions.length / itemsPerPage);
+                            const num = Number(pageInput);
+                            if (num >= 1 && num <= maxPage) setAllQuestionsPage(num);
+                            else setPageInput(allQuestionsPage);
+                          }
+                        }}
+                        style={{ width: "30px", margin: "0 6px", textAlign: "center" }}
+                      />
+                      of {Math.ceil(allQuestions.length / itemsPerPage)}
+                    </span>
+                    <button
+                      onClick={() => setAllQuestionsPage(prev => Math.min(prev + 1, Math.ceil(allQuestions.length / itemsPerPage)))}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                      disabled={allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage)}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '4rem 1.5rem'
+                  }}>
+                    {paginatedAllQuestions.map(question => {
+                      const canDelete = user && question.user_id === user.id;
+                      return renderQuestionCard(question, canDelete);
+                    })}
+                  </div>
                 </div>
               )
             )}
