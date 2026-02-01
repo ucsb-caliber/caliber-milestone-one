@@ -13,7 +13,7 @@ This prototype demonstrates:
 ## Architecture
 
 ### Backend (FastAPI)
-- **POST /api/upload-pdf**: Accepts multipart PDF uploads, saves file to UPLOAD_DIR, and schedules a background task to process the PDF and create Question records
+- **POST /api/upload-pdf**: Accepts multipart PDF uploads, uploads to Supabase Storage bucket, and schedules a background task to process the PDF and create Question records
 - **GET /api/questions**: List all questions (supports optional `skip` and `limit` query parameters)
 - **GET /api/questions/{id}**: Get a specific question by ID
 - **POST /api/questions**: Create a new question using individual form fields (`text` required, `tags`, `keywords`, and `source_pdf` optional)
@@ -22,6 +22,8 @@ This prototype demonstrates:
 - Uses SQLModel with SQLite (default) for easy local development
 - Can be switched to PostgreSQL via DATABASE_URL in .env
 - Uses PyPDF2 to extract text from PDFs
+- **PDF Storage**: PDFs are stored in Supabase Storage bucket `question-pdfs` with private access
+- **Image Storage**: Question images are stored in Supabase Storage bucket `question-images` with private access
 - Implements `send_to_agent_pipeline` as a stub that splits text into chunks and returns question dictionaries
 - Background processing uses FastAPI BackgroundTasks
 - CORS enabled for http://localhost:5173
@@ -60,6 +62,7 @@ Edit your `.env` file and replace the placeholders:
 ```bash
 alembic upgrade head
 ```
+If you're getting some weird errors here you need to make sure you're using python v3.12 to create your venv!
 
 See `backend/MIGRATIONS.md` for more details on how to use alembic.
 
@@ -93,12 +96,14 @@ The frontend will be available at http://localhost:5173
 ### Upload PDF
 1. Navigate to http://localhost:5173
 2. **Sign up** with your email and password (or **sign in** if you already have an account)
-3. After signing in, you'll be redirected to the Home page
-4. Upload a PDF file using the Home page
-5. The backend returns `{status: 'queued'}` and processes the PDF in the background
-6. Visit the Question Bank page to view your parsed questions (click Refresh if needed)
-7. All your data (PDFs and questions) is stored under your user ID
-8. Sign out when done using the button in the navigation bar
+3. **Complete your profile** by entering your first name, last name, and selecting if you are a teacher (new users only)
+4. After completing onboarding, you'll be redirected to the Home page
+5. Upload a PDF file using the Home page
+6. The backend returns `{status: 'queued'}` and processes the PDF in the background
+7. Visit the Question Bank page to view your parsed questions (click Refresh if needed)
+8. All your data (PDFs and questions) is stored under your user ID
+9. View your profile information by clicking on your email in the navigation bar
+10. Sign out when done using the button in the navigation bar
 
 ## Authentication
 
@@ -116,6 +121,7 @@ The frontend will be available at http://localhost:5173
 2. Supabase creates the user account
 3. Supabase sends a confirmation email (if email confirmation is enabled)
 4. User can sign in immediately
+5. **New**: User is prompted to complete their profile with first name, last name, and student/teacher selection
 
 ### User Sign In Flow
 
@@ -124,6 +130,20 @@ The frontend will be available at http://localhost:5173
 3. The token is automatically stored in local storage
 4. All API requests include the token in the Authorization header
 5. Backend validates the token with Supabase on each request
+6. **New**: If profile is incomplete, user is redirected to onboarding page
+
+### User Profile
+
+The application now stores additional user information in the database:
+- **First Name**: User's first name (collected during onboarding)
+- **Last Name**: User's last name (collected during onboarding)
+- **Teacher Status**: Whether the user is a teacher/instructor or a student (set during onboarding)
+- **Admin Status**: Whether the user has admin privileges (set by admin users)
+
+Each user record has:
+- `id`: Auto-incrementing integer ID (starting from 1) for easy searching
+- `user_id`: UUID from Supabase authentication (used as foreign key)
+- User profile is accessible via the Profile page
 
 ### Create Questions Manually
 You can also create questions directly using the API with individual form fields:
@@ -205,10 +225,12 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 │   │   ├── main.py          # FastAPI app and endpoints
 │   │   ├── auth.py          # Supabase authentication utilities
 │   │   ├── database.py      # Database connection and session
-│   │   ├── models.py        # SQLModel database models (includes user_id)
+│   │   ├── models.py        # SQLModel database models (User and Question)
 │   │   ├── schemas.py       # Pydantic response schemas
 │   │   ├── crud.py          # Database operations (user-filtered)
 │   │   └── utils.py         # PDF processing and stubbed agent pipeline
+│   ├── alembic/             # Database migrations
+│   │   └── versions/        # Migration files
 │   ├── data/                # SQLite database (gitignored, for local dev)
 │   ├── uploads/             # Uploaded PDFs (gitignored)
 │   ├── requirements.txt     # Python dependencies
@@ -218,7 +240,9 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 │   │   ├── pages/
 │   │   │   ├── Home.jsx           # PDF upload page (protected)
 │   │   │   ├── QuestionBank.jsx   # Questions list page (protected)
-│   │   │   └── Auth.jsx           # Login/signup page
+│   │   │   ├── Auth.jsx           # Login/signup page
+│   │   │   ├── Onboarding.jsx     # Profile completion page (new)
+│   │   │   └── Profile.jsx        # User profile page
 │   │   ├── main.jsx         # App entry point with routing and auth
 │   │   ├── AuthContext.jsx  # Authentication state management
 │   │   ├── supabaseClient.js # Supabase client configuration
@@ -231,6 +255,7 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 └── README.md
 ```
 
+## Testing
 ## Testing
 
 **Authentication and Upload Flow:**
@@ -254,10 +279,11 @@ Refer to [Cloudflare Zero Trust documentation](https://developers.cloudflare.com
 
 - **Authentication**: All endpoints (except root) require valid JWT tokens from Supabase
 - **User Data Isolation**: Questions are automatically filtered by user_id
+- **PDF Storage**: PDFs are stored in Supabase Storage bucket `question-pdfs` (see PDF_STORAGE_SETUP.md)
+- **Image Storage**: Question images are stored in Supabase Storage bucket `question-images` (see SUPABASE_STORAGE_SETUP.md)
 - Background processing may take a few seconds depending on PDF size
 - The stubbed agent pipeline is intentionally simple - replace it with your AI pipeline
 - CORS is configured for localhost:5173 - update for production domains
-- All uploaded PDFs are stored in `backend/uploads/` (gitignored)
 - User sessions are stored in browser local storage
 - The Supabase client automatically handles token refresh
 

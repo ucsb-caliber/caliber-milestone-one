@@ -32,7 +32,7 @@ def send_to_agent_pipeline(text: str, filename: str) -> List[Dict[str, str]]:
         filename: Name of the source PDF file
     
     Returns:
-        List of question dictionaries with keys: text, tags, keywords
+        List of question dictionaries with keys: title, text, tags, keywords
     """
     # Simple chunking: split by double newlines or every ~500 characters
     chunks = []
@@ -59,6 +59,7 @@ def send_to_agent_pipeline(text: str, filename: str) -> List[Dict[str, str]]:
         keywords = [w.strip('.,!?;:') for w in words if len(w) > 5][:5]
         
         questions.append({
+            "title": f"Question {i+1} from PDF",  # Generate a simple title
             "text": chunk[:500],  # Limit text length
             "tags": f"chunk-{i+1},auto-generated",
             "keywords": ",".join(keywords[:5]) if keywords else "sample"
