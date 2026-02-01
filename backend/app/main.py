@@ -247,7 +247,8 @@ def create_new_question(
         pdf_url=pdf_url,
         source_pdf=source_pdf,
         image_url=image_url,
-        user_id=user_id
+        user_id=user_id,
+        is_verified=is_verified
     )
     return question
 

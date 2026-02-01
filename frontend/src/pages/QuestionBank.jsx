@@ -113,23 +113,20 @@ export default function QuestionBank() {
         getAllQuestions()
       ]);
 
-     const verifiedMyQuestions = (myData.questions || [])
-      .filter(q => q.is_verified === true)
-      .sort(sortByNewest);
+      // Filter for verified questions only and sort by newest first
+      const verifiedMyQuestions = (myData.questions || [])
+        .filter(q => q.is_verified === true)
+        .sort(sortByNewest);
 
-     const verifiedAllQuestions = (allData.questions || [])
-      .filter(q => q.is_verified === true)
-      .sort(sortByNewest);
-
-      // Sort questions by created_at descending (newest first)
-      const myQuestionsList = (myData.questions || []).sort(sortByNewest);
-      const allQuestionsList = (allData.questions || []).sort(sortByNewest);
+      const verifiedAllQuestions = (allData.questions || [])
+        .filter(q => q.is_verified === true)
+        .sort(sortByNewest);
       
-      setMyQuestions(myQuestionsList);
-      setAllQuestions(allQuestionsList);
+      setMyQuestions(verifiedMyQuestions);
+      setAllQuestions(verifiedAllQuestions);
       
       // Generate signed URLs for all questions with images
-      const allQuestionsWithImages = [...myQuestionsList, ...allQuestionsList].filter(q => q.image_url);
+      const allQuestionsWithImages = [...verifiedMyQuestions, ...verifiedAllQuestions].filter(q => q.image_url);
       const urlPromises = allQuestionsWithImages.map(async (q) => {
         const signedUrl = await getImageSignedUrl(q.image_url);
         return { id: q.id, url: signedUrl };
@@ -145,7 +142,7 @@ export default function QuestionBank() {
       setImageUrls(urlMap);
       
       // Fetch user info for all questions
-      const uniqueUserIds = [...new Set([...myQuestionsList, ...allQuestionsList].map(q => q.user_id))];
+      const uniqueUserIds = [...new Set([...verifiedMyQuestions, ...verifiedAllQuestions].map(q => q.user_id))];
       const userPromises = uniqueUserIds.map(async (userId) => {
         try {
           const userInfo = await getUserById(userId);
