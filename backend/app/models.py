@@ -1,8 +1,9 @@
-from typing import Optional, List
 from datetime import datetime
-from sqlmodel import SQLModel, Field, Column
-import json
+from typing import Optional, List, Dict, Any
+
 from sqlalchemy import TEXT
+from sqlalchemy.types import JSON
+from sqlmodel import Column, Field, Relationship, SQLModel
 
 
 class User(SQLModel, table=True):
@@ -41,3 +42,33 @@ class Question(SQLModel, table=True):
     user_id: str = Field(index=True)  # Supabase user ID
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_verified: bool = Field(default=False)  # Whether question in database is verified
+
+
+class Category(SQLModel, table=True):
+    """Category model. One category has many questions (QuestionRecords)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    question_records: List["QuestionRecord"] = Relationship(back_populates="category")
+
+
+class QuestionRecord(SQLModel, table=True):
+    """
+    One question as received from the pipeline: question_id, pages, text, hash,
+    image crops, type, metadata; plus category and embedding for the vector pipeline.
+    """
+    __tablename__ = "question_record"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    question_id: str = Field(index=True, unique=True)  # e.g. "q_ef2a9689e7466caf"
+    start_page: Optional[int] = Field(default=None)
+    page_nums: Optional[List[int]] = Field(default=None, sa_column=Column("page_nums", JSON))
+    text: str = Field(index=True)
+    text_hash: Optional[str] = Field(default=None, index=True)
+    image_crops: Optional[List[str]] = Field(default=None, sa_column=Column("image_crops", JSON))
+    type: Optional[str] = Field(default=None)
+    metadata_: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column("metadata", JSON))
+    # Category and embedding (vector pipeline)
+    category_id: Optional[int] = Field(default=None, foreign_key="category.id", index=True)
+    category_name: Optional[str] = Field(default=None)
+    embedding: Optional[List[float]] = Field(default=None, sa_column=Column("embedding", JSON))
+    category: Optional["Category"] = Relationship(back_populates="question_records")
