@@ -32,20 +32,20 @@ export default function CreateQuestion() {
   const styles = {
     container: {
       backgroundColor: '#f4f7f9',
-      minHeight: '100vh',
+      minHeight: '77vh',
       borderRadius: '1rem',
       padding: '40px 20px',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
     },
     wrapper: { maxWidth: '1200px', margin: '0 auto' },
-    header: { marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' },
+    header: { marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' },
     grid: { display: 'grid', gridTemplateColumns: '1fr 350px', gap: '24px', alignItems: 'start' },
     card: {
       background: 'white',
       borderRadius: '12px',
       padding: '24px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      marginBottom: '24px',
+      marginBottom: '16px',
       border: '1px solid #e1e4e8'
     },
     label: { display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' },
@@ -367,10 +367,10 @@ export default function CreateQuestion() {
                   onChange={handleInputChange}
                   onKeyDown={handleTextareaKeyDown}
                   placeholder="Supports Markdown & LaTeX: $E=mc^2$"
-                  style={{ ...styles.input, minHeight: '300px', fontFamily: 'monospace', lineHeight: '1.5' }}
+                  style={{ ...styles.input, minHeight: '150px', padding: '12px', fontFamily: 'monospace', lineHeight: '1.5' }}
                 />
               ) : (
-                <div style={{ minHeight: '300px', padding: '12px', border: '1px solid #edf2f7', borderRadius: '8px', overflow: 'auto' }}>
+                <div style={{ ...styles.input, minHeight: '150px', padding: '12px', border: '1px solid #edf2f7', borderRadius: '8px', overflow: 'auto' }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                     {formData.text || "*Nothing to preview yet...*"}
                   </ReactMarkdown>
