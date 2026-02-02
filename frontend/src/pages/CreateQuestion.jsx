@@ -32,7 +32,7 @@ export default function CreateQuestion() {
   const styles = {
     container: {
       backgroundColor: '#f4f7f9',
-      minHeight: '77vh',
+      minHeight: '75vh',
       borderRadius: '1rem',
       padding: '40px 20px',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
@@ -79,7 +79,7 @@ export default function CreateQuestion() {
       fontSize: '14px',
       fontWeight: '500'
     },
-    sidebarSection: { marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #edf2f7' },
+    sidebarSection: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #edf2f7' },
     primaryBtn: {
       backgroundColor: '#0066ff',
       color: 'white',
@@ -413,22 +413,50 @@ export default function CreateQuestion() {
           {/* Sidebar Column */}
           <aside>
             <div style={styles.card}>
-              <h3 style={{ marginTop: 0, fontSize: '16px', marginBottom: '20px' }}>Question Metadata</h3>
-                <div style={styles.sidebarSection}>
-                  <label style={styles.label}>Question Type</label>
-                  <select
-                    name="question_type"
-                    value={formData.question_type}
-                    onChange={handleInputChange}
-                    style={styles.input}
-                  >
-                    <option value="">Select question type</option>
-                    <option value="mcq">Multiple Choice (MCQ)</option>
-                    <option value="fr">Free Response (FR)</option>
-                    <option value="short_answer">Short Answer</option>
-                    <option value="true_false">True/False</option>
-                  </select>
-                </div>
+              <h3 style={{ marginTop: 0, fontSize: '16px', marginBottom: '16px' }}>Question Metadata</h3>
+              <div style={styles.sidebarSection}>
+                <label style={styles.label}>School</label>
+                <select
+                  name="school"
+                  value={formData.school}
+                  onChange={handleInputChange}
+                  style={styles.input}
+                >
+                  <option disabled>Select school</option>
+                  <option value="UCB">UCB</option>
+                  <option value="UCD">UCD</option>
+                  <option value="UCI">UCI</option>
+                  <option value="UCLA">UCLA</option>
+                  <option value="UCM">UCM</option>
+                  <option value="UCR">UCR</option>
+                  <option value="UCSB">UCSB</option>
+                  <option value="UCSC">UCSC</option>
+                  <option value="UCSD">UCSD</option>
+                </select>
+              </div>
+
+              <div style={styles.sidebarSection}>
+                <label style={styles.label}>Course Info</label>
+                <input type="text" name="course" placeholder="e.g. CS101" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+                <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords (comma separated)" style={styles.input} onChange={handleInputChange} />
+              </div>
+
+              <div style={styles.sidebarSection}>
+                <label style={styles.label}>Question Type</label>
+                <select
+                  name="question_type"
+                  value={formData.question_type}
+                  onChange={handleInputChange}
+                  style={styles.input}
+                >
+                  <option disabled>Select question type</option>
+                  <option value="mcq">Multiple Choice (MCQ)</option>
+                  <option value="fr">Free Response (FR)</option>
+                  <option value="short_answer">Short Answer</option>
+                  <option value="true_false">True/False</option>
+                </select>
+              </div>
+
               <div style={styles.sidebarSection}>
                 <label style={styles.label}>Bloom's Taxonomy</label>
                 <select name="blooms_taxonomy" style={styles.input} onChange={handleInputChange}>
@@ -440,12 +468,6 @@ export default function CreateQuestion() {
                   <option value="Evaluating">Evaluating</option>
                   <option value="Creating">Creating</option>
                 </select>
-              </div>
-
-              <div style={styles.sidebarSection}>
-                <label style={styles.label}>Course Info</label>
-                <input type="text" name="course" placeholder="e.g. CS101" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
-                <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords (comma separated)" style={styles.input} onChange={handleInputChange} />
               </div>
 
               <div style={styles.sidebarSection}>
