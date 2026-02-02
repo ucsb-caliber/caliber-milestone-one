@@ -437,8 +437,8 @@ export default function CreateQuestion() {
 
               <div style={styles.sidebarSection}>
                 <label style={styles.label}>Course Info</label>
-                <input type="text" name="course" placeholder="e.g. CS101" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
-                <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords (comma separated)" style={styles.input} onChange={handleInputChange} />
+                <input type="text" name="course" placeholder="Name (e.g. CS101)" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+                <input type="text" name="course_type" placeholder="Type (e.g. Intro to Python)" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
               </div>
 
               <div style={styles.sidebarSection}>
@@ -447,7 +447,7 @@ export default function CreateQuestion() {
                   name="question_type"
                   value={formData.question_type}
                   onChange={handleInputChange}
-                  style={styles.input}
+                  style={{...styles.input, marginBottom: '8px'}}
                 >
                   <option disabled>Select question type</option>
                   <option value="mcq">Multiple Choice (MCQ)</option>
@@ -455,6 +455,7 @@ export default function CreateQuestion() {
                   <option value="short_answer">Short Answer</option>
                   <option value="true_false">True/False</option>
                 </select>
+                <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords (comma separated)" style={styles.input} onChange={handleInputChange} />
               </div>
 
               <div style={styles.sidebarSection}>
@@ -471,8 +472,8 @@ export default function CreateQuestion() {
               </div>
 
               <div style={styles.sidebarSection}>
-                <label style={styles.label}>Tags</label>
-                <input type="text" name="tags" value={formData.tags} placeholder="midterm, logic, recursion..." style={styles.input} onChange={handleInputChange} />
+                <label style={styles.label}>Tags (comma-separated)</label>
+                <input type="text" name="tags" value={formData.tags} placeholder="midterm, important, chapter-3" style={styles.input} onChange={handleInputChange} />
               </div>
 
               <div>
