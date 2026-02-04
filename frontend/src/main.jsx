@@ -9,6 +9,8 @@ import Onboarding from './pages/Onboarding.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
+import Users from './pages/Users.jsx'
+
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -151,6 +153,7 @@ function App() {
         display: 'flex',
         gap: '1rem',
         alignItems: 'center'
+        
       }}>
         <h1 style={{ margin: 0 }}>
           <a
@@ -201,6 +204,15 @@ function App() {
               >
                 Question Bank
               </a>
+              <a
+              href="#users"
+              style={{
+                color: page === 'users' ? '#fff' : '#aaa',
+                textDecoration: 'none',
+                fontWeight: page === 'users' ? 'bold' : 'normal'
+                }}>
+                  Users
+                  </a>
               <a
                 href="#profile"
                 style={{
@@ -286,6 +298,10 @@ function App() {
                 <VerifyQuestions />
               </ProtectedRoute>
             )}
+            {page === 'users' && (
+            <ProtectedRoute>
+              <Users currentUser={userInfo} />
+              </ProtectedRoute>)}
           </>
         )}
       </main>
