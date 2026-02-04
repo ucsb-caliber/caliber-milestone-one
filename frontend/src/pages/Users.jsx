@@ -4,6 +4,10 @@ import React, { useEffect, useState } from "react";
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 export default function Users({ currentUser }) {
+
+//currentUser = { ...currentUser, isAdmin: true };
+//to swtich to admin
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -41,7 +45,13 @@ export default function Users({ currentUser }) {
       setError(err.message);
     }
   };
-  
+//   // TEMP: update state locally without backend for testing
+//     const updateUserRole = (id, field, value) => {
+//         setUsers(prevUsers =>
+//             prevUsers.map(u => (u.id === id ? { ...u, [field]: value } : u))
+//         );
+//     };
+
   useEffect(() => {
     // ===== MOCK DATA FOR TESTING =====
     const mockUsers = [
@@ -83,12 +93,12 @@ export default function Users({ currentUser }) {
                 <td>
                   {currentUser?.isAdmin ? (
                     <input
-                      type="checkbox"
-                      checked={user.isAdmin}
-                      onChange={() =>
-                        updateUserRole(user.id, "isAdmin", !user.isAdmin)
-                      }
-                    />
+                    type="checkbox"
+                    checked={user.isAdmin}
+                    onChange={() =>
+                      updateUserRole(user.id, "isAdmin", !user.isAdmin)
+                    }
+                  /> 
                   ) : (
                     <span>{user.isAdmin ? "Yes" : "No"}</span>
                   )}
