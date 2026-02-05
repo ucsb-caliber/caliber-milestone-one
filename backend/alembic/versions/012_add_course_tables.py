@@ -56,7 +56,7 @@ def upgrade():
         sa.Column('enrolled_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
         sa.PrimaryKeyConstraint('course_id', 'student_id'),
         sa.ForeignKeyConstraint(['course_id'], ['course.id'], ),
-        sa.ForeignKeyConstraint(['student_id'], ['user.user_id'], ),
+        sa.ForeignKeyConstraint(['student_id'], ['user.user_id'], ondelete='CASCADE'),
     )
 
 
