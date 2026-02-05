@@ -330,7 +330,9 @@ def update_course(session: Session, course_id: int, instructor_id: str,
         return None
     
     if course_name is not None:
-        course.course_name = course_name
+        trimmed_course_name = course_name.strip()
+        if trimmed_course_name:
+            course.course_name = trimmed_course_name
     if school_name is not None:
         course.school_name = school_name
     
