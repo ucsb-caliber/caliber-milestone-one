@@ -668,7 +668,7 @@ export async function deleteCourse(courseId) {
       throw new Error(error.detail || 'Failed to delete course');
     }
 
-    return response.json();
+    return { success: true };
   } catch (error) {
     if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
