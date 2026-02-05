@@ -344,6 +344,13 @@ def update_course(session: Session, course_id: int, instructor_id: str,
         
         # Add new students
         for student_id in student_ids:
+            # Validate that the user exists and is not a teacher before creating association
+            user = session.get(User, student_id)
+            if not user:
+                continue
+            # If the User model defines an "is_teacher" flag, ensure we don't enroll teachers
+            if getattr(user, "is_teacher", False):
+                continue
             course_student = CourseStudent(course_id=course_id, student_id=student_id)
             session.add(course_student)
     
