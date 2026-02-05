@@ -55,10 +55,19 @@ class CourseStudent(SQLModel, table=True):
 class Assignment(SQLModel, table=True):
     """Assignment model for course assignments."""
     id: Optional[int] = Field(default=None, primary_key=True)
+    node_id: Optional[str] = Field(default=None)  # Foreign key to Course Tree Node (null for now)
+    instructor_email: str = Field(default="")  # Email of instructor who created assignment
+    instructor_id: str = Field(default="")  # ID of instructor user who created assignment
+    course: str = Field(default="")  # ID/name of course the assignment was created in
     course_id: int = Field(foreign_key="course.id", index=True)
     title: str = Field(index=True)
+    type: str = Field(default="Other")  # Homework, Quiz, Lab, Exam, Reading, Other
     description: str = Field(default="")
-    due_date: Optional[datetime] = Field(default=None)
+    release_date: Optional[datetime] = Field(default=None)  # Visibility trigger for student portal
+    due_date_soft: Optional[datetime] = Field(default=None)  # Target date; no points deducted
+    due_date_hard: Optional[datetime] = Field(default=None)  # Final cut-off for Autograder
+    late_policy_id: Optional[str] = Field(default=None)  # Reference to policy template
+    assignment_questions: str = Field(sa_column=Column(TEXT), default="[]")  # JSON array of question IDs
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

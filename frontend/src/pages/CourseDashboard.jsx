@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCourse, updateCourse, getAllUsers, getUserInfo } from '../api';
+import { getCourse, updateCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
 import { useAuth } from '../AuthContext';
 
 export default function CourseDashboard() {
@@ -19,6 +19,10 @@ export default function CourseDashboard() {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  
+  // Delete assignment modal
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Get course ID from URL hash (e.g., #course/123)
   const getCourseIdFromHash = () => {
@@ -97,6 +101,26 @@ export default function CourseDashboard() {
         ? prev.student_ids.filter(id => id !== studentId)
         : [...prev.student_ids, studentId]
     }));
+  };
+
+  // Handle delete assignment
+  const handleDeleteAssignment = async () => {
+    if (!deleteConfirmId) return;
+    
+    setDeleting(true);
+    try {
+      await deleteAssignment(deleteConfirmId);
+      // Update local state to remove the deleted assignment
+      setCourse(prev => ({
+        ...prev,
+        assignments: prev.assignments.filter(a => a.id !== deleteConfirmId)
+      }));
+      setDeleteConfirmId(null);
+    } catch (err) {
+      alert('Failed to delete assignment: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Save changes
@@ -498,18 +522,236 @@ export default function CourseDashboard() {
         </div>
       )}
 
-      {/* Assignments Section - Placeholder */}
+      {/* Assignments Section */}
       <div style={{ ...styles.section, marginTop: isEditing ? '2rem' : '0' }}>
-        <h2 style={styles.sectionTitle}>
-          📝 Assignments
-        </h2>
-        <div style={styles.placeholderSection}>
-          <h3 style={styles.placeholderTitle}>Assignments Coming Soon</h3>
-          <p style={styles.placeholderText}>
-            This section will allow you to create, manage, and track assignments for this course.
-          </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={styles.sectionTitle}>
+            📝 Assignments ({course.assignments?.length || 0})
+          </h2>
+          {isInstructor && (
+            <button
+              onClick={() => window.location.hash = `#course/${courseId}/assignment/new`}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '600'
+              }}
+            >
+              + Create Assignment
+            </button>
+          )}
         </div>
+        
+        {course.assignments && course.assignments.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {course.assignments.map(assignment => {
+              const formatDate = (dateStr) => {
+                if (!dateStr) return 'Not set';
+                return new Date(dateStr).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+              };
+
+              return (
+                <div
+                  key={assignment.id}
+                  style={{
+                    padding: '1rem',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                    cursor: isInstructor ? 'pointer' : 'default',
+                    transition: 'all 0.15s'
+                  }}
+                  onClick={() => {
+                    if (isInstructor) {
+                      window.location.hash = `#course/${courseId}/assignment/${assignment.id}/view`;
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    if (isInstructor) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (isInstructor) {
+                      e.currentTarget.style.background = '#f9fafb';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: '#111827' }}>
+                          {assignment.title}
+                        </h3>
+                        <span style={{
+                          padding: '0.25rem 0.5rem',
+                          background: '#eef2ff',
+                          color: '#4f46e5',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: '600'
+                        }}>
+                          {assignment.type}
+                        </span>
+                      </div>
+                      {assignment.description && (
+                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                          {assignment.description}
+                        </p>
+                      )}
+                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                        {assignment.due_date_soft && (
+                          <div>
+                            <strong>Due:</strong> {formatDate(assignment.due_date_soft)}
+                          </div>
+                        )}
+                        {assignment.assignment_questions && assignment.assignment_questions.length > 0 && (
+                          <div>
+                            <strong>Questions:</strong> {assignment.assignment_questions.length}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {isInstructor && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmId(assignment.id);
+                          }}
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            padding: 0,
+                            background: '#fee2e2',
+                            color: '#dc2626',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.875rem',
+                            fontWeight: 'bold',
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#fecaca';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#fee2e2';
+                          }}
+                          title="Delete assignment"
+                        >
+                          ✕
+                        </button>
+                        <div style={{ fontSize: '1.25rem', color: '#9ca3af' }}>›</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{
+            background: '#f9fafb',
+            borderRadius: '12px',
+            padding: '3rem',
+            textAlign: 'center',
+            border: '2px dashed #d1d5db'
+          }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', fontWeight: '600', color: '#374151' }}>
+              No Assignments Yet
+            </h3>
+            <p style={{ margin: 0, color: '#6b7280' }}>
+              {isInstructor 
+                ? 'Create your first assignment to get started.'
+                : 'Your instructor hasn\'t created any assignments yet.'
+              }
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* Delete Assignment Confirmation Modal */}
+      {deleteConfirmId && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            padding: '1.5rem',
+            maxWidth: '400px',
+            width: '90%',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+          }}>
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.25rem', fontWeight: '600', color: '#111827' }}>
+              Delete Assignment?
+            </h3>
+            <p style={{ margin: '0 0 1.5rem 0', color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.5 }}>
+              Are you sure you want to delete this assignment? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={deleting}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAssignment}
+                disabled={deleting}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: deleting ? '#f87171' : '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
