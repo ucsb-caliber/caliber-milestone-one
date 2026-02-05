@@ -7,14 +7,22 @@ import 'katex/dist/katex.min.css';
 import { getQuestion, updateQuestion, uploadImage, getImageSignedUrl } from '../api';
 
 export default function EditQuestion() {
-  // Get question ID from URL hash (e.g., #edit-question?id=123)
+  // Get question ID and returnTo from URL hash (e.g., #edit-question?id=123&returnTo=...)
   const getQuestionId = () => {
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.split('?')[1] || '');
     return params.get('id');
   };
 
+  const getReturnTo = () => {
+    const hash = window.location.hash;
+    const params = new URLSearchParams(hash.split('?')[1] || '');
+    const returnTo = params.get('returnTo');
+    return returnTo ? decodeURIComponent(returnTo) : null;
+  };
+
   const [questionId] = useState(getQuestionId());
+  const [returnTo] = useState(getReturnTo());
   const [formData, setFormData] = useState({
     title: '',
     text: '',
@@ -256,9 +264,9 @@ export default function EditQuestion() {
 
       setSuccess(true);
       
-      // Redirect to question bank after a brief delay
+      // Redirect to return URL or question bank after a brief delay
       setTimeout(() => {
-        window.location.hash = 'questions';
+        window.location.hash = returnTo || 'questions';
       }, 1500);
     } catch (err) {
       setError(err.message || 'Failed to update question');
@@ -742,7 +750,7 @@ export default function EditQuestion() {
           </button>
           <button
             type="button"
-            onClick={() => window.location.hash = 'questions'}
+            onClick={() => window.location.hash = returnTo || 'questions'}
             style={{
               padding: '0.75rem 2rem',
               background: '#6c757d',

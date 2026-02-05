@@ -21,21 +21,23 @@ export default function CreateEditAssignment() {
     assignment_questions: []
   });
 
-  // Get course ID and optional assignment ID from URL hash (e.g., #course/123/assignment/new or #course/123/assignment/456)
+  // Get course ID and optional assignment ID from URL hash (e.g., #course/123/assignment/new or #course/123/assignment/456/edit)
   const parseHash = () => {
     const hash = window.location.hash;
     const courseMatch = hash.match(/#course\/(\d+)/);
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const isNew = hash.includes('/assignment/new');
+    const isEdit = hash.includes('/edit');
     
     return {
       courseId: courseMatch ? parseInt(courseMatch[1]) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null,
-      isNew
+      isNew,
+      isEdit
     };
   };
 
-  const { courseId, assignmentId, isNew } = parseHash();
+  const { courseId, assignmentId, isNew, isEdit } = parseHash();
 
   // Load data on mount
   useEffect(() => {
@@ -115,14 +117,23 @@ export default function CreateEditAssignment() {
         assignment_questions: formData.assignment_questions
       };
 
+      let savedAssignmentId = assignmentId;
       if (isEditMode) {
-        await updateAssignment(assignmentId, submitData);
+        const result = await updateAssignment(assignmentId, submitData);
+        savedAssignmentId = result?.id || assignmentId;
       } else {
-        await createAssignment(submitData);
+        const result = await createAssignment(submitData);
+        savedAssignmentId = result?.id;
       }
 
-      // Navigate back to course dashboard
-      window.location.hash = `#course/${courseId}`;
+      setSaving(false);
+      
+      // Navigate to assignment view page
+      if (savedAssignmentId) {
+        window.location.hash = `#course/${courseId}/assignment/${savedAssignmentId}/view`;
+      } else {
+        window.location.hash = `#course/${courseId}`;
+      }
     } catch (err) {
       setError(err.message || 'Failed to save assignment');
       setSaving(false);

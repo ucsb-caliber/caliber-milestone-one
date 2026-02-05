@@ -14,11 +14,12 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      UserListResponse,
                      CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, 
                      AssignmentResponse, AssignmentCreate, AssignmentUpdate)
-from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions, 
-                  update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, 
-                  update_user_profile, update_user_preferences, create_course, get_course, get_courses, 
-                  get_courses_count, update_course, delete_course, get_course_students, get_course_assignments,
-                  create_assignment, get_assignment, get_assignments, update_assignment, delete_assignment)
+from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
+                  get_questions_by_ids, update_question, delete_question, get_user_by_user_id, update_user_roles, 
+                  get_or_create_user, update_user_profile, update_user_preferences, create_course, get_course, 
+                  get_courses, get_courses_count, update_course, delete_course, get_course_students, 
+                  get_course_assignments, create_assignment, get_assignment, get_assignments, update_assignment, 
+                  delete_assignment)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -54,10 +55,10 @@ app = FastAPI(
     """,
 )
 
-# Configure CORS to allow frontend at localhost:5173
+# Configure CORS to allow frontend at localhost (multiple ports for dev)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -203,11 +204,26 @@ def get_question_by_id(
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
-    """Get a specific question by ID. Only accessible by the question owner."""
-    question = get_question(session, question_id, user_id=user_id)
+    """Get a specific question by ID. Returns the question if it exists (for assignment viewing)."""
+    # Don't filter by user_id - allow fetching any question for assignment viewing
+    question = get_question(session, question_id, user_id=None)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     return question
+
+
+@app.post("/api/questions/batch", response_model=QuestionListResponse)
+def get_questions_batch(
+    question_ids: list[int],
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Get multiple questions by IDs in a single request. More efficient than individual calls."""
+    questions = get_questions_by_ids(session, question_ids)
+    return QuestionListResponse(
+        questions=questions,
+        total=len(questions)
+    )
 
 
 @app.post("/api/questions", response_model=QuestionResponse, status_code=201)

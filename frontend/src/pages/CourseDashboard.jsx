@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCourse, updateCourse, getAllUsers, getUserInfo } from '../api';
+import { getCourse, updateCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
 import { useAuth } from '../AuthContext';
 
 export default function CourseDashboard() {
@@ -19,6 +19,10 @@ export default function CourseDashboard() {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  
+  // Delete assignment modal
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Get course ID from URL hash (e.g., #course/123)
   const getCourseIdFromHash = () => {
@@ -97,6 +101,26 @@ export default function CourseDashboard() {
         ? prev.student_ids.filter(id => id !== studentId)
         : [...prev.student_ids, studentId]
     }));
+  };
+
+  // Handle delete assignment
+  const handleDeleteAssignment = async () => {
+    if (!deleteConfirmId) return;
+    
+    setDeleting(true);
+    try {
+      await deleteAssignment(deleteConfirmId);
+      // Update local state to remove the deleted assignment
+      setCourse(prev => ({
+        ...prev,
+        assignments: prev.assignments.filter(a => a.id !== deleteConfirmId)
+      }));
+      setDeleteConfirmId(null);
+    } catch (err) {
+      alert('Failed to delete assignment: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Save changes
@@ -550,7 +574,7 @@ export default function CourseDashboard() {
                   }}
                   onClick={() => {
                     if (isInstructor) {
-                      window.location.hash = `#course/${courseId}/assignment/${assignment.id}`;
+                      window.location.hash = `#course/${courseId}/assignment/${assignment.id}/view`;
                     }
                   }}
                   onMouseEnter={(e) => {
@@ -602,7 +626,40 @@ export default function CourseDashboard() {
                       </div>
                     </div>
                     {isInstructor && (
-                      <div style={{ fontSize: '1.25rem', color: '#9ca3af' }}>›</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmId(assignment.id);
+                          }}
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            padding: 0,
+                            background: '#fee2e2',
+                            color: '#dc2626',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.875rem',
+                            fontWeight: 'bold',
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#fecaca';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#fee2e2';
+                          }}
+                          title="Delete assignment"
+                        >
+                          ✕
+                        </button>
+                        <div style={{ fontSize: '1.25rem', color: '#9ca3af' }}>›</div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -629,6 +686,72 @@ export default function CourseDashboard() {
           </div>
         )}
       </div>
+
+      {/* Delete Assignment Confirmation Modal */}
+      {deleteConfirmId && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            padding: '1.5rem',
+            maxWidth: '400px',
+            width: '90%',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+          }}>
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.25rem', fontWeight: '600', color: '#111827' }}>
+              Delete Assignment?
+            </h3>
+            <p style={{ margin: '0 0 1.5rem 0', color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.5 }}>
+              Are you sure you want to delete this assignment? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={deleting}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAssignment}
+                disabled={deleting}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: deleting ? '#f87171' : '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

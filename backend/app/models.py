@@ -64,7 +64,6 @@ class Assignment(SQLModel, table=True):
     type: str = Field(default="Other")  # Homework, Quiz, Lab, Exam, Reading, Other
     description: str = Field(default="")
     release_date: Optional[datetime] = Field(default=None)  # Visibility trigger for student portal
-    due_date: Optional[datetime] = Field(default=None)  # Legacy field, kept for compatibility
     due_date_soft: Optional[datetime] = Field(default=None)  # Target date; no points deducted
     due_date_hard: Optional[datetime] = Field(default=None)  # Final cut-off for Autograder
     late_policy_id: Optional[str] = Field(default=None)  # Reference to policy template

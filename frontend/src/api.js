@@ -295,7 +295,33 @@ export async function getQuestion(id) {
     throw new Error('Question not found');
   }
 
-  return response.json();
+  return await response.json();
+}
+
+/**
+ * Fetch multiple questions by IDs in a single request (more efficient than individual calls)
+ */
+export async function getQuestionsBatch(questionIds) {
+  if (!questionIds || questionIds.length === 0) {
+    return { questions: [], total: 0 };
+  }
+  
+  const headers = await getAuthHeaders();
+  
+  const response = await fetch(`${API_BASE}/api/questions/batch`, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(questionIds),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch questions');
+  }
+
+  return await response.json();
 }
 
 /**
@@ -725,7 +751,7 @@ export async function createAssignment(assignmentData) {
       throw new Error(error.detail || 'Failed to create assignment');
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
@@ -780,7 +806,7 @@ export async function updateAssignment(assignmentId, assignmentData) {
       throw new Error(error.detail || 'Failed to update assignment');
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');

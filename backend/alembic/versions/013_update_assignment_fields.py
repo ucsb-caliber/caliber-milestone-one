@@ -29,13 +29,20 @@ def upgrade():
     op.add_column('assignment', sa.Column('late_policy_id', sa.String(), nullable=True))
     op.add_column('assignment', sa.Column('assignment_questions', sa.Text(), nullable=False, server_default='[]'))
     
-    # Rename due_date to maintain backward compatibility
-    # Keep both due_date and due_date_soft for now (due_date_soft is the new field)
-    # We'll migrate due_date values to due_date_soft
-    op.execute('UPDATE assignment SET due_date_soft = due_date WHERE due_date IS NOT NULL')
+    # Migrate due_date values to due_date_soft if due_date column exists, then drop it
+    # Using a try/except pattern via raw SQL to handle case where column was already dropped
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [col['name'] for col in inspector.get_columns('assignment')]
+    if 'due_date' in columns:
+        op.execute('UPDATE assignment SET due_date_soft = due_date WHERE due_date IS NOT NULL')
+        op.drop_column('assignment', 'due_date')
 
 
 def downgrade():
+    # Re-add the due_date column that was dropped
+    op.add_column('assignment', sa.Column('due_date', sa.DateTime(), nullable=True))
+    
     # Remove new columns
     op.drop_column('assignment', 'assignment_questions')
     op.drop_column('assignment', 'late_policy_id')

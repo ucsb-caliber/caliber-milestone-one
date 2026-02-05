@@ -83,6 +83,17 @@ def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List
     return list(session.exec(statement).all())
 
 
+def get_questions_by_ids(session: Session, question_ids: List[int]) -> List[Question]:
+    """Get multiple questions by their IDs in a single query."""
+    if not question_ids:
+        return []
+    statement = select(Question).where(Question.id.in_(question_ids))
+    questions = list(session.exec(statement).all())
+    # Return in the same order as the input IDs
+    id_to_question = {q.id: q for q in questions}
+    return [id_to_question[qid] for qid in question_ids if qid in id_to_question]
+
+
 def update_question(session: Session, question_id: int, user_id: str, title: Optional[str] = None,
                    text: Optional[str] = None, tags: Optional[str] = None, keywords: Optional[str] = None, 
                    school: Optional[str] = None, course: Optional[str] = None,

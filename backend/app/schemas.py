@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UserResponse(BaseModel):
@@ -170,7 +170,6 @@ class AssignmentResponse(BaseModel):
     type: str
     description: str
     release_date: Optional[datetime]
-    due_date: Optional[datetime]  # Legacy field
     due_date_soft: Optional[datetime]
     due_date_hard: Optional[datetime]
     late_policy_id: Optional[str]
@@ -180,6 +179,15 @@ class AssignmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator('assignment_questions', mode='before')
+    @classmethod
+    def parse_assignment_questions(cls, v):
+        """Parse assignment_questions from JSON string if needed."""
+        import json
+        if isinstance(v, str):
+            return json.loads(v) if v else []
+        return v if v else []
 
     @classmethod
     def from_orm(cls, obj):
@@ -196,7 +204,6 @@ class AssignmentResponse(BaseModel):
             'type': obj.type,
             'description': obj.description,
             'release_date': obj.release_date,
-            'due_date': obj.due_date,
             'due_date_soft': obj.due_date_soft,
             'due_date_hard': obj.due_date_hard,
             'late_policy_id': obj.late_policy_id,
