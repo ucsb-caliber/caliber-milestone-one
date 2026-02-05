@@ -27,7 +27,7 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
         sa.PrimaryKeyConstraint('id'),
-        sa.ForeignKeyConstraint(['instructor_id'], ['user.user_id'], ),
+        sa.ForeignKeyConstraint(['instructor_id'], ['user.user_id'], ondelete='RESTRICT'),
     )
     op.create_index(op.f('ix_course_course_name'), 'course', ['course_name'])
     op.create_index(op.f('ix_course_instructor_id'), 'course', ['instructor_id'])
