@@ -389,3 +389,121 @@ def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
     return True
 
 
+# Assignment CRUD operations
+
+def create_assignment(session: Session, course_id: int, instructor_id: str, instructor_email: str,
+                     title: str, type: str = "Other", description: str = "",
+                     node_id: Optional[str] = None, release_date: Optional[datetime] = None,
+                     due_date_soft: Optional[datetime] = None, due_date_hard: Optional[datetime] = None,
+                     late_policy_id: Optional[str] = None, assignment_questions: Optional[List[int]] = None) -> 'Assignment':
+    """Create a new assignment for a course."""
+    from .models import Assignment
+    import json
+    
+    if assignment_questions is None:
+        assignment_questions = []
+    
+    # Get course name for the 'course' field
+    course = get_course(session, course_id)
+    course_name = course.course_name if course else ""
+    
+    assignment = Assignment(
+        course_id=course_id,
+        instructor_id=instructor_id,
+        instructor_email=instructor_email,
+        course=course_name,
+        title=title,
+        type=type,
+        description=description,
+        node_id=node_id,
+        release_date=release_date,
+        due_date_soft=due_date_soft,
+        due_date_hard=due_date_hard,
+        late_policy_id=late_policy_id,
+        assignment_questions=json.dumps(assignment_questions)
+    )
+    session.add(assignment)
+    session.commit()
+    session.refresh(assignment)
+    return assignment
+
+
+def get_assignment(session: Session, assignment_id: int, instructor_id: Optional[str] = None) -> Optional['Assignment']:
+    """Get an assignment by ID. Optionally filter by instructor_id."""
+    from .models import Assignment
+    
+    assignment = session.get(Assignment, assignment_id)
+    if assignment and instructor_id and assignment.instructor_id != instructor_id:
+        return None
+    return assignment
+
+
+def get_assignments(session: Session, course_id: Optional[int] = None,
+                   instructor_id: Optional[str] = None,
+                   skip: int = 0, limit: int = 100) -> List['Assignment']:
+    """Get list of assignments. Optionally filter by course_id or instructor_id."""
+    from .models import Assignment
+    
+    statement = select(Assignment)
+    if course_id:
+        statement = statement.where(Assignment.course_id == course_id)
+    if instructor_id:
+        statement = statement.where(Assignment.instructor_id == instructor_id)
+    statement = statement.offset(skip).limit(limit)
+    return list(session.exec(statement).all())
+
+
+def update_assignment(session: Session, assignment_id: int, instructor_id: str,
+                     title: Optional[str] = None, type: Optional[str] = None,
+                     description: Optional[str] = None, node_id: Optional[str] = None,
+                     release_date: Optional[datetime] = None, due_date_soft: Optional[datetime] = None,
+                     due_date_hard: Optional[datetime] = None, late_policy_id: Optional[str] = None,
+                     assignment_questions: Optional[List[int]] = None) -> Optional['Assignment']:
+    """Update an existing assignment. Only the instructor can update."""
+    from .models import Assignment
+    import json
+    
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment or assignment.instructor_id != instructor_id:
+        return None
+    
+    if title is not None:
+        trimmed_title = title.strip()
+        if trimmed_title:
+            assignment.title = trimmed_title
+    if type is not None:
+        assignment.type = type
+    if description is not None:
+        assignment.description = description
+    if node_id is not None:
+        assignment.node_id = node_id
+    if release_date is not None:
+        assignment.release_date = release_date
+    if due_date_soft is not None:
+        assignment.due_date_soft = due_date_soft
+    if due_date_hard is not None:
+        assignment.due_date_hard = due_date_hard
+    if late_policy_id is not None:
+        assignment.late_policy_id = late_policy_id
+    if assignment_questions is not None:
+        assignment.assignment_questions = json.dumps(assignment_questions)
+    
+    assignment.updated_at = datetime.utcnow()
+    session.add(assignment)
+    session.commit()
+    session.refresh(assignment)
+    return assignment
+
+
+def delete_assignment(session: Session, assignment_id: int, instructor_id: str) -> bool:
+    """Delete an assignment. Only the instructor can delete."""
+    from .models import Assignment
+    
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment or assignment.instructor_id != instructor_id:
+        return False
+    
+    session.delete(assignment)
+    session.commit()
+    return True
+

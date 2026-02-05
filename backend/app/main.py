@@ -12,11 +12,13 @@ from .models import Question, User, Course
 from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, 
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
                      UserListResponse,
-                     CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, AssignmentResponse)
+                     CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, 
+                     AssignmentResponse, AssignmentCreate, AssignmentUpdate)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions, 
                   update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, 
                   update_user_profile, update_user_preferences, create_course, get_course, get_courses, 
-                  get_courses_count, update_course, delete_course, get_course_students, get_course_assignments)
+                  get_courses_count, update_course, delete_course, get_course_students, get_course_assignments,
+                  create_assignment, get_assignment, get_assignments, update_assignment, delete_assignment)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -669,6 +671,130 @@ def delete_existing_course(
         raise HTTPException(status_code=404, detail="Course not found or you don't have permission to delete it")
 
 
+# Assignment endpoints
+
+@app.post("/api/assignments", response_model=AssignmentResponse, status_code=201)
+def create_new_assignment(
+    assignment_data: AssignmentCreate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Create a new assignment. Requires authentication and instructor status.
+    Only the course instructor can create assignments.
+    """
+    # Verify user is the instructor of the course
+    course = get_course(session, assignment_data.course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    if course.instructor_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the course instructor can create assignments"
+        )
+    
+    # Get user info for instructor email
+    user = get_user_by_user_id(session, user_id)
+    instructor_email = user.email if user else ""
+    
+    # Create the assignment
+    assignment = create_assignment(
+        session=session,
+        course_id=assignment_data.course_id,
+        instructor_id=user_id,
+        instructor_email=instructor_email,
+        title=assignment_data.title,
+        type=assignment_data.type,
+        description=assignment_data.description,
+        node_id=assignment_data.node_id,
+        release_date=assignment_data.release_date,
+        due_date_soft=assignment_data.due_date_soft,
+        due_date_hard=assignment_data.due_date_hard,
+        late_policy_id=assignment_data.late_policy_id,
+        assignment_questions=assignment_data.assignment_questions
+    )
+    
+    return AssignmentResponse.from_orm(assignment)
+
+
+@app.get("/api/assignments/{assignment_id}", response_model=AssignmentResponse)
+def get_assignment_by_id(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Get a specific assignment by ID.
+    Accessible by the course instructor or enrolled students.
+    """
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # Check access: must be instructor or enrolled student
+    course = get_course(session, assignment.course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    is_instructor = course.instructor_id == user_id
+    student_ids = get_course_students(session, assignment.course_id)
+    is_enrolled_student = user_id in student_ids
+    
+    if not (is_instructor or is_enrolled_student):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this assignment"
+        )
+    
+    return AssignmentResponse.from_orm(assignment)
+
+
+@app.put("/api/assignments/{assignment_id}", response_model=AssignmentResponse)
+def update_existing_assignment(
+    assignment_id: int,
+    assignment_data: AssignmentUpdate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Update an existing assignment. Only accessible by the course instructor.
+    """
+    assignment = update_assignment(
+        session=session,
+        assignment_id=assignment_id,
+        instructor_id=user_id,
+        title=assignment_data.title,
+        type=assignment_data.type,
+        description=assignment_data.description,
+        node_id=assignment_data.node_id,
+        release_date=assignment_data.release_date,
+        due_date_soft=assignment_data.due_date_soft,
+        due_date_hard=assignment_data.due_date_hard,
+        late_policy_id=assignment_data.late_policy_id,
+        assignment_questions=assignment_data.assignment_questions
+    )
+    
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to update it")
+    
+    return AssignmentResponse.from_orm(assignment)
+
+
+@app.delete("/api/assignments/{assignment_id}", status_code=204)
+def delete_existing_assignment(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Delete an assignment. Only accessible by the course instructor.
+    """
+    success = delete_assignment(session, assignment_id, instructor_id=user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to delete it")
+
+
 @app.get("/")
 def root():
     """Root endpoint."""
@@ -692,6 +818,10 @@ def root():
             "POST /api/courses",
             "GET /api/courses/{course_id}",
             "PUT /api/courses/{course_id}",
-            "DELETE /api/courses/{course_id}"
+            "DELETE /api/courses/{course_id}",
+            "POST /api/assignments",
+            "GET /api/assignments/{assignment_id}",
+            "PUT /api/assignments/{assignment_id}",
+            "DELETE /api/assignments/{assignment_id}"
         ]
     }
