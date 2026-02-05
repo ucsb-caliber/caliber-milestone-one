@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import Home from './pages/Home.jsx'
 import QuestionBank from './pages/QuestionBank.jsx'
 import CreateQuestion from './pages/CreateQuestion.jsx'
+import EditQuestion from './pages/EditQuestion.jsx'
 import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
 import Onboarding from './pages/Onboarding.jsx'
@@ -274,6 +275,11 @@ function App() {
             {page === 'create-question' && (
               <ProtectedRoute>
                 <CreateQuestion />
+              </ProtectedRoute>
+            )}
+            {page === 'edit-question' && (
+              <ProtectedRoute>
+                <EditQuestion />
               </ProtectedRoute>
             )}
             {page === 'profile' && (

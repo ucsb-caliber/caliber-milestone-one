@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl, getUserById } from '../api';
+import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl, getUserById, getUserInfo } from '../api';
 import { useAuth } from '../AuthContext';
 
 // User Icon Component
@@ -89,6 +89,7 @@ export default function QuestionBank() {
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'table'
   const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
   const [userInfoCache, setUserInfoCache] = useState({}); // Cache for user info
+  const [isTeacher, setIsTeacher] = useState(false); // Track if current user is a teacher
 
   // Pagination stuff
   const [myQuestionsPage, setMyQuestionsPage] = useState(1);
@@ -104,6 +105,22 @@ export default function QuestionBank() {
   useEffect(() => {
     setMyPageInput(myQuestionsPage);
   }, [myQuestionsPage]);
+
+  // Fetch current user info to check if they are a teacher
+  useEffect(() => {
+    async function fetchUserInfo() {
+      try {
+        const info = await getUserInfo();
+        setIsTeacher(info.teacher === true);
+      } catch (err) {
+        console.error('Failed to fetch user info:', err);
+        setIsTeacher(false);
+      }
+    }
+    if (user) {
+      fetchUserInfo();
+    }
+  }, [user]);
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -555,7 +572,7 @@ export default function QuestionBank() {
     );
   };
 
-  const renderQuestionCard = (question, showDeleteButton = true) => {
+  const renderQuestionCard = (question, showDeleteButton = true, showEditButton = false) => {
     let answerChoices = [];
     try {
       answerChoices = JSON.parse(question.answer_choices || '[]');
@@ -822,23 +839,42 @@ export default function QuestionBank() {
           </div>
         )}
 
-        {showDeleteButton && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
-            <button
-              onClick={() => setDeleteConfirm(question.id)}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#dc3545',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: 'bold'
-              }}
-            >
-              Delete
-            </button>
+        {(showDeleteButton || showEditButton) && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.75rem' }}>
+            {showEditButton && (
+              <button
+                onClick={() => window.location.hash = `edit-question?id=${question.id}`}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                Edit
+              </button>
+            )}
+            {showDeleteButton && (
+              <button
+                onClick={() => setDeleteConfirm(question.id)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                Delete
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1138,7 +1174,7 @@ export default function QuestionBank() {
                       gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
                       gap: '4rem 1.5rem'
                     }}>
-                      {paginatedMyQuestions.map(question => renderQuestionCard(question, true))}
+                      {paginatedMyQuestions.map(question => renderQuestionCard(question, true, isTeacher))}
                     </div>
                   </div>
                 )
@@ -1254,8 +1290,10 @@ export default function QuestionBank() {
                       gap: '4rem 1.5rem'
                     }}>
                       {paginatedAllQuestions.map(question => {
-                        const canDelete = user && question.user_id === user.id;
-                        return renderQuestionCard(question, canDelete);
+                        const isOwner = user && question.user_id === user.id;
+                        const canDelete = isOwner;
+                        const canEdit = isOwner && isTeacher;
+                        return renderQuestionCard(question, canDelete, canEdit);
                       })}
                     </div>
                   </div>
