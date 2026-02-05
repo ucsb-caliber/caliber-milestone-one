@@ -667,7 +667,7 @@ def root():
             "POST /api/user/onboarding",
             "GET /api/users/{user_id}",
             "PUT /api/users/{user_id}",
-            "/api/courses",
+            "GET /api/courses",
             "POST /api/courses",
             "GET /api/courses/{course_id}",
             "PUT /api/courses/{course_id}",

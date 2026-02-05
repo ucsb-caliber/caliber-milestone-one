@@ -245,9 +245,12 @@ def update_user_preferences(session: Session, user_id: str, icon_shape: Optional
 # Course CRUD operations
 
 def create_course(session: Session, course_name: str, instructor_id: str, 
-                 school_name: str = "", student_ids: List[str] = []) -> 'Course':
+                 school_name: str = "", student_ids: Optional[List[str]] = None) -> 'Course':
     """Create a new course with optional students."""
     from .models import Course, CourseStudent
+    
+    if student_ids is None:
+        student_ids = []
     
     course = Course(
         course_name=course_name,
