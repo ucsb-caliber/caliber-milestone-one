@@ -371,7 +371,42 @@ export default function CreateQuestion() {
                 />
               ) : (
                 <div style={{ ...styles.input, minHeight: '150px', padding: '12px', border: '1px solid #edf2f7', borderRadius: '8px', overflow: 'auto' }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm, remarkMath]} 
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      code({node, inline, className, children, ...props}) {
+                        return inline ? (
+                          <code style={{
+                            background: '#e9ecef',
+                            padding: '0.2rem 0.4rem',
+                            borderRadius: '3px',
+                            fontSize: '0.9em',
+                            fontFamily: 'monospace'
+                          }} {...props}>
+                            {children}
+                          </code>
+                        ) : (
+                          <pre style={{
+                            background: '#2d2d2d',
+                            color: '#f8f8f2',
+                            padding: '1rem',
+                            borderRadius: '4px',
+                            overflow: 'auto',
+                            fontSize: '0.875rem',
+                            border: '1px solid #444'
+                          }}>
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          </pre>
+                        );
+                      },
+                      p({children}) {
+                        return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
+                      }
+                    }}
+                  >
                     {formData.text || "*Nothing to preview yet...*"}
                   </ReactMarkdown>
                 </div>
