@@ -47,7 +47,7 @@ export default function CourseDashboard() {
 
         setCourse(courseData);
         setAllUsers(usersData.users || []);
-        setIsInstructor(courseData.instructor_id === user?.id || userInfo?.teacher === true);
+        setIsInstructor(courseData.instructor_id === user?.id);
         
         // Initialize form data
         setFormData({
