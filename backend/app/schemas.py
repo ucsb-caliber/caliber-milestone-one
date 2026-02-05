@@ -123,3 +123,53 @@ class QuestionListResponse(BaseModel):
     """Schema for list of questions."""
     questions: List[QuestionResponse]
     total: int
+
+
+class AssignmentResponse(BaseModel):
+    """Schema for assignment response."""
+    id: int
+    course_id: int
+    title: str
+    description: str
+    due_date: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CourseCreate(BaseModel):
+    """Schema for creating a new course."""
+    course_name: str = Field(..., min_length=1)
+    school_name: str = ""
+    student_ids: List[str] = []  # List of Supabase user IDs
+
+
+class CourseUpdate(BaseModel):
+    """Schema for updating a course."""
+    course_name: Optional[str] = None
+    school_name: Optional[str] = None
+    student_ids: Optional[List[str]] = None  # List of Supabase user IDs to replace existing students
+
+
+class CourseResponse(BaseModel):
+    """Schema for course response."""
+    id: int
+    course_name: str
+    school_name: str
+    instructor_id: str
+    instructor_email: Optional[str] = None  # Populated from User table
+    student_ids: List[str] = []  # List of student Supabase user IDs
+    assignments: List[AssignmentResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CourseListResponse(BaseModel):
+    """Schema for list of courses."""
+    courses: List[CourseResponse]
+    total: int
