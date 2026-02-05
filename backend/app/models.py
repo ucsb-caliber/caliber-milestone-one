@@ -41,3 +41,33 @@ class Question(SQLModel, table=True):
     user_id: str = Field(index=True)  # Supabase user ID
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_verified: bool = Field(default=False)  # Whether question in database is verified
+
+
+class CourseStudent(SQLModel, table=True):
+    """Association table for many-to-many relationship between courses and students."""
+    __tablename__ = "course_student"
+    
+    course_id: Optional[int] = Field(default=None, foreign_key="course.id", primary_key=True)
+    student_id: str = Field(foreign_key="user.user_id", primary_key=True)  # Supabase user ID
+    enrolled_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Assignment(SQLModel, table=True):
+    """Assignment model for course assignments."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    course_id: int = Field(foreign_key="course.id", index=True)
+    title: str = Field(index=True)
+    description: str = Field(default="")
+    due_date: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Course(SQLModel, table=True):
+    """Course model stored in the database."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    course_name: str = Field(index=True)
+    school_name: str = Field(default="")
+    instructor_id: str = Field(foreign_key="user.user_id", index=True)  # Supabase user ID of instructor
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

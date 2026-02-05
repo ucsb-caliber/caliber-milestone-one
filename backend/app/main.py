@@ -8,9 +8,15 @@ from sqlmodel import Session, select, func
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
-from .models import Question, User
-from .schemas import QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate
-from .crud import create_question, get_question, get_questions, get_questions_count, get_all_questions, update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, update_user_profile, update_user_preferences
+from .models import Question, User, Course
+from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, 
+                     UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
+                     UserListResponse,
+                     CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, AssignmentResponse)
+from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions, 
+                  update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, 
+                  update_user_profile, update_user_preferences, create_course, get_course, get_courses, 
+                  get_courses_count, update_course, delete_course, get_course_students, get_course_assignments)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -395,6 +401,26 @@ def complete_user_onboarding(
     return user
 
 
+@app.get("/api/users", response_model=UserListResponse)
+def list_users(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    current_user_id: str = Depends(get_current_user)
+):
+    """
+    Get a list of all users. Requires authentication.
+    Used for selecting students to add to courses.
+    """
+    statement = select(User).offset(skip).limit(limit)
+    users = list(session.exec(statement).all())
+    
+    total_statement = select(func.count(User.id))
+    total = session.exec(total_statement).one()
+    
+    return UserListResponse(users=users, total=total)
+
+
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 def get_user_by_id(
     user_id: str,
@@ -445,6 +471,204 @@ def update_user(
     return user
 
 
+# Course endpoints
+
+@app.post("/api/courses", response_model=CourseResponse, status_code=201)
+def create_new_course(
+    course_data: CourseCreate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Create a new course. Requires authentication and teacher status.
+    Only teachers can create courses.
+    """
+    # Check if user is a teacher
+    user = get_user_by_user_id(session, user_id)
+    if not user or not user.teacher:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only teachers can create courses"
+        )
+    
+    # Create the course
+    course = create_course(
+        session=session,
+        course_name=course_data.course_name,
+        school_name=course_data.school_name,
+        instructor_id=user_id,
+        student_ids=course_data.student_ids
+    )
+    
+    # Build response with additional data
+    instructor = get_user_by_user_id(session, course.instructor_id)
+    student_ids = get_course_students(session, course.id)
+    assignments = get_course_assignments(session, course.id)
+    
+    return CourseResponse(
+        id=course.id,
+        course_name=course.course_name,
+        school_name=course.school_name,
+        instructor_id=course.instructor_id,
+        instructor_email=instructor.email if instructor else None,
+        student_ids=student_ids,
+        assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+        created_at=course.created_at,
+        updated_at=course.updated_at
+    )
+
+
+@app.get("/api/courses", response_model=CourseListResponse)
+def list_courses(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Get a list of courses for the authenticated user.
+    Teachers see courses they instruct, students see courses they're enrolled in.
+    """
+    user = get_user_by_user_id(session, user_id)
+    
+    if user and user.teacher:
+        # Teachers see their own courses
+        courses = get_courses(session, instructor_id=user_id, skip=skip, limit=limit)
+        total = get_courses_count(session, instructor_id=user_id)
+    else:
+        # Students see courses they're enrolled in
+        from .models import CourseStudent
+        statement = select(CourseStudent.course_id).where(CourseStudent.student_id == user_id)
+        course_ids = list(session.exec(statement).all())
+        
+        if course_ids:
+            statement = select(Course).where(Course.id.in_(course_ids)).offset(skip).limit(limit)
+            courses = list(session.exec(statement).all())
+            total = len(course_ids)
+        else:
+            courses = []
+            total = 0
+    
+    # Build response with additional data
+    course_responses = []
+    for course in courses:
+        instructor = get_user_by_user_id(session, course.instructor_id)
+        student_ids = get_course_students(session, course.id)
+        assignments = get_course_assignments(session, course.id)
+        
+        course_responses.append(CourseResponse(
+            id=course.id,
+            course_name=course.course_name,
+            school_name=course.school_name,
+            instructor_id=course.instructor_id,
+            instructor_email=instructor.email if instructor else None,
+            student_ids=student_ids,
+            assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+            created_at=course.created_at,
+            updated_at=course.updated_at
+        ))
+    
+    return CourseListResponse(courses=course_responses, total=total)
+
+
+@app.get("/api/courses/{course_id}", response_model=CourseResponse)
+def get_course_by_id(
+    course_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Get a specific course by ID. 
+    Accessible by the instructor or enrolled students.
+    """
+    course = get_course(session, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Check access: must be instructor or enrolled student
+    user = get_user_by_user_id(session, user_id)
+    is_instructor = course.instructor_id == user_id
+    
+    student_ids = get_course_students(session, course_id)
+    is_enrolled_student = user_id in student_ids
+    
+    if not (is_instructor or is_enrolled_student):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this course"
+        )
+    
+    # Build response
+    instructor = get_user_by_user_id(session, course.instructor_id)
+    assignments = get_course_assignments(session, course.id)
+    
+    return CourseResponse(
+        id=course.id,
+        course_name=course.course_name,
+        school_name=course.school_name,
+        instructor_id=course.instructor_id,
+        instructor_email=instructor.email if instructor else None,
+        student_ids=student_ids,
+        assignments=[AssignmentResponse.from_orm(a) for a in assignments],
+        created_at=course.created_at,
+        updated_at=course.updated_at
+    )
+
+
+@app.put("/api/courses/{course_id}", response_model=CourseResponse)
+def update_existing_course(
+    course_id: int,
+    course_data: CourseUpdate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Update an existing course. Only accessible by the course instructor.
+    """
+    course = update_course(
+        session=session,
+        course_id=course_id,
+        instructor_id=user_id,
+        course_name=course_data.course_name,
+        school_name=course_data.school_name,
+        student_ids=course_data.student_ids
+    )
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found or you don't have permission to update it")
+    
+    # Build response
+    instructor = get_user_by_user_id(session, course.instructor_id)
+    student_ids = get_course_students(session, course.id)
+    assignments = get_course_assignments(session, course.id)
+    
+    return CourseResponse(
+        id=course.id,
+        course_name=course.course_name,
+        school_name=course.school_name,
+        instructor_id=course.instructor_id,
+        instructor_email=instructor.email if instructor else None,
+        student_ids=student_ids,
+        assignments=[AssignmentResponse.from_orm(a) for a in assignments],
+        created_at=course.created_at,
+        updated_at=course.updated_at
+    )
+
+
+@app.delete("/api/courses/{course_id}", status_code=204)
+def delete_existing_course(
+    course_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Delete a course. Only accessible by the course instructor.
+    """
+    success = delete_course(session, course_id, instructor_id=user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Course not found or you don't have permission to delete it")
+
+
 @app.get("/")
 def root():
     """Root endpoint."""
@@ -463,6 +687,11 @@ def root():
             "PUT /api/user/preferences",
             "POST /api/user/onboarding",
             "GET /api/users/{user_id}",
-            "PUT /api/users/{user_id}"
+            "PUT /api/users/{user_id}",
+            "GET /api/courses",
+            "POST /api/courses",
+            "GET /api/courses/{course_id}",
+            "PUT /api/courses/{course_id}",
+            "DELETE /api/courses/{course_id}"
         ]
     }

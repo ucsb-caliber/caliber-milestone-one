@@ -7,6 +7,8 @@ import EditQuestion from './pages/EditQuestion.jsx'
 import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
 import Onboarding from './pages/Onboarding.jsx'
+import InstructorCoursesPage from './pages/InstructorCoursesPage.jsx'
+import CourseDashboard from './pages/CourseDashboard.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
@@ -203,6 +205,16 @@ function App() {
                 Question Bank
               </a>
               <a
+                href="#courses"
+                style={{
+                  color: page === 'courses' ? '#fff' : '#aaa',
+                  textDecoration: 'none',
+                  fontWeight: page === 'courses' ? 'bold' : 'normal'
+                }}
+              >
+                Courses
+              </a>
+              <a
                 href="#profile"
                 style={{
                   color: page === 'profile' ? '#fff' : '#aaa',
@@ -290,6 +302,16 @@ function App() {
             {page === 'verify' && (
               <ProtectedRoute>
                 <VerifyQuestions />
+              </ProtectedRoute>
+            )}
+            {page === 'courses' && (
+              <ProtectedRoute>
+                <InstructorCoursesPage />
+              </ProtectedRoute>
+            )}
+            {page.startsWith('course/') && (
+              <ProtectedRoute>
+                <CourseDashboard />
               </ProtectedRoute>
             )}
           </>

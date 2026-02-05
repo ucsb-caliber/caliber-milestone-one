@@ -241,3 +241,151 @@ def update_user_preferences(session: Session, user_id: str, icon_shape: Optional
     session.refresh(user)
     return user
 
+
+# Course CRUD operations
+
+def create_course(session: Session, course_name: str, instructor_id: str, 
+                 school_name: str = "", student_ids: Optional[List[str]] = None) -> 'Course':
+    """Create a new course with optional students."""
+    from .models import Course, CourseStudent
+    
+    if student_ids is None:
+        student_ids = []
+    
+    course = Course(
+        course_name=course_name,
+        school_name=school_name,
+        instructor_id=instructor_id
+    )
+    session.add(course)
+    session.commit()
+    session.refresh(course)
+    
+    # Add students to the course
+    for student_id in student_ids:
+        course_student = CourseStudent(course_id=course.id, student_id=student_id)
+        session.add(course_student)
+    
+    session.commit()
+    session.refresh(course)
+    return course
+
+
+def get_course(session: Session, course_id: int, instructor_id: Optional[str] = None) -> Optional['Course']:
+    """Get a course by ID. Optionally filter by instructor_id."""
+    from .models import Course
+    
+    course = session.get(Course, course_id)
+    if course and instructor_id and course.instructor_id != instructor_id:
+        return None
+    return course
+
+
+def get_courses(session: Session, instructor_id: Optional[str] = None, 
+               skip: int = 0, limit: int = 100) -> List['Course']:
+    """Get list of courses. Optionally filter by instructor_id."""
+    from .models import Course
+    
+    statement = select(Course)
+    if instructor_id:
+        statement = statement.where(Course.instructor_id == instructor_id)
+    statement = statement.offset(skip).limit(limit)
+    return list(session.exec(statement).all())
+
+
+def get_courses_count(session: Session, instructor_id: Optional[str] = None) -> int:
+    """Get total count of courses with optional filters."""
+    from .models import Course
+    
+    statement = select(func.count(Course.id))
+    if instructor_id:
+        statement = statement.where(Course.instructor_id == instructor_id)
+    return session.exec(statement).one()
+
+
+def get_course_students(session: Session, course_id: int) -> List[str]:
+    """Get list of student IDs enrolled in a course."""
+    from .models import CourseStudent
+    
+    statement = select(CourseStudent.student_id).where(CourseStudent.course_id == course_id)
+    return list(session.exec(statement).all())
+
+
+def get_course_assignments(session: Session, course_id: int) -> List['Assignment']:
+    """Get list of assignments for a course."""
+    from .models import Assignment
+    
+    statement = select(Assignment).where(Assignment.course_id == course_id)
+    return list(session.exec(statement).all())
+
+
+def update_course(session: Session, course_id: int, instructor_id: str,
+                 course_name: Optional[str] = None, school_name: Optional[str] = None,
+                 student_ids: Optional[List[str]] = None) -> Optional['Course']:
+    """Update an existing course. Only the instructor can update."""
+    from .models import Course, CourseStudent
+    
+    course = session.get(Course, course_id)
+    if not course or course.instructor_id != instructor_id:
+        return None
+    
+    if course_name is not None:
+        trimmed_course_name = course_name.strip()
+        if trimmed_course_name:
+            course.course_name = trimmed_course_name
+    if school_name is not None:
+        course.school_name = school_name
+    
+    # Update students if provided
+    if student_ids is not None:
+        # Remove existing students
+        statement = select(CourseStudent).where(CourseStudent.course_id == course_id)
+        existing_enrollments = session.exec(statement).all()
+        for enrollment in existing_enrollments:
+            session.delete(enrollment)
+        
+        # Add new students
+        for student_id in student_ids:
+            # Validate that the user exists and is not a teacher before creating association
+            user = session.get(User, student_id)
+            if not user:
+                continue
+            # If the User model defines an "is_teacher" flag, ensure we don't enroll teachers
+            if getattr(user, "is_teacher", False):
+                continue
+            course_student = CourseStudent(course_id=course_id, student_id=student_id)
+            session.add(course_student)
+    
+    course.updated_at = datetime.utcnow()
+    session.add(course)
+    session.commit()
+    session.refresh(course)
+    return course
+
+
+def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
+    """Delete a course. Only the instructor can delete."""
+    from .models import Course, CourseStudent, Assignment
+    
+    course = session.get(Course, course_id)
+    if not course or course.instructor_id != instructor_id:
+        return False
+    
+    # Delete associated students
+    statement = select(CourseStudent).where(CourseStudent.course_id == course_id)
+    enrollments = session.exec(statement).all()
+    for enrollment in enrollments:
+        session.delete(enrollment)
+    
+    # Delete associated assignments
+    statement = select(Assignment).where(Assignment.course_id == course_id)
+    assignments = session.exec(statement).all()
+    for assignment in assignments:
+        session.delete(assignment)
+    
+    # Delete the course
+    session.delete(course)
+    session.commit()
+    return True
+
+
