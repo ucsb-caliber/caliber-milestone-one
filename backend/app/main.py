@@ -512,7 +512,7 @@ def create_new_course(
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.from_orm(a) for a in assignments],
+        assignments=[AssignmentResponse.model_validate(a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
