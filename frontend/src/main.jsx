@@ -9,6 +9,7 @@ import Auth from './pages/Auth.jsx'
 import Onboarding from './pages/Onboarding.jsx'
 import InstructorCoursesPage from './pages/InstructorCoursesPage.jsx'
 import CourseDashboard from './pages/CourseDashboard.jsx'
+import CreateEditAssignment from './pages/CreateEditAssignment.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
@@ -309,9 +310,14 @@ function App() {
                 <InstructorCoursesPage />
               </ProtectedRoute>
             )}
-            {page.startsWith('course/') && (
+            {page.startsWith('course/') && !page.includes('/assignment/') && (
               <ProtectedRoute>
                 <CourseDashboard />
+              </ProtectedRoute>
+            )}
+            {page.includes('/assignment/') && (
+              <ProtectedRoute>
+                <CreateEditAssignment />
               </ProtectedRoute>
             )}
           </>

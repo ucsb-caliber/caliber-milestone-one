@@ -701,3 +701,116 @@ export async function getAllUsers() {
     throw error;
   }
 }
+
+// ============= Assignment API Functions =============
+
+/**
+ * Create a new assignment
+ */
+export async function createAssignment(assignmentData) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assignmentData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create assignment');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get a specific assignment by ID
+ */
+export async function getAssignment(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch assignment');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Update an existing assignment
+ */
+export async function updateAssignment(assignmentId, assignmentData) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assignmentData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update assignment');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete an assignment
+ */
+export async function deleteAssignment(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete assignment');
+    }
+
+    return { success: true };
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}

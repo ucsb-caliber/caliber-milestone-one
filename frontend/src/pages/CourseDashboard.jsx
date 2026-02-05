@@ -498,17 +498,136 @@ export default function CourseDashboard() {
         </div>
       )}
 
-      {/* Assignments Section - Placeholder */}
+      {/* Assignments Section */}
       <div style={{ ...styles.section, marginTop: isEditing ? '2rem' : '0' }}>
-        <h2 style={styles.sectionTitle}>
-          📝 Assignments
-        </h2>
-        <div style={styles.placeholderSection}>
-          <h3 style={styles.placeholderTitle}>Assignments Coming Soon</h3>
-          <p style={styles.placeholderText}>
-            This section will allow you to create, manage, and track assignments for this course.
-          </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={styles.sectionTitle}>
+            📝 Assignments ({course.assignments?.length || 0})
+          </h2>
+          {isInstructor && (
+            <button
+              onClick={() => window.location.hash = `#course/${courseId}/assignment/new`}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '600'
+              }}
+            >
+              + Create Assignment
+            </button>
+          )}
         </div>
+        
+        {course.assignments && course.assignments.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {course.assignments.map(assignment => {
+              const formatDate = (dateStr) => {
+                if (!dateStr) return 'Not set';
+                return new Date(dateStr).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+              };
+
+              return (
+                <div
+                  key={assignment.id}
+                  style={{
+                    padding: '1rem',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                    cursor: isInstructor ? 'pointer' : 'default',
+                    transition: 'all 0.15s'
+                  }}
+                  onClick={() => {
+                    if (isInstructor) {
+                      window.location.hash = `#course/${courseId}/assignment/${assignment.id}`;
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    if (isInstructor) {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (isInstructor) {
+                      e.currentTarget.style.background = '#f9fafb';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: '#111827' }}>
+                          {assignment.title}
+                        </h3>
+                        <span style={{
+                          padding: '0.25rem 0.5rem',
+                          background: '#eef2ff',
+                          color: '#4f46e5',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: '600'
+                        }}>
+                          {assignment.type}
+                        </span>
+                      </div>
+                      {assignment.description && (
+                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                          {assignment.description}
+                        </p>
+                      )}
+                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                        {assignment.due_date_soft && (
+                          <div>
+                            <strong>Due:</strong> {formatDate(assignment.due_date_soft)}
+                          </div>
+                        )}
+                        {assignment.assignment_questions && assignment.assignment_questions.length > 0 && (
+                          <div>
+                            <strong>Questions:</strong> {assignment.assignment_questions.length}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {isInstructor && (
+                      <div style={{ fontSize: '1.25rem', color: '#9ca3af' }}>›</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{
+            background: '#f9fafb',
+            borderRadius: '12px',
+            padding: '3rem',
+            textAlign: 'center',
+            border: '2px dashed #d1d5db'
+          }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', fontWeight: '600', color: '#374151' }}>
+              No Assignments Yet
+            </h3>
+            <p style={{ margin: 0, color: '#6b7280' }}>
+              {isInstructor 
+                ? 'Create your first assignment to get started.'
+                : 'Your instructor hasn\'t created any assignments yet.'
+              }
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
