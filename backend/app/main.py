@@ -11,6 +11,7 @@ from .database import create_db_and_tables, get_session, engine
 from .models import Question, User, Course
 from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, 
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
+                     UserListResponse,
                      CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, AssignmentResponse)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions, 
                   update_question, delete_question, get_user_by_user_id, update_user_roles, get_or_create_user, 
@@ -398,6 +399,26 @@ def complete_user_onboarding(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+@app.get("/api/users", response_model=UserListResponse)
+def list_users(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    current_user_id: str = Depends(get_current_user)
+):
+    """
+    Get a list of all users. Requires authentication.
+    Used for selecting students to add to courses.
+    """
+    statement = select(User).offset(skip).limit(limit)
+    users = list(session.exec(statement).all())
+    
+    total_statement = select(func.count(User.id))
+    total = session.exec(total_statement).one()
+    
+    return UserListResponse(users=users, total=total)
 
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)

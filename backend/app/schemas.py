@@ -48,6 +48,12 @@ class UserOnboardingUpdate(BaseModel):
     teacher: bool = False
 
 
+class UserListResponse(BaseModel):
+    """Schema for list of users."""
+    users: List[UserResponse]
+    total: int
+
+
 class QuestionCreate(BaseModel):
     """Schema for creating a new question."""
     title: str = Field(..., min_length=1)
