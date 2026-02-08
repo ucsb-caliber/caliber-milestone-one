@@ -295,7 +295,33 @@ export async function getQuestion(id) {
     throw new Error('Question not found');
   }
 
-  return response.json();
+  return await response.json();
+}
+
+/**
+ * Fetch multiple questions by IDs in a single request (more efficient than individual calls)
+ */
+export async function getQuestionsBatch(questionIds) {
+  if (!questionIds || questionIds.length === 0) {
+    return { questions: [], total: 0 };
+  }
+  
+  const headers = await getAuthHeaders();
+  
+  const response = await fetch(`${API_BASE}/api/questions/batch`, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(questionIds),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch questions');
+  }
+
+  return await response.json();
 }
 
 /**
@@ -531,6 +557,282 @@ export async function getUserById(userId) {
     }
 
     return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+// ============= Course API Functions =============
+
+/**
+ * Get all courses for the current user
+ */
+export async function getCourses() {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/courses`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch courses');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get a specific course by ID
+ */
+export async function getCourse(courseId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch course');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Create a new course
+ */
+export async function createCourse(courseData) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/courses`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(courseData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create course');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Update an existing course
+ */
+export async function updateCourse(courseId, courseData) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(courseData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update course');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete a course
+ */
+export async function deleteCourse(courseId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete course');
+    }
+
+    return { success: true };
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get all users (for adding students to courses)
+ */
+export async function getAllUsers() {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/users`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch users');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+// ============= Assignment API Functions =============
+
+/**
+ * Create a new assignment
+ */
+export async function createAssignment(assignmentData) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assignmentData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create assignment');
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get a specific assignment by ID
+ */
+export async function getAssignment(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch assignment');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Update an existing assignment
+ */
+export async function updateAssignment(assignmentId, assignmentData) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assignmentData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update assignment');
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete an assignment
+ */
+export async function deleteAssignment(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete assignment');
+    }
+
+    return { success: true };
   } catch (error) {
     if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');

@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UserResponse(BaseModel):
@@ -46,6 +46,12 @@ class UserOnboardingUpdate(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     teacher: bool = False
+
+
+class UserListResponse(BaseModel):
+    """Schema for list of users."""
+    users: List[UserResponse]
+    total: int
 
 
 class QuestionCreate(BaseModel):
@@ -122,4 +128,123 @@ class UploadResponse(BaseModel):
 class QuestionListResponse(BaseModel):
     """Schema for list of questions."""
     questions: List[QuestionResponse]
+    total: int
+
+
+class AssignmentCreate(BaseModel):
+    """Schema for creating a new assignment."""
+    course_id: int
+    title: str = Field(..., min_length=1)
+    type: str = "Other"  # Homework, Quiz, Lab, Exam, Reading, Other
+    description: str = ""
+    node_id: Optional[str] = None
+    release_date: Optional[datetime] = None
+    due_date_soft: Optional[datetime] = None
+    due_date_hard: Optional[datetime] = None
+    late_policy_id: Optional[str] = None
+    assignment_questions: List[int] = []  # List of question IDs
+
+
+class AssignmentUpdate(BaseModel):
+    """Schema for updating an assignment."""
+    title: Optional[str] = None
+    type: Optional[str] = None
+    description: Optional[str] = None
+    node_id: Optional[str] = None
+    release_date: Optional[datetime] = None
+    due_date_soft: Optional[datetime] = None
+    due_date_hard: Optional[datetime] = None
+    late_policy_id: Optional[str] = None
+    assignment_questions: Optional[List[int]] = None
+
+
+class AssignmentResponse(BaseModel):
+    """Schema for assignment response."""
+    id: int
+    node_id: Optional[str]
+    instructor_email: str
+    instructor_id: str
+    course: str
+    course_id: int
+    title: str
+    type: str
+    description: str
+    release_date: Optional[datetime]
+    due_date_soft: Optional[datetime]
+    due_date_hard: Optional[datetime]
+    late_policy_id: Optional[str]
+    assignment_questions: List[int]  # Parsed from JSON string
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+    @field_validator('assignment_questions', mode='before')
+    @classmethod
+    def parse_assignment_questions(cls, v):
+        """Parse assignment_questions from JSON string if needed."""
+        import json
+        if isinstance(v, str):
+            return json.loads(v) if v else []
+        return v if v else []
+
+    @classmethod
+    def from_orm(cls, obj):
+        """Custom from_orm to parse assignment_questions JSON string."""
+        import json
+        data = {
+            'id': obj.id,
+            'node_id': obj.node_id,
+            'instructor_email': obj.instructor_email,
+            'instructor_id': obj.instructor_id,
+            'course': obj.course,
+            'course_id': obj.course_id,
+            'title': obj.title,
+            'type': obj.type,
+            'description': obj.description,
+            'release_date': obj.release_date,
+            'due_date_soft': obj.due_date_soft,
+            'due_date_hard': obj.due_date_hard,
+            'late_policy_id': obj.late_policy_id,
+            'assignment_questions': json.loads(obj.assignment_questions) if obj.assignment_questions else [],
+            'created_at': obj.created_at,
+            'updated_at': obj.updated_at,
+        }
+        return cls(**data)
+
+
+class CourseCreate(BaseModel):
+    """Schema for creating a new course."""
+    course_name: str = Field(..., min_length=1)
+    school_name: str = ""
+    student_ids: List[str] = []  # List of Supabase user IDs
+
+
+class CourseUpdate(BaseModel):
+    """Schema for updating a course."""
+    course_name: Optional[str] = None
+    school_name: Optional[str] = None
+    student_ids: Optional[List[str]] = None  # List of Supabase user IDs to replace existing students
+
+
+class CourseResponse(BaseModel):
+    """Schema for course response."""
+    id: int
+    course_name: str
+    school_name: str
+    instructor_id: str
+    instructor_email: Optional[str] = None  # Populated from User table
+    student_ids: List[str] = []  # List of student Supabase user IDs
+    assignments: List[AssignmentResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CourseListResponse(BaseModel):
+    """Schema for list of courses."""
+    courses: List[CourseResponse]
     total: int

@@ -4,8 +4,11 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl, getUserById } from '../api';
+import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl, getUserById, getUserInfo } from '../api';
 import { useAuth } from '../AuthContext';
+import QuestionCard from '../components/QuestionCard';
+import CollapsibleSection from '../components/CollapsibleSection';
+import QuestionTable from '../components/QuestionTable';
 
 // User Icon Component
 const UserIcon = ({ userInfo, size = 40 }) => {
@@ -70,9 +73,8 @@ const UserIcon = ({ userInfo, size = 40 }) => {
   );
 };
 
-// Color palettes for keyword and tag bubbles
+// Color palette for keyword bubbles
 const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
-const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
 // Sort function for newest-first ordering
 const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
@@ -86,23 +88,28 @@ export default function QuestionBank() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'table'
   const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
   const [userInfoCache, setUserInfoCache] = useState({}); // Cache for user info
+  const [isTeacher, setIsTeacher] = useState(false); // Track if current user is a teacher
 
-  // Pagination stuff
-  const [myQuestionsPage, setMyQuestionsPage] = useState(1);
-  const [allQuestionsPage, setAllQuestionsPage] = useState(1);
-  const [pageInput, setPageInput] = useState(allQuestionsPage);
-  const [myPageInput, setMyPageInput] = useState(myQuestionsPage);
   const itemsPerPage = 6;
 
+  // Fetch current user info to check if they are a teacher
   useEffect(() => {
-    setPageInput(allQuestionsPage);
-  }, [allQuestionsPage]);
-
-  useEffect(() => {
-    setMyPageInput(myQuestionsPage);
-  }, [myQuestionsPage]);
+    async function fetchUserInfo() {
+      try {
+        const info = await getUserInfo();
+        setIsTeacher(info.teacher === true);
+      } catch (err) {
+        console.error('Failed to fetch user info:', err);
+        setIsTeacher(false);
+      }
+    }
+    if (user) {
+      fetchUserInfo();
+    }
+  }, [user]);
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -182,311 +189,80 @@ export default function QuestionBank() {
     }
   };
 
-  const renderQuestionCard = (question, showDeleteButton = true) => {
-    let answerChoices = [];
-    try {
-      answerChoices = JSON.parse(question.answer_choices || '[]');
-    } catch (e) {
-      answerChoices = [];
-    }
-
-    const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
-    const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-    const userInfo = userInfoCache[question.user_id];
-
+  // Wrapper function to render table view using QuestionTable component
+  const renderTableView = (questions) => {
     return (
-      <div
-        key={question.id}
-        style={{
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          padding: '1.25rem',
-          background: 'white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative',
-          breakInside: 'avoid',
-          marginBottom: '1.5rem'
-        }}
-      >
-        {/* User Icon in top right corner */}
-        <div style={{ position: 'absolute', top: '1rem', right: '1rem' }}>
-          <UserIcon userInfo={userInfo} size={40} />
-        </div>
-
-        {/* Header with school, course, and metadata */}
-        <div style={{ marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #eee', paddingRight: '50px' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            {question.school && (
-              <span style={{
-                background: '#6f42c1',
-                color: 'white',
-                padding: '0.25rem 0.75rem',
-                borderRadius: '4px',
-                fontSize: '0.875rem',
-                fontWeight: 'bold'
-              }}>
-                {question.school}
-              </span>
-            )}
-            {question.course && (
-              <span style={{
-                background: '#007bff',
-                color: 'white',
-                padding: '0.25rem 0.75rem',
-                borderRadius: '4px',
-                fontSize: '0.875rem',
-                fontWeight: 'bold'
-              }}>
-                {question.course}
-              </span>
-            )}
-            {question.course_type && (
-              <span style={{
-                background: '#17a2b8',
-                color: 'white',
-                padding: '0.25rem 0.75rem',
-                borderRadius: '4px',
-                fontSize: '0.875rem'
-              }}>
-                {question.course_type}
-              </span>
-            )}
-          </div>
-
-          {/* Question title sits just above keywords */}
-          
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            {question.question_type && (
-              <span style={{
-                background: '#fd7e14',
-                color: 'white',
-                padding: '0.2rem 0.6rem',
-                borderRadius: '4px',
-                fontSize: '0.75rem'
-              }}>
-                {question.question_type.toUpperCase()}
-              </span>
-            )}
-            {question.blooms_taxonomy && (
-              <span style={{
-                background: '#20c997',
-                color: 'white',
-                padding: '0.2rem 0.6rem',
-                borderRadius: '4px',
-                fontSize: '0.75rem'
-              }}>
-                Bloom's: {question.blooms_taxonomy}
-              </span>
-            )}
-          </div>
-          
-          {question.title && (
-            <div style={{ marginBottom: '0.9rem', marginTop: '0.35rem' }}>
-              <h3 style={{
-                margin: 0,
-                fontSize: '1.5rem',
-                fontWeight: 800,
-                color: '#222',
-                lineHeight: '1.35',
-                letterSpacing: '-0.01em'
-              }}>
-                {question.title}
-              </h3>
-            </div>
-          )}
-
-          {keywords.length > 0 && (
-            <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-              <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
-              {keywords.map((keyword, index) => (
-                <span
-                  key={index}
-                  style={{
-                    background: KEYWORD_COLORS[index % KEYWORD_COLORS.length],
-                    color: '#333',
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '12px',
-                    fontSize: '0.7rem',
-                    fontWeight: '500',
-                    border: '1px solid rgba(0,0,0,0.1)'
-                  }}
-                >
-                  {keyword}
-                </span>
-              ))}
-            </div>
-          )}
-          {tags.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-              <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Tags:</strong>
-              {tags.map((tag, index) => (
-                <span
-                  key={index}
-                  style={{
-                    background: TAG_COLORS[index % TAG_COLORS.length],
-                    color: '#333',
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '12px',
-                    fontSize: '0.7rem',
-                    fontWeight: '500',
-                    border: '1px solid rgba(0,0,0,0.1)'
-                  }}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Question text with markdown rendering */}
-        <div style={{ marginBottom: '1rem' }}>
-          {(() => {
-            try {
-              return (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={{
-                    code({node, inline, className, children, ...props}) {
-                      return inline ? (
-                        <code style={{
-                          background: '#e9ecef',
-                          padding: '0.2rem 0.4rem',
-                          borderRadius: '3px',
-                          fontSize: '0.9em',
-                          fontFamily: 'monospace'
-                        }} {...props}>
-                          {children}
-                        </code>
-                      ) : (
-                        <pre style={{
-                          background: '#2d2d2d',
-                          color: '#f8f8f2',
-                          padding: '1rem',
-                          borderRadius: '4px',
-                          overflow: 'auto',
-                          fontSize: '0.875rem',
-                          border: '1px solid #444'
-                        }}>
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        </pre>
-                      );
-                    },
-                    p({children}) {
-                      return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
-                    }
-                  }}
-                >
-                  {question.text}
-                </ReactMarkdown>
-              );
-            } catch (error) {
-              console.error('Error rendering markdown:', error);
-              return <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5' }}>{question.text}</p>;
-            }
-          })()}
-        </div>
-
-        {/* Image if present */}
-        {question.image_url && imageUrls[question.id] && (
-          <div style={{ marginBottom: '1rem' }}>
-            <img 
-              src={imageUrls[question.id]} 
-              alt="Question illustration" 
-              style={{ 
-                maxWidth: '100%', 
-                height: 'auto',
-                maxHeight: '300px',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                objectFit: 'contain'
-              }} 
-            />
-          </div>
-        )}
-
-        {/* Answer choices */}
-        {answerChoices.length > 0 && (
-          <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
-              Answer Choices:
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {answerChoices.map((choice, index) => {
-                const isCorrect = choice === question.correct_answer;
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: '4px',
-                      border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
-                      background: isCorrect ? '#d4edda' : '#f8f9fa',
-                      fontSize: '0.875rem',
-                      position: 'relative'
-                    }}
-                  >
-                    {choice}
-                    {isCorrect && (
-                      <span style={{
-                        marginLeft: '0.5rem',
-                        color: '#28a745',
-                        fontWeight: 'bold',
-                        fontSize: '0.75rem'
-                      }}>
-                        ✓ Correct
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {showDeleteButton && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
-            <button
-              onClick={() => setDeleteConfirm(question.id)}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#dc3545',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: 'bold'
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        )}
-      </div>
+      <QuestionTable
+        questions={questions}
+        userInfoCache={userInfoCache}
+        user={user}
+        onDelete={(id) => setDeleteConfirm(id)}
+      />
     );
   };
 
-  // Fix paginated slices
-  const paginatedMyQuestions = myQuestions.slice(
-    (myQuestionsPage - 1) * itemsPerPage,
-    myQuestionsPage * itemsPerPage
-  );
-  const paginatedAllQuestions = allQuestions.slice(
-    (allQuestionsPage - 1) * itemsPerPage,
-    allQuestionsPage * itemsPerPage
-  );
+  const renderQuestionCard = (question, showDeleteButton = true, showEditButton = false) => {
+    return (
+      <QuestionCard
+        key={question.id}
+        question={question}
+        userInfo={userInfoCache[question.user_id]}
+        imageUrl={imageUrls[question.id]}
+        showDeleteButton={showDeleteButton}
+        showEditButton={showEditButton}
+        onDelete={(id) => setDeleteConfirm(id)}
+      />
+    );
+  };
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2 style={{ margin: 0 }}>Question Bank</h2>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {/* View Toggle */}
+          <div style={{
+            display: 'flex',
+            background: '#f3f4f6',
+            borderRadius: '8px',
+            padding: '0.25rem',
+            gap: '0.25rem'
+          }}>
+            <button
+              onClick={() => setViewMode('card')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: viewMode === 'card' ? 'white' : 'transparent',
+                color: viewMode === 'card' ? '#111827' : '#6b7280',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: viewMode === 'card' ? '600' : '500',
+                boxShadow: viewMode === 'card' ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Card View
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: viewMode === 'table' ? 'white' : 'transparent',
+                color: viewMode === 'table' ? '#111827' : '#6b7280',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: viewMode === 'table' ? '600' : '500',
+                boxShadow: viewMode === 'table' ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Table View
+            </button>
+          </div>
           <button
             onClick={() => window.location.hash = 'create-question'}
             style={{
@@ -494,11 +270,14 @@ export default function QuestionBank() {
               background: '#28a745',
               color: 'white',
               border: 'none',
-              borderRadius: '4px',
+              borderRadius: '8px',
               cursor: 'pointer',
               fontSize: '1rem',
-              fontWeight: 'bold'
+              fontWeight: '600',
+              transition: 'background-color 0.15s ease'
             }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#218838'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#28a745'}
           >
             + Create New Question
           </button>
@@ -510,10 +289,15 @@ export default function QuestionBank() {
               background: '#007bff',
               color: 'white',
               border: 'none',
-              borderRadius: '4px',
+              borderRadius: '8px',
               cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '1rem'
+              fontSize: '1rem',
+              fontWeight: '500',
+              opacity: loading ? 0.6 : 1,
+              transition: 'all 0.15s ease'
             }}
+            onMouseEnter={(e) => !loading && (e.currentTarget.style.backgroundColor = '#0056b3')}
+            onMouseLeave={(e) => !loading && (e.currentTarget.style.backgroundColor = '#007bff')}
           >
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
@@ -594,31 +378,19 @@ export default function QuestionBank() {
         <>
           {/* My Questions Section */}
           <div style={{ marginBottom: '4rem' }}>
-            <h3 
-              onClick={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
-              style={{ 
-                marginBottom: '1rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '2px solid #007bff',
-                color: '#333',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                userSelect: 'none'
-              }}
-            >
-              <span style={{ 
-                transition: 'transform 0.2s',
-                transform: myQuestionsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                display: 'inline-block'
-              }}>
-                ▼
-              </span>
-              My Questions ({myQuestions.length})
-            </h3>
-            {!myQuestionsCollapsed && (
-              myQuestions.length === 0 ? (
+            <CollapsibleSection
+              title="My Questions"
+              questions={myQuestions}
+              isCollapsed={myQuestionsCollapsed}
+              onToggle={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
+              borderColor="#007bff"
+              viewMode={viewMode}
+              itemsPerPage={itemsPerPage}
+              renderTableView={renderTableView}
+              renderQuestionCard={renderQuestionCard}
+              user={user}
+              isTeacher={isTeacher}
+              emptyStateContent={
                 <div style={{
                   padding: '2rem',
                   background: '#f8f9fa',
@@ -642,109 +414,25 @@ export default function QuestionBank() {
                     Create Your First Question
                   </button>
                 </div>
-              ) : (
-                <div>
-                  {/* My Questions Pagination */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '15px' }}>
-                    <button
-                      onClick={() => setMyQuestionsPage(prev => Math.max(prev - 1, 1))}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        background: '#007bff',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: myQuestionsPage === 1 ? 'not-allowed' : 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                      disabled={myQuestionsPage === 1}
-                    >
-                      ←
-                    </button>
-                    <span>
-                      Page
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={myPageInput}
-                        onChange={(e) => {
-                          const onlyDigits = e.target.value.replace(/\D/g, "");
-                          setMyPageInput(onlyDigits);
-                        }}
-                        onBlur={() => {
-                          const maxPage = Math.ceil(myQuestions.length / itemsPerPage);
-                          const num = Number(myPageInput);
-                          if (num >= 1 && num <= maxPage) setMyQuestionsPage(num);
-                          else setMyPageInput(myQuestionsPage);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const maxPage = Math.ceil(myQuestions.length / itemsPerPage);
-                            const num = Number(myPageInput);
-                            if (num >= 1 && num <= maxPage) setMyQuestionsPage(num);
-                            else setMyPageInput(myQuestionsPage);
-                          }
-                        }}
-                        style={{ width: "30px", margin: "0 6px", textAlign: "center" }}
-                      />
-                      of {Math.ceil(myQuestions.length / itemsPerPage)}
-                    </span>
-                    <button
-                      onClick={() => setMyQuestionsPage(prev => Math.min(prev + 1, Math.ceil(myQuestions.length / itemsPerPage)))}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        background: '#007bff',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: myQuestionsPage === Math.ceil(myQuestions.length / itemsPerPage) ? 'not-allowed' : 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                      disabled={myQuestionsPage === Math.ceil(myQuestions.length / itemsPerPage)}
-                    >
-                      →
-                    </button>
-                  </div>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                    gap: '4rem 1.5rem'
-                  }}>
-                    {paginatedMyQuestions.map(question => renderQuestionCard(question, true))}
-                  </div>
-                </div>
-              )
-            )}
+              }
+            />
           </div>
 
-          {/* All Questions Section - unchanged */}
+          {/* All Questions Section */}
           <div>
-            <h3 
-              onClick={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
-              style={{ 
-                marginBottom: '1rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '2px solid #28a745',
-                color: '#333',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                userSelect: 'none'
-              }}
-            >
-              <span style={{ 
-                transition: 'transform 0.2s',
-                transform: allQuestionsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                display: 'inline-block'
-              }}>
-                ▼
-              </span>
-              All Questions ({allQuestions.length})
-            </h3>
-            {!allQuestionsCollapsed && (
-              allQuestions.length === 0 ? (
+            <CollapsibleSection
+              title="All Questions"
+              questions={allQuestions}
+              isCollapsed={allQuestionsCollapsed}
+              onToggle={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
+              borderColor="#28a745"
+              viewMode={viewMode}
+              itemsPerPage={itemsPerPage}
+              renderTableView={renderTableView}
+              renderQuestionCard={renderQuestionCard}
+              user={user}
+              isTeacher={isTeacher}
+              emptyStateContent={
                 <div style={{
                   padding: '2rem',
                   background: '#f8f9fa',
@@ -754,82 +442,8 @@ export default function QuestionBank() {
                 }}>
                   <p>No questions found in the system.</p>
                 </div>
-              ) : (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '15px' }}>
-                    <button
-                      onClick={() => setAllQuestionsPage(prev => Math.max(prev - 1, 1))}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        background: '#007bff',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: allQuestionsPage === 1 ? 'not-allowed' : 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                      disabled={allQuestionsPage === 1}
-                    >
-                      ←
-                    </button>
-                    <span>
-                      Page
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={pageInput}
-                        onChange={(e) => {
-                          const onlyDigits = e.target.value.replace(/\D/g, "");
-                          setPageInput(onlyDigits);
-                        }}
-                        onBlur={() => {
-                          const maxPage = Math.ceil(allQuestions.length / itemsPerPage);
-                          const num = Number(pageInput);
-                          if (num >= 1 && num <= maxPage) setAllQuestionsPage(num);
-                          else setPageInput(allQuestionsPage);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const maxPage = Math.ceil(allQuestions.length / itemsPerPage);
-                            const num = Number(pageInput);
-                            if (num >= 1 && num <= maxPage) setAllQuestionsPage(num);
-                            else setPageInput(allQuestionsPage);
-                          }
-                        }}
-                        style={{ width: "30px", margin: "0 6px", textAlign: "center" }}
-                      />
-                      of {Math.ceil(allQuestions.length / itemsPerPage)}
-                    </span>
-                    <button
-                      onClick={() => setAllQuestionsPage(prev => Math.min(prev + 1, Math.ceil(allQuestions.length / itemsPerPage)))}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        background: '#007bff',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage) ? 'not-allowed' : 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                      disabled={allQuestionsPage === Math.ceil(allQuestions.length / itemsPerPage)}
-                    >
-                      →
-                    </button>
-                  </div>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                    gap: '4rem 1.5rem'
-                  }}>
-                    {paginatedAllQuestions.map(question => {
-                      const canDelete = user && question.user_id === user.id;
-                      return renderQuestionCard(question, canDelete);
-                    })}
-                  </div>
-                </div>
-              )
-            )}
+              }
+            />
           </div>
         </>
       )}

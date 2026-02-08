@@ -83,6 +83,17 @@ def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List
     return list(session.exec(statement).all())
 
 
+def get_questions_by_ids(session: Session, question_ids: List[int]) -> List[Question]:
+    """Get multiple questions by their IDs in a single query."""
+    if not question_ids:
+        return []
+    statement = select(Question).where(Question.id.in_(question_ids))
+    questions = list(session.exec(statement).all())
+    # Return in the same order as the input IDs
+    id_to_question = {q.id: q for q in questions}
+    return [id_to_question[qid] for qid in question_ids if qid in id_to_question]
+
+
 def update_question(session: Session, question_id: int, user_id: str, title: Optional[str] = None,
                    text: Optional[str] = None, tags: Optional[str] = None, keywords: Optional[str] = None, 
                    school: Optional[str] = None, course: Optional[str] = None,
@@ -240,4 +251,270 @@ def update_user_preferences(session: Session, user_id: str, icon_shape: Optional
     session.commit()
     session.refresh(user)
     return user
+
+
+# Course CRUD operations
+
+def create_course(session: Session, course_name: str, instructor_id: str, 
+                 school_name: str = "", student_ids: Optional[List[str]] = None) -> 'Course':
+    """Create a new course with optional students."""
+    from .models import Course, CourseStudent
+    
+    if student_ids is None:
+        student_ids = []
+    
+    course = Course(
+        course_name=course_name,
+        school_name=school_name,
+        instructor_id=instructor_id
+    )
+    session.add(course)
+    session.commit()
+    session.refresh(course)
+    
+    # Add students to the course
+    for student_id in student_ids:
+        course_student = CourseStudent(course_id=course.id, student_id=student_id)
+        session.add(course_student)
+    
+    session.commit()
+    session.refresh(course)
+    return course
+
+
+def get_course(session: Session, course_id: int, instructor_id: Optional[str] = None) -> Optional['Course']:
+    """Get a course by ID. Optionally filter by instructor_id."""
+    from .models import Course
+    
+    course = session.get(Course, course_id)
+    if course and instructor_id and course.instructor_id != instructor_id:
+        return None
+    return course
+
+
+def get_courses(session: Session, instructor_id: Optional[str] = None, 
+               skip: int = 0, limit: int = 100) -> List['Course']:
+    """Get list of courses. Optionally filter by instructor_id."""
+    from .models import Course
+    
+    statement = select(Course)
+    if instructor_id:
+        statement = statement.where(Course.instructor_id == instructor_id)
+    statement = statement.offset(skip).limit(limit)
+    return list(session.exec(statement).all())
+
+
+def get_courses_count(session: Session, instructor_id: Optional[str] = None) -> int:
+    """Get total count of courses with optional filters."""
+    from .models import Course
+    
+    statement = select(func.count(Course.id))
+    if instructor_id:
+        statement = statement.where(Course.instructor_id == instructor_id)
+    return session.exec(statement).one()
+
+
+def get_course_students(session: Session, course_id: int) -> List[str]:
+    """Get list of student IDs enrolled in a course."""
+    from .models import CourseStudent
+    
+    statement = select(CourseStudent.student_id).where(CourseStudent.course_id == course_id)
+    return list(session.exec(statement).all())
+
+
+def get_course_assignments(session: Session, course_id: int) -> List['Assignment']:
+    """Get list of assignments for a course."""
+    from .models import Assignment
+    
+    statement = select(Assignment).where(Assignment.course_id == course_id)
+    return list(session.exec(statement).all())
+
+
+def update_course(session: Session, course_id: int, instructor_id: str,
+                 course_name: Optional[str] = None, school_name: Optional[str] = None,
+                 student_ids: Optional[List[str]] = None) -> Optional['Course']:
+    """Update an existing course. Only the instructor can update."""
+    from .models import Course, CourseStudent
+    
+    course = session.get(Course, course_id)
+    if not course or course.instructor_id != instructor_id:
+        return None
+    
+    if course_name is not None:
+        trimmed_course_name = course_name.strip()
+        if trimmed_course_name:
+            course.course_name = trimmed_course_name
+    if school_name is not None:
+        course.school_name = school_name
+    
+    # Update students if provided
+    if student_ids is not None:
+        # Remove existing students
+        statement = select(CourseStudent).where(CourseStudent.course_id == course_id)
+        existing_enrollments = session.exec(statement).all()
+        for enrollment in existing_enrollments:
+            session.delete(enrollment)
+        
+        # Add new students
+        for student_id in student_ids:
+            # Validate that the user exists and is not a teacher before creating association
+            user = session.get(User, student_id)
+            if not user:
+                continue
+            # If the User model defines an "is_teacher" flag, ensure we don't enroll teachers
+            if getattr(user, "is_teacher", False):
+                continue
+            course_student = CourseStudent(course_id=course_id, student_id=student_id)
+            session.add(course_student)
+    
+    course.updated_at = datetime.utcnow()
+    session.add(course)
+    session.commit()
+    session.refresh(course)
+    return course
+
+
+def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
+    """Delete a course. Only the instructor can delete."""
+    from .models import Course, CourseStudent, Assignment
+    
+    course = session.get(Course, course_id)
+    if not course or course.instructor_id != instructor_id:
+        return False
+    
+    # Delete associated students
+    statement = select(CourseStudent).where(CourseStudent.course_id == course_id)
+    enrollments = session.exec(statement).all()
+    for enrollment in enrollments:
+        session.delete(enrollment)
+    
+    # Delete associated assignments
+    statement = select(Assignment).where(Assignment.course_id == course_id)
+    assignments = session.exec(statement).all()
+    for assignment in assignments:
+        session.delete(assignment)
+    
+    # Delete the course
+    session.delete(course)
+    session.commit()
+    return True
+
+
+# Assignment CRUD operations
+
+def create_assignment(session: Session, course_id: int, instructor_id: str, instructor_email: str,
+                     title: str, type: str = "Other", description: str = "",
+                     node_id: Optional[str] = None, release_date: Optional[datetime] = None,
+                     due_date_soft: Optional[datetime] = None, due_date_hard: Optional[datetime] = None,
+                     late_policy_id: Optional[str] = None, assignment_questions: Optional[List[int]] = None) -> 'Assignment':
+    """Create a new assignment for a course."""
+    from .models import Assignment
+    import json
+    
+    if assignment_questions is None:
+        assignment_questions = []
+    
+    # Get course name for the 'course' field
+    course = get_course(session, course_id)
+    course_name = course.course_name if course else ""
+    
+    assignment = Assignment(
+        course_id=course_id,
+        instructor_id=instructor_id,
+        instructor_email=instructor_email,
+        course=course_name,
+        title=title,
+        type=type,
+        description=description,
+        node_id=node_id,
+        release_date=release_date,
+        due_date_soft=due_date_soft,
+        due_date_hard=due_date_hard,
+        late_policy_id=late_policy_id,
+        assignment_questions=json.dumps(assignment_questions)
+    )
+    session.add(assignment)
+    session.commit()
+    session.refresh(assignment)
+    return assignment
+
+
+def get_assignment(session: Session, assignment_id: int, instructor_id: Optional[str] = None) -> Optional['Assignment']:
+    """Get an assignment by ID. Optionally filter by instructor_id."""
+    from .models import Assignment
+    
+    assignment = session.get(Assignment, assignment_id)
+    if assignment and instructor_id and assignment.instructor_id != instructor_id:
+        return None
+    return assignment
+
+
+def get_assignments(session: Session, course_id: Optional[int] = None,
+                   instructor_id: Optional[str] = None,
+                   skip: int = 0, limit: int = 100) -> List['Assignment']:
+    """Get list of assignments. Optionally filter by course_id or instructor_id."""
+    from .models import Assignment
+    
+    statement = select(Assignment)
+    if course_id:
+        statement = statement.where(Assignment.course_id == course_id)
+    if instructor_id:
+        statement = statement.where(Assignment.instructor_id == instructor_id)
+    statement = statement.offset(skip).limit(limit)
+    return list(session.exec(statement).all())
+
+
+def update_assignment(session: Session, assignment_id: int, instructor_id: str,
+                     title: Optional[str] = None, type: Optional[str] = None,
+                     description: Optional[str] = None, node_id: Optional[str] = None,
+                     release_date: Optional[datetime] = None, due_date_soft: Optional[datetime] = None,
+                     due_date_hard: Optional[datetime] = None, late_policy_id: Optional[str] = None,
+                     assignment_questions: Optional[List[int]] = None) -> Optional['Assignment']:
+    """Update an existing assignment. Only the instructor can update."""
+    from .models import Assignment
+    import json
+    
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment or assignment.instructor_id != instructor_id:
+        return None
+    
+    if title is not None:
+        trimmed_title = title.strip()
+        if trimmed_title:
+            assignment.title = trimmed_title
+    if type is not None:
+        assignment.type = type
+    if description is not None:
+        assignment.description = description
+    if node_id is not None:
+        assignment.node_id = node_id
+    if release_date is not None:
+        assignment.release_date = release_date
+    if due_date_soft is not None:
+        assignment.due_date_soft = due_date_soft
+    if due_date_hard is not None:
+        assignment.due_date_hard = due_date_hard
+    if late_policy_id is not None:
+        assignment.late_policy_id = late_policy_id
+    if assignment_questions is not None:
+        assignment.assignment_questions = json.dumps(assignment_questions)
+    
+    assignment.updated_at = datetime.utcnow()
+    session.add(assignment)
+    session.commit()
+    session.refresh(assignment)
+    return assignment
+
+
+def delete_assignment(session: Session, assignment_id: int, instructor_id: str) -> bool:
+    """Delete an assignment. Only the instructor can delete."""
+    from .models import Assignment
+    
+    assignment = session.get(Assignment, assignment_id)
+    if not assignment or assignment.instructor_id != instructor_id:
+        return False
+    
+    session.delete(assignment)
+    session.commit()
+    return True
 

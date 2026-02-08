@@ -3,13 +3,19 @@ import ReactDOM from 'react-dom/client'
 import Home from './pages/Home.jsx'
 import QuestionBank from './pages/QuestionBank.jsx'
 import CreateQuestion from './pages/CreateQuestion.jsx'
+import EditQuestion from './pages/EditQuestion.jsx'
 import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
 import Onboarding from './pages/Onboarding.jsx'
+import InstructorCoursesPage from './pages/InstructorCoursesPage.jsx'
+import CourseDashboard from './pages/CourseDashboard.jsx'
+import CreateEditAssignment from './pages/CreateEditAssignment.jsx'
+import AssignmentView from './pages/AssignmentView.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 import Users from './pages/Users.jsx'
+import "./index.css";
 
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -213,6 +219,15 @@ function App() {
                 }}>
                   Users
                   </a>
+                href="#courses"
+                style={{
+                  color: page === 'courses' ? '#fff' : '#aaa',
+                  textDecoration: 'none',
+                  fontWeight: page === 'courses' ? 'bold' : 'normal'
+                }}
+              >
+                Courses
+              </a>
               <a
                 href="#profile"
                 style={{
@@ -288,6 +303,11 @@ function App() {
                 <CreateQuestion />
               </ProtectedRoute>
             )}
+            {page === 'edit-question' && (
+              <ProtectedRoute>
+                <EditQuestion />
+              </ProtectedRoute>
+            )}
             {page === 'profile' && (
               <ProtectedRoute>
                 <Profile />
@@ -302,6 +322,26 @@ function App() {
             <ProtectedRoute>
               <Users currentUser={userInfo} />
               </ProtectedRoute>)}
+            {page === 'courses' && (
+              <ProtectedRoute>
+                <InstructorCoursesPage />
+              </ProtectedRoute>
+            )}
+            {page.startsWith('course/') && !page.includes('/assignment/') && (
+              <ProtectedRoute>
+                <CourseDashboard />
+              </ProtectedRoute>
+            )}
+            {page.includes('/assignment/') && page.includes('/view') && (
+              <ProtectedRoute>
+                <AssignmentView />
+              </ProtectedRoute>
+            )}
+            {page.includes('/assignment/') && (page.includes('/edit') || page.includes('/new')) && (
+              <ProtectedRoute>
+                <CreateEditAssignment />
+              </ProtectedRoute>
+            )}
           </>
         )}
       </main>
