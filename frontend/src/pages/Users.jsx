@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import { supabase } from "@supabase/supabase-js";
+
 
 // Make sure API_BASE matches your backend URL
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
@@ -13,31 +15,51 @@ export default function Users({ currentUser }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // ===== UPDATED MOCK DATA TO MATCH SCREENSHOT =====
-    const mockUsers = [
-      { id: 1, firstName: "Pavani", lastName: "Kshirsagar", email: "pkshirsa@ucsb.edu", isAdmin: true, isInstructor: false },
-      { id: 2, firstName: "Jane", lastName: "Doe", email: "jane@example.com", isAdmin: false, isInstructor: true },
-    ];
-  
-    // Simulate API delay
-    setTimeout(() => {
-      setUsers(mockUsers);
-      setLoading(false);
-    }, 500);
+    const fetchRealUsers = async () => {
+      try {
+        setLoading(true);
+        // Fetch directly from Supabase 'user' table
+        const { data, error: sbError } = await supabase
+          .from('user') 
+          .select('*');
+        
+        if (sbError) throw sbError;
+        setUsers(data || []);
+      } catch (err) {
+        setError("Database Error: " + err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRealUsers();
   }, []);
 
-  const updateUserRole = async (id, field, value) => {
+  const updateUserRole = async (targetUserId, field, newValue) => {
     try {
-      const res = await fetch(`${API_BASE}/api/users/${id}`, {
-        method: "PATCH",
+      const targetUser = users.find(u => u.user_id === targetUserId);
+      
+      const updatePayload = {
+        admin: field === "admin" ? newValue : targetUser.admin,
+        teacher: field === "teacher" ? newValue : targetUser.teacher
+      };
+
+      const res = await fetch(`${API_BASE}/api/users/${targetUserId}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: value }),
+        body: JSON.stringify(updatePayload),
       });
-      if (!res.ok) throw new Error("Update failed");
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Update failed");
+      }
+
       const updatedUser = await res.json();
-      setUsers(users.map(u => (u.id === id ? updatedUser : u)));
+      
+      setUsers(users.map(u => (u.user_id === targetUserId ? updatedUser : u)));
     } catch (err) {
-      setError(err.message);
+      alert("Unauthorized: Only admins can change roles.");
     }
   };
 
@@ -45,7 +67,7 @@ export default function Users({ currentUser }) {
     <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
       <h1 style={{ fontSize: "2.5rem", marginBottom: "1.5rem", fontWeight: "500" }}>Users</h1>
       
-      {loading && <p>Loading users…</p>}
+      {loading && <p>Connecting to Supabase...</p>}
       {error && <div style={{ color: "red", marginBottom: "1rem" }}>{error}</div>}
 
       {!loading && users.length > 0 && (
@@ -61,32 +83,36 @@ export default function Users({ currentUser }) {
             </tr>
           </thead>
           <tbody>
-            {users.map(user => (
-              <tr key={user.id} style={{ borderTop: "1px solid #dee2e6" }}>
-                <td style={cellStyle}>{user.id}</td>
-                <td style={cellStyle}>{user.firstName}</td>
-                <td style={cellStyle}>{user.lastName}</td>
+            {users.map((user, index) => (
+              <tr key={user.user_id} style={{ borderTop: "1px solid #dee2e6" }}>
+                <td style={cellStyle}>{index + 1}</td>
+                <td style={cellStyle}>{user.first_name || "—"}</td>
+                <td style={cellStyle}>{user.last_name || "—"}</td>
                 <td style={cellStyle}>{user.email}</td>
+                
+                {/* Admin Toggle */}
                 <td style={cellStyle}>
                   {userIsAdmin ? (
                     <input
                       type="checkbox"
-                      checked={user.isAdmin}
-                      onChange={() => updateUserRole(user.id, "isAdmin", !user.isAdmin)}
+                      checked={user.admin}
+                      onChange={(e) => updateUserRole(user.user_id, "admin", e.target.checked)}
                     />
                   ) : (
-                    <span>{user.isAdmin ? "true" : "false"}</span>
+                    <span>{user.admin ? "true" : "false"}</span>
                   )}
                 </td>
+
+                {/* Instructor (Teacher) Toggle */}
                 <td style={cellStyle}>
                   {userIsAdmin ? (
                     <input
                       type="checkbox"
-                      checked={user.isInstructor}
-                      onChange={() => updateUserRole(user.id, "isInstructor", !user.isInstructor)}
+                      checked={user.teacher}
+                      onChange={(e) => updateUserRole(user.user_id, "teacher", e.target.checked)}
                     />
                   ) : (
-                    <span>{user.isInstructor ? "true" : "false"}</span>
+                    <span>{user.teacher ? "true" : "false"}</span>
                   )}
                 </td>
               </tr>
@@ -98,7 +124,6 @@ export default function Users({ currentUser }) {
   );
 }
 
-// Simple styling object for the table cells to match the screenshot spacing
 const cellStyle = {
   padding: "12px 15px",
   fontSize: "1.1rem",
