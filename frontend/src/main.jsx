@@ -216,9 +216,11 @@ function App() {
                 color: page === 'users' ? '#fff' : '#aaa',
                 textDecoration: 'none',
                 fontWeight: page === 'users' ? 'bold' : 'normal'
-                }}>
-                  Users
-                  </a>
+                }}
+              >
+                Users
+              </a>
+              <a
                 href="#courses"
                 style={{
                   color: page === 'courses' ? '#fff' : '#aaa',
