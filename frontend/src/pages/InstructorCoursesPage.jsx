@@ -16,6 +16,7 @@ export default function InstructorCoursesPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
   
   // Form state
   const [formData, setFormData] = useState({
@@ -172,6 +173,24 @@ export default function InstructorCoursesPage() {
   // Filter out teachers from student list (students only)
   const availableStudents = allUsers.filter(u => !u.teacher && u.user_id !== user?.id);
 
+  
+
+  // Select all students
+  const handleSelectAll = () => {
+    setFormData(prev => ({
+      ...prev,
+      student_ids: [...availableStudents.map(u => u.user_id)]
+    }));
+  };
+
+  // Deselect all students
+  const handleDeselectAll = () => {
+    setFormData(prev => ({
+      ...prev,
+      student_ids: []
+    }));
+  };
+
   // Styles
   const styles = {
     container: {
@@ -245,7 +264,7 @@ export default function InstructorCoursesPage() {
     },
     label: {
       display: 'block',
-      marginBottom: '0.5rem',
+      marginBottom: '0.2rem',
       fontWeight: '600',
       color: '#374151',
       fontSize: '0.875rem'
@@ -258,25 +277,61 @@ export default function InstructorCoursesPage() {
       fontSize: '1rem',
       boxSizing: 'border-box'
     },
-    studentList: {
-      maxHeight: '200px',
-      overflowY: 'auto',
+    studentsContainer: {
+      border: '1px solid #e5e7eb',
+      borderRadius: '12px',
+      padding: '12px',
+      backgroundColor: '#ffffff',
+    },
+    searchInput: {
+      width: '100%',
+      padding: '0.625rem 0.75rem',
       border: '1px solid #d1d5db',
       borderRadius: '6px',
-      padding: '0.5rem'
+      fontSize: '0.875rem',
+      boxSizing: 'border-box',
+      marginTop: '-0.5rem',
+      marginBottom: '0.5rem',
+      background: '#ffffff',
+      transition: 'border-color 0.15s'
+    },
+    bulkActionButtons: {
+      display: 'flex',
+      alignItems: 'center',
+      marginBottom: '0.5rem'
+    },
+    bulkActionBtn: {
+      background: 'none',
+      border: 'none',
+      padding: 0,
+      color: '#4f46e5',
+      cursor: 'pointer',
+      fontSize: '0.875rem',
+      fontWeight: 500,
+      textDecoration: 'none',
+      marginBottom: '0rem', 
+      marginRight: 'auto'
+    },
+    studentList: {
+      maxHeight: '200px',
+      minHeight: '200px',
+      overflow: 'auto',
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px'
     },
     studentItem: {
       display: 'flex',
       alignItems: 'center',
-      padding: '0.5rem',
-      borderRadius: '4px',
+      gap: '0.75rem',
+      padding: '0.75rem',
+      borderBottom: '1px solid #f3f4f6',
       cursor: 'pointer',
-      transition: 'background-color 0.15s'
+      transition: 'background 0.15s'
     },
     checkbox: {
-      marginRight: '0.75rem',
       width: '18px',
-      height: '18px'
+      height: '18px',
+      cursor: 'pointer'
     },
     buttonGroup: {
       display: 'flex',
@@ -326,110 +381,177 @@ export default function InstructorCoursesPage() {
   };
 
   // Render create/edit modal
-  const renderFormModal = (isEdit = false) => (
-    <div style={styles.modal}>
-      <div style={styles.modalContent}>
-        <h2 style={styles.modalTitle}>
-          {isEdit ? 'Edit Course' : 'Create New Course'}
-        </h2>
-        
-        {formError && (
-          <div style={styles.errorBanner}>{formError}</div>
-        )}
+  const renderFormModal = (isEdit) => {
+    const handleBackdropClick = (e) => {
+      if (e.target === e.currentTarget) {
+        setShowEditModal(false);
+        setShowCreateModal(false);
+        resetForm();
+        setSelectedCourse(null);
+        setStudentSearchQuery(''); // Reset search when closing
+      }
+    };
 
-        <form onSubmit={isEdit ? handleEditCourse : handleCreateCourse}>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Course Name *</label>
-            <input
-              type="text"
-              value={formData.course_name}
-              onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
-              style={styles.input}
-              placeholder="e.g., Introduction to Computer Science"
-              disabled={formLoading}
-            />
-          </div>
+    // Filter students based on search query
+    const filteredStudents = availableStudents.filter(u => {
+      if (!studentSearchQuery.trim()) return true;
+      
+      const searchLower = studentSearchQuery.toLowerCase();
+      const displayName = getUserDisplayName(u).toLowerCase();
+      const email = (u.email || '').toLowerCase();
+      
+      return displayName.includes(searchLower) || email.includes(searchLower);
+    });
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>School Name</label>
-            <input
-              type="text"
-              value={formData.school_name}
-              onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
-              style={styles.input}
-              placeholder="e.g., UCSB"
-              disabled={formLoading}
-            />
-          </div>
+    return (
+      <div style={styles.modal} onClick={handleBackdropClick}>
+        <div style={styles.modalContent}>
+          <h2 style={styles.modalTitle}>{isEdit ? 'Edit Course' : 'Create Course'}</h2>
+          
+          {formError && (
+            <div style={styles.errorBanner}>{formError}</div>
+          )}
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Add Students ({formData.student_ids.length} selected)
-            </label>
-            {availableStudents.length === 0 ? (
-              <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>
-                No students available to add.
-              </p>
-            ) : (
-              <div style={styles.studentList}>
-                {availableStudents.map(u => (
-                  <div
-                    key={u.user_id}
-                    style={{
-                      ...styles.studentItem,
-                      background: formData.student_ids.includes(u.user_id) ? '#eef2ff' : 'transparent'
+          <form onSubmit={isEdit ? handleEditCourse : handleCreateCourse}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Course Name *</label>
+              <input
+                type="text"
+                value={formData.course_name}
+                onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
+                style={styles.input}
+                placeholder="e.g., Introduction to Computer Science"
+                disabled={formLoading}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>School Name</label>
+              <input
+                type="text"
+                value={formData.school_name}
+                onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
+                style={styles.input}
+                placeholder="e.g., UCSB"
+                disabled={formLoading}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <div style={styles.bulkActionButtons}>
+                <label style={styles.label}>
+                  Students ({formData.student_ids.length} selected)
+                </label>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleSelectAll}
+                    disabled={formLoading}
+                    style={styles.bulkActionBtn}
+                    onMouseEnter={(e) => {
+                      if (!formLoading) e.currentTarget.style.background = '#ffffffff';
                     }}
-                    onClick={() => !formLoading && toggleStudent(u.user_id)}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#ffffffff';
+                    }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={formData.student_ids.includes(u.user_id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleStudent(u.user_id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={styles.checkbox}
-                      disabled={formLoading}
-                    />
-                    <span style={{ fontSize: '0.875rem', color: '#374151' }}>
-                      {getUserDisplayName(u)}
-                    </span>
-                  </div>
-                ))}
+                    Select All
+                  </button>
+                  <span style={{ display: 'inline-block', marginBottom: '0.2rem' }}>|</span>
+                  <button
+                    type="button"
+                    onClick={handleDeselectAll}
+                    disabled={formLoading}
+                    style={styles.bulkActionBtn}
+                    onMouseEnter={(e) => {
+                      if (!formLoading) e.currentTarget.style.background = '#ffffffff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#ffffffff';
+                    }}
+                  >
+                    Clear Selection
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
 
-          <div style={styles.buttonGroup}>
-            <button
-              type="button"
-              onClick={() => {
-                isEdit ? setShowEditModal(false) : setShowCreateModal(false);
-                resetForm();
-                setSelectedCourse(null);
-              }}
-              style={styles.cancelBtn}
-              disabled={formLoading}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              style={{
-                ...styles.submitBtn,
-                opacity: formLoading ? 0.6 : 1,
-                cursor: formLoading ? 'not-allowed' : 'pointer'
-              }}
-              disabled={formLoading}
-            >
-              {formLoading ? 'Saving...' : (isEdit ? 'Save Changes' : 'Create Course')}
-            </button>
-          </div>
-        </form>
+              {availableStudents.length === 0 ? (
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>
+                  No students available to add.
+                </p>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={studentSearchQuery}
+                    onChange={(e) => setStudentSearchQuery(e.target.value)}
+                    style={styles.searchInput}
+                    placeholder="Search for students..."
+                    disabled={formLoading}
+                  />
+                  <div style={styles.studentList}>
+                    {filteredStudents.map(u => (
+                      <div
+                        key={u.user_id}
+                        style={{
+                          ...styles.studentItem,
+                          background: formData.student_ids.includes(u.user_id) ? '#eef2ff' : 'transparent'
+                        }}
+                        onClick={() => !formLoading && toggleStudent(u.user_id)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.student_ids.includes(u.user_id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleStudent(u.user_id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={styles.checkbox}
+                          disabled={formLoading}
+                        />
+                        <span style={{ fontSize: '0.875rem', color: '#374151' }}>
+                          {getUserDisplayName(u)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={styles.buttonGroup}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setShowCreateModal(false);
+                  resetForm();
+                  setSelectedCourse(null);
+                  setStudentSearchQuery('');
+                }}
+                style={styles.cancelBtn}
+                disabled={formLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                style={{
+                  ...styles.submitBtn,
+                  opacity: formLoading ? 0.6 : 1,
+                  cursor: formLoading ? 'not-allowed' : 'pointer'
+                }}
+                disabled={formLoading}
+              >
+                {formLoading ? (isEdit ? 'Saving...' : 'Creating...') : (isEdit ? 'Save Changes' : 'Create Course')}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Render delete confirmation modal
   const renderDeleteModal = () => (

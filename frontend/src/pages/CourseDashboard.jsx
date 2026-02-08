@@ -10,8 +10,8 @@ export default function CourseDashboard() {
   const [error, setError] = useState('');
   const [isInstructor, setIsInstructor] = useState(false);
   
-  // Edit mode
-  const [isEditing, setIsEditing] = useState(false);
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState({
     course_name: '',
     school_name: '',
@@ -19,6 +19,7 @@ export default function CourseDashboard() {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
   
   // Delete assignment modal
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
@@ -93,6 +94,17 @@ export default function CourseDashboard() {
   // Available students (non-teachers, excluding current user)
   const availableStudents = allUsers.filter(u => !u.teacher && u.user_id !== user?.id);
 
+  // Filter students based on search query
+  const filteredStudents = availableStudents.filter(u => {
+    if (!studentSearchQuery.trim()) return true;
+    
+    const searchLower = studentSearchQuery.toLowerCase();
+    const displayName = getUserDisplayName(u).toLowerCase();
+    const email = (u.email || '').toLowerCase();
+    
+    return displayName.includes(searchLower) || email.includes(searchLower);
+  });
+
   // Toggle student selection
   const toggleStudent = (studentId) => {
     setFormData(prev => ({
@@ -136,7 +148,8 @@ export default function CourseDashboard() {
     try {
       const updated = await updateCourse(courseId, formData);
       setCourse(updated);
-      setIsEditing(false);
+      setShowEditModal(false);
+      setStudentSearchQuery('');
     } catch (err) {
       setSaveError(err.message || 'Failed to save changes');
     } finally {
@@ -151,8 +164,25 @@ export default function CourseDashboard() {
       school_name: course.school_name || '',
       student_ids: course.student_ids || []
     });
-    setIsEditing(false);
+    setShowEditModal(false);
+    setStudentSearchQuery('');
     setSaveError('');
+  };
+
+  // Select all students
+  const handleSelectAll = () => {
+    setFormData(prev => ({
+      ...prev,
+      student_ids: [...availableStudents.map(u => u.user_id)]
+    }));
+  };
+
+  // Deselect all students
+  const handleDeselectAll = () => {
+    setFormData(prev => ({
+      ...prev,
+      student_ids: []
+    }));
   };
 
   const styles = {
@@ -255,31 +285,15 @@ export default function CourseDashboard() {
       fontWeight: '600',
       fontSize: '0.875rem'
     },
-    placeholderSection: {
-      background: '#f9fafb',
-      borderRadius: '12px',
-      padding: '3rem',
-      textAlign: 'center',
-      border: '2px dashed #d1d5db'
-    },
-    placeholderTitle: {
-      margin: '0 0 0.5rem 0',
-      fontSize: '1.25rem',
-      fontWeight: '600',
-      color: '#374151'
-    },
-    placeholderText: {
-      margin: 0,
-      color: '#6b7280'
-    },
     formGroup: {
       marginBottom: '1rem'
     },
     label: {
       display: 'block',
-      marginBottom: '0.5rem',
+      marginBottom: '0.2rem',
       fontWeight: '600',
-      color: '#374151'
+      color: '#374151',
+      fontSize: '0.875rem'
     },
     input: {
       width: '100%',
@@ -289,8 +303,44 @@ export default function CourseDashboard() {
       fontSize: '1rem',
       boxSizing: 'border-box'
     },
+    studentsContainer: {
+      border: '1px solid #e5e7eb',
+      borderRadius: '12px',
+      padding: '12px',
+      backgroundColor: '#ffffff',
+    },
+    searchInput: {
+      width: '100%',
+      padding: '0.625rem 0.75rem',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      fontSize: '0.875rem',
+      boxSizing: 'border-box',
+      marginTop: '-0.5rem',
+      marginBottom: '0.5rem',
+      background: '#ffffff',
+      transition: 'border-color 0.15s'
+    },
+    bulkActionButtons: {
+      display: 'flex',
+      alignItems: 'center',
+      marginBottom: '0.5rem'
+    },
+    bulkActionBtn: {
+      background: 'none',
+      border: 'none',
+      padding: 0,
+      color: '#4f46e5',
+      cursor: 'pointer',
+      fontSize: '0.875rem',
+      fontWeight: 500,
+      textDecoration: 'none',
+      marginBottom: '0rem', 
+      marginRight: 'auto'
+    },
     studentList: {
       maxHeight: '200px',
+      minHeight: '200px',
       overflow: 'auto',
       border: '1px solid #e5e7eb',
       borderRadius: '8px'
@@ -312,6 +362,7 @@ export default function CourseDashboard() {
     buttonGroup: {
       display: 'flex',
       gap: '0.75rem',
+      justifyContent: 'flex-end',
       marginTop: '1.5rem'
     },
     saveBtn: {
@@ -340,7 +391,191 @@ export default function CourseDashboard() {
       padding: '0.75rem 1rem',
       borderRadius: '8px',
       marginBottom: '1rem'
+    },
+    modal: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    },
+    modalContent: {
+      background: 'white',
+      padding: '2rem',
+      borderRadius: '12px',
+      maxWidth: '500px',
+      width: '90%',
+      maxHeight: '80vh',
+      overflow: 'auto'
+    },
+    modalTitle: {
+      margin: '0 0 1.5rem 0',
+      fontSize: '1.25rem',
+      fontWeight: '700'
+    },
+    noResults: {
+      padding: '1rem',
+      textAlign: 'center',
+      color: '#6b7280',
+      fontSize: '0.875rem',
+      fontStyle: 'italic'
     }
+  };
+
+  // Render edit modal
+  const renderEditModal = () => {
+    const handleBackdropClick = (e) => {
+      if (e.target === e.currentTarget) {
+        handleCancel();
+      }
+    };
+    return (
+      <div style={styles.modal} onClick={handleBackdropClick}>
+        <div style={styles.modalContent}>
+          <h2 style={styles.modalTitle}>Edit Course</h2>
+          
+          {saveError && (
+            <div style={styles.error}>{saveError}</div>
+          )}
+
+          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Course Name *</label>
+              <input
+                type="text"
+                value={formData.course_name}
+                onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
+                style={styles.input}
+                placeholder="e.g., Introduction to Computer Science"
+                disabled={saving}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>School Name</label>
+              <input
+                type="text"
+                value={formData.school_name}
+                onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
+                style={styles.input}
+                placeholder="e.g., UCSB"
+                disabled={saving}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <div style={styles.bulkActionButtons}>
+                <label style={styles.label}>
+                  Students ({formData.student_ids.length} selected)
+                </label>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleSelectAll}
+                    disabled={saving}
+                    style={styles.bulkActionBtn}
+                    onMouseEnter={(e) => {
+                      if (!saving) e.currentTarget.style.background = '#ffffffff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#ffffffff';
+                    }}
+                  >
+                    Select All
+                  </button>
+                  <span style={{ display: 'inline-block', marginBottom: '0.2rem' }}>|</span>
+                  <button
+                    type="button"
+                    onClick={handleDeselectAll}
+                    disabled={saving}
+                    style={styles.bulkActionBtn}
+                    onMouseEnter={(e) => {
+                      if (!saving) e.currentTarget.style.background = '#ffffffff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#ffffffff';
+                    }}
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              </div>
+
+              {availableStudents.length === 0 ? (
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>
+                  No students available to add.
+                </p>
+              ) : (
+                <>
+                  <input
+                      type="text"
+                      value={studentSearchQuery}
+                      onChange={(e) => setStudentSearchQuery(e.target.value)}
+                      style={styles.searchInput}
+                      placeholder="Search for students..."
+                      disabled={saving}
+                  />
+                  <div style={styles.studentList}>
+                    {filteredStudents.map(u => (
+                      <div
+                        key={u.user_id}
+                        style={{
+                          ...styles.studentItem,
+                          background: formData.student_ids.includes(u.user_id) ? '#eef2ff' : 'transparent'
+                        }}
+                        onClick={() => !saving && toggleStudent(u.user_id)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.student_ids.includes(u.user_id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleStudent(u.user_id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={styles.checkbox}
+                          disabled={saving}
+                        />
+                        <span style={{ fontSize: '0.875rem', color: '#374151' }}>
+                          {getUserDisplayName(u)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={styles.buttonGroup}>
+              <button
+                type="button"
+                onClick={handleCancel}
+                style={styles.cancelBtn}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                style={{
+                  ...styles.saveBtn,
+                  opacity: saving ? 0.6 : 1,
+                  cursor: saving ? 'not-allowed' : 'pointer'
+                }}
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -376,42 +611,20 @@ export default function CourseDashboard() {
       {/* Header */}
       <div style={styles.header}>
         <div>
-          {isEditing ? (
-            <input
-              type="text"
-              value={formData.course_name}
-              onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
-              style={{ ...styles.input, fontSize: '1.5rem', fontWeight: '700' }}
-              placeholder="Course Name"
-            />
-          ) : (
-            <h1 style={styles.title}>{course.course_name}</h1>
-          )}
+          <h1 style={styles.title}>{course.course_name}</h1>
           <p style={styles.subtitle}>
-            {isEditing ? (
-              <input
-                type="text"
-                value={formData.school_name}
-                onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
-                style={{ ...styles.input, marginTop: '0.5rem' }}
-                placeholder="School Name (optional)"
-              />
-            ) : (
-              course.school_name || 'No school specified'
-            )}
+            {course.school_name || 'No school specified'}
           </p>
         </div>
-        {isInstructor && !isEditing && (
+        {isInstructor && (
           <button 
             style={styles.editBtn}
-            onClick={() => setIsEditing(true)}
+            onClick={() => setShowEditModal(true)}
           >
             Edit Course
           </button>
         )}
       </div>
-
-      {saveError && <div style={styles.error}>{saveError}</div>}
 
       {/* Course Info Section */}
       <div style={styles.section}>
@@ -438,92 +651,32 @@ export default function CourseDashboard() {
           👥 Enrolled Students ({course.student_ids?.length || 0})
         </h2>
         
-        {isEditing ? (
-          <div>
-            <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.875rem' }}>
-              Click to select/deselect students ({formData.student_ids.length} selected)
-            </p>
-            {availableStudents.length === 0 ? (
-              <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>No students available to add.</p>
-            ) : (
-              <div style={styles.studentList}>
-                {availableStudents.map(u => (
-                  <div
-                    key={u.user_id}
-                    style={{
-                      ...styles.studentItem,
-                      background: formData.student_ids.includes(u.user_id) ? '#eef2ff' : 'transparent'
-                    }}
-                    onClick={() => toggleStudent(u.user_id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.student_ids.includes(u.user_id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleStudent(u.user_id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={styles.checkbox}
-                    />
-                    <span style={{ fontSize: '0.875rem', color: '#374151' }}>
-                      {getUserDisplayName(u)}
-                    </span>
+        {course.student_ids?.length > 0 ? (
+          <div style={styles.studentGrid}>
+            {course.student_ids.map(studentId => {
+              const student = allUsers.find(u => u.user_id === studentId);
+              const initials = student?.first_name && student?.last_name
+                ? `${student.first_name[0]}${student.last_name[0]}`
+                : '?';
+              return (
+                <div key={studentId} style={styles.studentCard}>
+                  <div style={styles.studentAvatar}>
+                    {initials.toUpperCase()}
                   </div>
-                ))}
-              </div>
-            )}
+                  <span style={{ fontSize: '0.875rem', color: '#374151' }}>
+                    {getStudentInfo(studentId)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <>
-            {course.student_ids?.length > 0 ? (
-              <div style={styles.studentGrid}>
-                {course.student_ids.map(studentId => {
-                  const student = allUsers.find(u => u.user_id === studentId);
-                  const initials = student?.first_name && student?.last_name
-                    ? `${student.first_name[0]}${student.last_name[0]}`
-                    : '?';
-                  return (
-                    <div key={studentId} style={styles.studentCard}>
-                      <div style={styles.studentAvatar}>
-                        {initials.toUpperCase()}
-                      </div>
-                      <span style={{ fontSize: '0.875rem', color: '#374151' }}>
-                        {getStudentInfo(studentId)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p style={{ color: '#6b7280', margin: 0 }}>No students enrolled yet.</p>
-            )}
-          </>
+          <p style={{ color: '#6b7280', margin: 0 }}>No students enrolled yet.</p>
         )}
       </div>
 
-      {/* Edit Actions */}
-      {isEditing && (
-        <div style={styles.buttonGroup}>
-          <button
-            style={styles.saveBtn}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-          <button
-            style={styles.cancelBtn}
-            onClick={handleCancel}
-            disabled={saving}
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-
       {/* Assignments Section */}
-      <div style={{ ...styles.section, marginTop: isEditing ? '2rem' : '0' }}>
+      <div style={styles.section}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h2 style={styles.sectionTitle}>
             📝 Assignments ({course.assignments?.length || 0})
@@ -752,6 +905,9 @@ export default function CourseDashboard() {
           </div>
         </div>
       )}
+
+      {/* Edit Course Modal */}
+      {showEditModal && renderEditModal()}
     </div>
   );
 }
