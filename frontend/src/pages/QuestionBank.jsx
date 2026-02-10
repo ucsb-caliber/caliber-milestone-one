@@ -13,7 +13,7 @@ import QuestionTable from '../components/QuestionTable';
 // User Icon Component
 const UserIcon = ({ userInfo, size = 40 }) => {
   if (!userInfo) return null;
-  
+
   const getInitials = () => {
     if (userInfo.initials) return userInfo.initials;
     if (userInfo.first_name && userInfo.last_name) {
@@ -24,17 +24,17 @@ const UserIcon = ({ userInfo, size = 40 }) => {
     }
     return 'U';
   };
-  
+
   const getName = () => {
     if (userInfo.first_name && userInfo.last_name) {
       return `${userInfo.first_name} ${userInfo.last_name}`;
     }
     return userInfo.email || userInfo.user_id;
   };
-  
+
   const shape = userInfo.icon_shape || 'circle';
   const color = userInfo.icon_color || '#4f46e5';
-  
+
   const getShapeStyles = () => {
     if (shape === 'circle') {
       return { borderRadius: '50%' };
@@ -42,13 +42,13 @@ const UserIcon = ({ userInfo, size = 40 }) => {
       return { borderRadius: '4px' };
     } else if (shape === 'hex') {
       // True hexagon using clip-path
-      return { 
+      return {
         clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
       };
     }
     return { borderRadius: '50%' };
   };
-  
+
   return (
     <div
       style={{
@@ -128,17 +128,17 @@ export default function QuestionBank() {
       const verifiedAllQuestions = (allData.questions || [])
         .filter(q => q.is_verified === true)
         .sort(sortByNewest);
-      
+
       setMyQuestions(verifiedMyQuestions);
       setAllQuestions(verifiedAllQuestions);
-      
+
       // Generate signed URLs for all questions with images
       const allQuestionsWithImages = [...verifiedMyQuestions, ...verifiedAllQuestions].filter(q => q.image_url);
       const urlPromises = allQuestionsWithImages.map(async (q) => {
         const signedUrl = await getImageSignedUrl(q.image_url);
         return { id: q.id, url: signedUrl };
       });
-      
+
       const urls = await Promise.all(urlPromises);
       const urlMap = {};
       urls.forEach(({ id, url }) => {
@@ -147,7 +147,7 @@ export default function QuestionBank() {
         }
       });
       setImageUrls(urlMap);
-      
+
       // Fetch user info for all questions
       const uniqueUserIds = [...new Set([...verifiedMyQuestions, ...verifiedAllQuestions].map(q => q.user_id))];
       const userPromises = uniqueUserIds.map(async (userId) => {
@@ -159,7 +159,7 @@ export default function QuestionBank() {
           return { userId, userInfo: null };
         }
       });
-      
+
       const users = await Promise.all(userPromises);
       const userMap = {};
       users.forEach(({ userId, userInfo }) => {

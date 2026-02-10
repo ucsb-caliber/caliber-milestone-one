@@ -85,7 +85,7 @@ const Badge = ({ value, color = '#e5e7eb' }) => {
   if (!value || !value.trim()) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.875rem' }}>-</span>;
   }
-  
+
   return (
     <span
       style={{
@@ -116,7 +116,7 @@ const TagList = ({ tagsString }) => {
   if (tags.length === 0) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>-</span>;
   }
-  
+
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
       {tags.map((tag, index) => (
@@ -143,9 +143,19 @@ const TagList = ({ tagsString }) => {
 /**
  * Table Row Component
  */
-const TableRow = ({ question, userInfo, canDelete, onDelete }) => {
+const TableRow = ({
+  question,
+  userInfo,
+  canDelete,
+  onDelete,
+
+  selectable = false,
+  selected = false,
+  onToggle
+
+}) => {
   const qid = getQID(question);
-  
+
   return (
     <tr
       style={{
@@ -155,6 +165,19 @@ const TableRow = ({ question, userInfo, canDelete, onDelete }) => {
       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
     >
+
+      {selectable && (
+        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggle(question.id)}
+            style={{ cursor: 'pointer' }}
+          />
+        </td>
+      )}
+
+
       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
         <UserProfileIcon userInfo={userInfo} />
       </td>
@@ -237,7 +260,16 @@ const TableRow = ({ question, userInfo, canDelete, onDelete }) => {
  * @param {Object} user - Current logged-in user
  * @param {function} onDelete - Callback when delete button is clicked
  */
-export default function QuestionTable({ questions, userInfoCache, user, onDelete }) {
+export default function QuestionTable({
+  questions,
+  userInfoCache,
+  user,
+  onDelete,
+
+  selectable = false,
+  selectedQuestionIds = [],
+  onToggleQuestion = () => { }
+}) {
   if (questions.length === 0) {
     return (
       <div style={{
@@ -253,7 +285,7 @@ export default function QuestionTable({ questions, userInfoCache, user, onDelete
   }
 
   // Check if any question can be deleted (for showing Actions column)
-  const hasDeletableQuestions = user && 
+  const hasDeletableQuestions = user &&
     questions.some(q => q.user_id === user.id);
 
   return (
@@ -274,6 +306,22 @@ export default function QuestionTable({ questions, userInfoCache, user, onDelete
               background: '#f9fafb',
               borderBottom: '1px solid #e5e7eb'
             }}>
+
+              {selectable && (
+                <th style={{
+                  padding: '0.75rem 1rem',
+                  textAlign: 'center',
+                  fontWeight: '600',
+                  color: '#374151',
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em'
+                }}>
+                  Select
+                </th>
+              )}
+
+
               <th style={{
                 padding: '0.75rem 1rem',
                 textAlign: 'left',
@@ -389,6 +437,10 @@ export default function QuestionTable({ questions, userInfoCache, user, onDelete
                   userInfo={userInfo}
                   canDelete={canDelete}
                   onDelete={onDelete}
+
+                  selectable={selectable}
+                  selected={selectedQuestionIds.includes(question.id)}
+                  onToggle={onToggleQuestion}
                 />
               );
             })}
