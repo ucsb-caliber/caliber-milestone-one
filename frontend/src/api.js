@@ -541,6 +541,37 @@ export async function updateUserPreferences(preferencesData) {
 }
 
 /**
+ * Update user roles (admin/teacher) by user ID
+ * @param {string} userId - The user ID to update
+ * @param {Object} roles - Object with { admin, teacher }
+ * @returns {Promise<Object>} - Updated user object
+ */
+export async function updateUserRoles(userId, roles) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/users/${userId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(roles),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update user roles');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Get user by user ID
  */
 export async function getUserById(userId) {
