@@ -624,6 +624,56 @@ export async function getCourses() {
 }
 
 /**
+ * Get all courses in the system (admin only)
+ */
+export async function getAllCourses() {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE}/api/courses/all`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch all courses');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get admin all-courses overview in one request (optimized for card display)
+ */
+export async function getAdminCoursesOverview() {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE}/api/admin/courses-overview`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch admin courses overview');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Get a specific course by ID
  */
 export async function getCourse(courseId) {
@@ -759,6 +809,34 @@ export async function getAllUsers() {
   }
 }
 
+/**
+ * Join a course using a course code
+ */
+export async function joinCourseByCode(courseCode) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/courses/join`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ course_code: courseCode }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to join course');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
 // ============= Assignment API Functions =============
 
 /**
@@ -805,6 +883,59 @@ export async function getAssignment(assignmentId) {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to fetch assignment');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get current student's progress for an assignment
+ */
+export async function getAssignmentProgress(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch assignment progress');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Save current student's progress for an assignment
+ */
+export async function saveAssignmentProgress(assignmentId, progressData) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(progressData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to save assignment progress');
     }
 
     return response.json();

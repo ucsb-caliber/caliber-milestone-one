@@ -12,6 +12,7 @@ class UserResponse(BaseModel):
     last_name: Optional[str]
     admin: bool
     teacher: bool
+    pending: bool
     icon_shape: str
     icon_color: str
     initials: Optional[str]
@@ -26,6 +27,7 @@ class UserUpdate(BaseModel):
     """Schema for updating user admin/teacher status."""
     admin: Optional[bool] = None
     teacher: Optional[bool] = None
+    pending: Optional[bool] = None
 
 
 class UserProfileUpdate(BaseModel):
@@ -232,6 +234,7 @@ class CourseResponse(BaseModel):
     """Schema for course response."""
     id: int
     course_name: str
+    course_code: str
     school_name: str
     instructor_id: str
     instructor_email: Optional[str] = None  # Populated from User table
@@ -248,3 +251,44 @@ class CourseListResponse(BaseModel):
     """Schema for list of courses."""
     courses: List[CourseResponse]
     total: int
+
+
+class CourseJoinRequest(BaseModel):
+    """Schema for joining a course by course code."""
+    course_code: str = Field(..., min_length=3)
+
+
+class AdminCourseOverview(BaseModel):
+    """Compact course payload optimized for admin all-courses page."""
+    id: int
+    course_name: str
+    course_code: str
+    school_name: str
+    instructor_id: str
+    assignment_count: int = 0
+    student_ids: List[str] = []
+    student_name_by_id: dict = Field(default_factory=dict)
+
+
+class AdminCourseOverviewResponse(BaseModel):
+    """List response for admin all-courses overview."""
+    courses: List[AdminCourseOverview]
+    total: int
+
+
+class AssignmentProgressResponse(BaseModel):
+    """Schema for student assignment progress."""
+    assignment_id: int
+    student_id: str
+    answers: dict = Field(default_factory=dict)
+    current_question_index: int = 0
+    submitted: bool = False
+    submitted_at: Optional[datetime] = None
+    updated_at: datetime
+
+
+class AssignmentProgressUpdate(BaseModel):
+    """Schema for updating student assignment progress."""
+    answers: Optional[dict] = None
+    current_question_index: Optional[int] = None
+    submitted: Optional[bool] = None

@@ -9,6 +9,7 @@ export default function CourseDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isInstructor, setIsInstructor] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -33,6 +34,8 @@ export default function CourseDashboard() {
   };
 
   const courseId = getCourseIdFromHash();
+  const backToCoursesHash = isAdmin && !isInstructor ? '#admin/courses' : '#courses';
+  const canViewAssignments = isInstructor || isAdmin;
 
   // Load course data
   useEffect(() => {
@@ -53,6 +56,7 @@ export default function CourseDashboard() {
         setCourse(courseData);
         setAllUsers(usersData.users || []);
         setIsInstructor(courseData.instructor_id === user?.id);
+        setIsAdmin(Boolean(userInfo?.admin));
         
         // Initialize form data
         setFormData({
@@ -589,7 +593,7 @@ export default function CourseDashboard() {
   if (error) {
     return (
       <div style={styles.container}>
-        <a href="#courses" style={styles.backLink}>← Back to Courses</a>
+        <a href={backToCoursesHash} style={styles.backLink}>← Back to Courses</a>
         <div style={styles.error}>{error}</div>
       </div>
     );
@@ -598,7 +602,7 @@ export default function CourseDashboard() {
   if (!course) {
     return (
       <div style={styles.container}>
-        <a href="#courses" style={styles.backLink}>← Back to Courses</a>
+        <a href={backToCoursesHash} style={styles.backLink}>← Back to Courses</a>
         <p>Course not found</p>
       </div>
     );
@@ -606,7 +610,7 @@ export default function CourseDashboard() {
 
   return (
     <div style={styles.container}>
-      <a href="#courses" style={styles.backLink}>← Back to Courses</a>
+      <a href={backToCoursesHash} style={styles.backLink}>← Back to Courses</a>
 
       {/* Header */}
       <div style={styles.header}>
@@ -640,8 +644,8 @@ export default function CourseDashboard() {
           <span style={styles.infoValue}>{course.student_ids?.length || 0} enrolled</span>
         </div>
         <div style={{ ...styles.infoRow, borderBottom: 'none' }}>
-          <span style={styles.infoLabel}>Course ID</span>
-          <span style={styles.infoValue}>{course.id}</span>
+          <span style={styles.infoLabel}>Course Code</span>
+          <span style={styles.infoValue}>{course.course_code || 'Not set'}</span>
         </div>
       </div>
 
@@ -722,22 +726,22 @@ export default function CourseDashboard() {
                     background: '#f9fafb',
                     borderRadius: '8px',
                     border: '1px solid #e5e7eb',
-                    cursor: isInstructor ? 'pointer' : 'default',
+                    cursor: canViewAssignments ? 'pointer' : 'default',
                     transition: 'all 0.15s'
                   }}
                   onClick={() => {
-                    if (isInstructor) {
+                    if (canViewAssignments) {
                       window.location.hash = `#course/${courseId}/assignment/${assignment.id}/view`;
                     }
                   }}
                   onMouseEnter={(e) => {
-                    if (isInstructor) {
+                    if (canViewAssignments) {
                       e.currentTarget.style.background = '#f3f4f6';
                       e.currentTarget.style.borderColor = '#d1d5db';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (isInstructor) {
+                    if (canViewAssignments) {
                       e.currentTarget.style.background = '#f9fafb';
                       e.currentTarget.style.borderColor = '#e5e7eb';
                     }

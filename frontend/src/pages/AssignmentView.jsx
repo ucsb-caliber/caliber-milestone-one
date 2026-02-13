@@ -409,6 +409,7 @@ export default function AssignmentView() {
     );
   }
 
+  const canEditAssignment = assignment.instructor_id === user?.id;
   const typeBadgeColors = getTypeBadgeStyle(assignment.type);
 
   return (
@@ -457,14 +458,16 @@ export default function AssignmentView() {
           >
             👁️ Student Preview
           </button>
-          <button
-            style={styles.editButton}
-            onClick={() => window.location.hash = `#course/${courseId}/assignment/${assignmentId}/edit`}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
-          >
-            ✏️ Edit Assignment
-          </button>
+          {canEditAssignment && (
+            <button
+              style={styles.editButton}
+              onClick={() => window.location.hash = `#course/${courseId}/assignment/${assignmentId}/edit`}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
+            >
+              ✏️ Edit Assignment
+            </button>
+          )}
         </div>
       </div>
 
@@ -516,8 +519,8 @@ export default function AssignmentView() {
                 questionNumber={`Q${index + 1}`}
                 showUserIcon={true}
                 showDeleteButton={false}
-                showEditButton={true}
-                showRemoveButton={true}
+                showEditButton={canEditAssignment}
+                showRemoveButton={canEditAssignment}
                 onEdit={handleEditQuestion}
                 onRemove={handleRemoveQuestion}
               />
@@ -527,7 +530,9 @@ export default function AssignmentView() {
           <div style={styles.emptyState}>
             <h3 style={styles.emptyTitle}>No Questions Added</h3>
             <p style={styles.emptyText}>
-              Edit this assignment to add questions from the question bank.
+              {canEditAssignment
+                ? 'Edit this assignment to add questions from the question bank.'
+                : 'No questions have been added to this assignment yet.'}
             </p>
           </div>
         )}
