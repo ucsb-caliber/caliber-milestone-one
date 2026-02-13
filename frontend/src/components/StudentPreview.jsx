@@ -101,8 +101,15 @@ export default function StudentPreview({
     }
   };
 
+  const isQuestionAnswered = (questionId) => {
+    const value = answers[questionId];
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string') return value.trim() !== '';
+    return true;
+  };
+
   const getAnsweredCount = () => {
-    return Object.keys(answers).filter(id => answers[id] && answers[id].trim?.() !== '' || answers[id]).length;
+    return questions.filter((q) => isQuestionAnswered(q.id)).length;
   };
 
   // Get type badge color
@@ -386,9 +393,9 @@ export default function StudentPreview({
       color: 'white'
     },
     questionDotAnswered: {
-      border: '2px solid #10b981',
-      background: '#d1fae5',
-      color: '#059669'
+      border: '2px solid #4f46e5',
+      background: '#eef2ff',
+      color: '#4f46e5'
     },
     submittedBanner: {
       background: '#10b981',
@@ -504,7 +511,7 @@ export default function StudentPreview({
           {/* Question Navigation Dots */}
           <div style={styles.questionNav}>
             {questions.map((q, idx) => {
-              const isAnswered = answers[q.id] !== undefined && answers[q.id] !== '';
+              const isAnswered = isQuestionAnswered(q.id);
               const isCurrent = idx === currentIndex;
               return (
                 <button
@@ -589,7 +596,7 @@ export default function StudentPreview({
                 {answerChoices.map((choice, idx) => {
                   const isSelected = selectedAnswer === choice;
                   const isCorrect = choice === currentQuestion.correct_answer;
-                  const showResult = (submitted || showCorrectAnswers) && isSelected;
+                  const showResult = !isPreviewMode && (submitted || showCorrectAnswers) && isSelected;
                   
                   let buttonStyle = { ...styles.choiceButton };
                   let indicatorStyle = { ...styles.choiceIndicator };
