@@ -29,12 +29,34 @@ export default function StudentPreview({
   onClose,
   isPreviewMode = true,
   onSubmit,
-  showCorrectAnswers = false
+  showCorrectAnswers = false,
+  initialAnswers,
+  initialQuestionIndex,
+  initialSubmitted,
+  onAnswersChange,
+  onQuestionChange
 }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [submitted, setSubmitted] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(Number.isInteger(initialQuestionIndex) ? initialQuestionIndex : 0);
+  const [answers, setAnswers] = useState(initialAnswers || {});
+  const [submitted, setSubmitted] = useState(Boolean(initialSubmitted));
   const [imageUrls, setImageUrls] = useState({});
+
+  useEffect(() => {
+    if (initialAnswers === undefined) return;
+    setAnswers(initialAnswers || {});
+  }, [initialAnswers]);
+
+  useEffect(() => {
+    if (!Number.isInteger(initialQuestionIndex)) return;
+    const maxIndex = Math.max(0, questions.length - 1);
+    const nextIndex = Math.max(0, Math.min(initialQuestionIndex || 0, maxIndex));
+    setCurrentIndex(nextIndex);
+  }, [initialQuestionIndex, questions.length]);
+
+  useEffect(() => {
+    if (initialSubmitted === undefined) return;
+    setSubmitted(Boolean(initialSubmitted));
+  }, [initialSubmitted]);
 
   // Load signed URLs for images
   useEffect(() => {
@@ -68,29 +90,41 @@ export default function StudentPreview({
 
   const handleAnswerSelect = (questionId, answer) => {
     if (submitted) return;
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: answer
-    }));
+    setAnswers(prev => {
+      const next = {
+        ...prev,
+        [questionId]: answer
+      };
+      if (onAnswersChange) onAnswersChange(next);
+      return next;
+    });
   };
 
   const handleTextAnswer = (questionId, text) => {
     if (submitted) return;
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: text
-    }));
+    setAnswers(prev => {
+      const next = {
+        ...prev,
+        [questionId]: text
+      };
+      if (onAnswersChange) onAnswersChange(next);
+      return next;
+    });
   };
 
   const handlePrevious = () => {
     if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
+      const nextIndex = currentIndex - 1;
+      setCurrentIndex(nextIndex);
+      if (onQuestionChange) onQuestionChange(nextIndex);
     }
   };
 
   const handleNext = () => {
     if (currentIndex < totalQuestions - 1) {
-      setCurrentIndex(currentIndex + 1);
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      if (onQuestionChange) onQuestionChange(nextIndex);
     }
   };
 
@@ -156,6 +190,17 @@ export default function StudentPreview({
       justifyContent: 'space-between',
       alignItems: 'center',
       boxShadow: '0 2px 4px rgba(79, 70, 229, 0.3)'
+    },
+    assignmentBanner: {
+      background: '#374151',
+      color: 'white',
+      padding: '0.75rem 1rem',
+      borderRadius: '8px',
+      marginBottom: '1.5rem',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      boxShadow: '0 2px 4px rgba(55, 65, 81, 0.3)'
     },
     bannerText: {
       display: 'flex',
@@ -434,6 +479,21 @@ export default function StudentPreview({
               )}
             </div>
           )}
+          {!isPreviewMode && onClose && (
+            <div style={styles.assignmentBanner}>
+              <div style={styles.bannerText}>
+                Assignment
+              </div>
+              <button
+                style={styles.closeButton}
+                onClick={onClose}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+              >
+                Back to Course
+              </button>
+            </div>
+          )}
           <div style={styles.emptyState}>
             <h2>No Questions</h2>
             <p>This assignment doesn't have any questions yet.</p>
@@ -475,6 +535,21 @@ export default function StudentPreview({
                 Exit Preview
               </button>
             )}
+          </div>
+        )}
+        {!isPreviewMode && onClose && (
+          <div style={styles.assignmentBanner}>
+            <div style={styles.bannerText}>
+              Assignment
+            </div>
+            <button
+              style={styles.closeButton}
+              onClick={onClose}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+            >
+              Back to Course
+            </button>
           </div>
         )}
 
@@ -521,7 +596,10 @@ export default function StudentPreview({
                     ...(isCurrent ? styles.questionDotCurrent : {}),
                     ...(!isCurrent && isAnswered ? styles.questionDotAnswered : {})
                   }}
-                  onClick={() => setCurrentIndex(idx)}
+                  onClick={() => {
+                    setCurrentIndex(idx);
+                    if (onQuestionChange) onQuestionChange(idx);
+                  }}
                   title={`Question ${idx + 1}${isAnswered ? ' (answered)' : ''}`}
                 >
                   {idx + 1}
