@@ -115,7 +115,7 @@ export default function Home() {
                 height="24"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#2e7eff"
+                stroke="#4f46e5"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -149,7 +149,7 @@ export default function Home() {
                 marginBottom: '0.75rem'
               }}
             >
-              <span style={{ fontSize: '1.5rem', color: '#2e7eff' }}>📄</span>
+              <span style={{ fontSize: '1.5rem', color: '#4f46e5' }}>📄</span>
             </div>
 
             <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1f2937' }}>
@@ -170,7 +170,7 @@ export default function Home() {
         style={{
           width: '100%',
           padding: '0.9rem',
-          background: !file || uploading ? '#cbd5e1' : '#428bff',
+          background: !file || uploading ? '#cbd5e1' : '#4f46e5',
           color: 'white',
           border: 'none',
           borderRadius: '10px',

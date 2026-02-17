@@ -1,9 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
-import { updateUserRoles } from "../api";
-
-// Make sure API_BASE matches your backend URL
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+import { getAllUsers, updateUserRoles } from "../api";
 
 export default function Users({ currentUser }) {
     // Use 'admin' as per your backend main.py
@@ -19,13 +15,11 @@ export default function Users({ currentUser }) {
       async function getData() {
         try {
           setLoading(true);
-          // Direct fetch from Supabase table 'user'
-          const { data, error: sbError } = await supabase.from('user').select('*');
-          if (sbError) throw sbError;
-          setUsers(data || []);
+          const data = await getAllUsers();
+          setUsers(data.users || []);
         } catch (err) {
-          console.error("Supabase error:", err);
-          setError("Database error: " + err.message);
+          console.error("User fetch error:", err);
+          setError("Failed to load users: " + err.message);
         } finally {
           setLoading(false);
         }
@@ -92,6 +86,38 @@ export default function Users({ currentUser }) {
       }
     }
 
+    async function handleApproveInstructor(userId) {
+      setUpdating((prev) => ({ ...prev, [userId]: true }));
+      try {
+        await updateUserRoles(userId, { teacher: true, pending: false });
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.user_id === userId ? { ...u, teacher: true, pending: false } : u
+          )
+        );
+      } catch (err) {
+        alert("Failed to approve instructor: " + err.message);
+      } finally {
+        setUpdating((prev) => ({ ...prev, [userId]: false }));
+      }
+    }
+
+    async function handleDismissPending(userId) {
+      setUpdating((prev) => ({ ...prev, [userId]: true }));
+      try {
+        await updateUserRoles(userId, { pending: false });
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.user_id === userId ? { ...u, pending: false } : u
+          )
+        );
+      } catch (err) {
+        alert("Failed to dismiss request: " + err.message);
+      } finally {
+        setUpdating((prev) => ({ ...prev, [userId]: false }));
+      }
+    }
+
     function handleSort(key) {
       setSortConfig((prev) => {
         if (prev.key === key) {
@@ -118,6 +144,7 @@ export default function Users({ currentUser }) {
     }
 
     const arrow = (col) => sortConfig.key === col ? (sortConfig.direction === "asc" ? "▲" : "▼") : "▼";
+    const pendingUsers = users.filter((u) => !!u.pending);
 
     return (
       <div style={{ padding: "2rem", background: "white", minHeight: "100vh" }}>
@@ -125,6 +152,73 @@ export default function Users({ currentUser }) {
         
         {loading && <p>Searching database...</p>}
         {error && <p style={{ color: "red" }}>{error}</p>}
+
+        {pendingUsers.length > 0 && (
+          <div style={{ marginBottom: "2rem" }}>
+            <h2 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>
+              Pending Instructor Requests ({pendingUsers.length})
+            </h2>
+            <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #dee2e6" }}>
+              <thead style={{ backgroundColor: "#f8f9fa" }}>
+                <tr style={{ textAlign: "left" }}>
+                  <th style={cellStyle}>Name</th>
+                  <th style={cellStyle}>Email</th>
+                  <th style={cellStyle}>Requested Instructor</th>
+                  <th style={cellStyle}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingUsers.map((u) => (
+                  <tr key={`pending-${u.user_id}`}>
+                    <td style={cellStyle}>{[u.first_name, u.last_name].filter(Boolean).join(" ") || "—"}</td>
+                    <td style={cellStyle}>{u.email || "—"}</td>
+                    <td style={cellStyle}>
+                      <RoleBox value={!!u.pending} disabled label="Pending" />
+                    </td>
+                    <td style={cellStyle}>
+                      {userIsAdmin ? (
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button
+                            disabled={!!updating[u.user_id]}
+                            onClick={() => handleApproveInstructor(u.user_id)}
+                            style={{
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              background: "#16a34a",
+                              color: "white",
+                              cursor: updating[u.user_id] ? "not-allowed" : "pointer",
+                              opacity: updating[u.user_id] ? 0.6 : 1
+                            }}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            disabled={!!updating[u.user_id]}
+                            onClick={() => handleDismissPending(u.user_id)}
+                            style={{
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              background: "#6b7280",
+                              color: "white",
+                              cursor: updating[u.user_id] ? "not-allowed" : "pointer",
+                              opacity: updating[u.user_id] ? 0.6 : 1
+                            }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ color: "#6b7280" }}>Admin action required</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
   
         <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #dee2e6" }}>
           <thead style={{ backgroundColor: "#f8f9fa" }}>
@@ -141,6 +235,7 @@ export default function Users({ currentUser }) {
               <th style={cellStyle}>
                 <span style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("email")}>Email <span style={{ fontSize: 12 }}>{arrow("email")}</span></span>
               </th>
+              <th style={cellStyle}>Pending</th>
               <th style={cellStyle}>Admin</th>
               <th style={cellStyle}>Instructor</th>
             </tr>
@@ -152,6 +247,9 @@ export default function Users({ currentUser }) {
                 <td style={cellStyle}>{u.first_name || "—"}</td>
                 <td style={cellStyle}>{u.last_name || "—"}</td>
                 <td style={cellStyle}>{u.email}</td>
+                <td style={cellStyle}>
+                  <RoleBox value={!!u.pending} disabled label="Pending" />
+                </td>
                 <td style={cellStyle}>
                   {userIsAdmin ? (
                     currentUser.user_id === u.user_id ? (
@@ -182,7 +280,7 @@ export default function Users({ currentUser }) {
                 </td>
               </tr>
             )) : (
-              <tr><td colSpan="6" style={{padding: "20px"}}>No users found. Check Supabase connection.</td></tr>
+              <tr><td colSpan="7" style={{padding: "20px"}}>No users found.</td></tr>
             )}
           </tbody>
         </table>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById } from '../api';
 import QuestionCard from '../components/QuestionCard';
+import StudentPreview from '../components/StudentPreview';
 
 export default function AssignmentView() {
   const { user } = useAuth();
@@ -11,6 +12,7 @@ export default function AssignmentView() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [userInfoCache, setUserInfoCache] = useState({});
+  const [showPreview, setShowPreview] = useState(false);
 
   // Parse URL hash to get course ID and assignment ID
   const parseHash = () => {
@@ -407,6 +409,7 @@ export default function AssignmentView() {
     );
   }
 
+  const canEditAssignment = assignment.instructor_id === user?.id;
   const typeBadgeColors = getTypeBadgeStyle(assignment.type);
 
   return (
@@ -433,14 +436,39 @@ export default function AssignmentView() {
             {assignment.type}
           </span>
         </div>
-        <button
-          style={styles.editButton}
-          onClick={() => window.location.hash = `#course/${courseId}/assignment/${assignmentId}/edit`}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
-          onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
-        >
-          ✏️ Edit Assignment
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: '#10b981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              transition: 'background 0.15s'
+            }}
+            onClick={() => setShowPreview(true)}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+          >
+            👁️ Student Preview
+          </button>
+          {canEditAssignment && (
+            <button
+              style={styles.editButton}
+              onClick={() => window.location.hash = `#course/${courseId}/assignment/${assignmentId}/edit`}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
+            >
+              ✏️ Edit Assignment
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Assignment Details */}
@@ -491,8 +519,8 @@ export default function AssignmentView() {
                 questionNumber={`Q${index + 1}`}
                 showUserIcon={true}
                 showDeleteButton={false}
-                showEditButton={true}
-                showRemoveButton={true}
+                showEditButton={canEditAssignment}
+                showRemoveButton={canEditAssignment}
                 onEdit={handleEditQuestion}
                 onRemove={handleRemoveQuestion}
               />
@@ -502,11 +530,25 @@ export default function AssignmentView() {
           <div style={styles.emptyState}>
             <h3 style={styles.emptyTitle}>No Questions Added</h3>
             <p style={styles.emptyText}>
-              Edit this assignment to add questions from the question bank.
+              {canEditAssignment
+                ? 'Edit this assignment to add questions from the question bank.'
+                : 'No questions have been added to this assignment yet.'}
             </p>
           </div>
         )}
       </div>
+
+      {/* Student Preview Modal */}
+      {showPreview && (
+        <StudentPreview
+          questions={questions}
+          assignmentTitle={assignment.title}
+          assignmentType={assignment.type}
+          onClose={() => setShowPreview(false)}
+          isPreviewMode={true}
+          showCorrectAnswers={true}
+        />
+      )}
     </div>
   );
 }

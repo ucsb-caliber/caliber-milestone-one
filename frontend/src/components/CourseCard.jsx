@@ -17,12 +17,18 @@ export default function CourseCard({
   onDelete, 
   onViewDetails,
   isInstructor = false,
-  allUsers = []
+  allUsers = [],
+  showStudentsList = isInstructor,
+  assignmentCountOverride,
+  studentNameById = {}
 }) {
   const [showStudents, setShowStudents] = useState(false);
 
   // Get student names from user IDs
   const getStudentInfo = (studentId) => {
+    if (studentNameById && studentNameById[studentId]) {
+      return studentNameById[studentId];
+    }
     const user = allUsers.find(u => u.user_id === studentId);
     if (user) {
       if (user.first_name && user.last_name) {
@@ -34,7 +40,7 @@ export default function CourseCard({
   };
 
   const studentCount = course.student_ids?.length || 0;
-  const assignmentCount = course.assignments?.length || 0;
+  const assignmentCount = assignmentCountOverride ?? (course.assignments?.length || 0);
 
   return (
     <div
@@ -124,7 +130,7 @@ export default function CourseCard({
       </div>
 
       {/* Students List (Collapsible) */}
-      {studentCount > 0 && (
+      {showStudentsList && studentCount > 0 && (
         <div style={{ marginBottom: '1rem' }}>
           <button
             onClick={(e) => {
