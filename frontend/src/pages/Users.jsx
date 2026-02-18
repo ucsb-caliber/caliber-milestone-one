@@ -10,6 +10,7 @@ export default function Users({ currentUser }) {
     const [error, setError] = useState("");
     const [updating, setUpdating] = useState({});
     const [sortConfig, setSortConfig] = useState({ key: "id", direction: "asc" });
+    const [pendingOpen, setPendingOpen] = useState(true);
   
     useEffect(() => {
       async function getData() {
@@ -153,31 +154,46 @@ export default function Users({ currentUser }) {
         {loading && <p>Searching database...</p>}
         {error && <p style={{ color: "red" }}>{error}</p>}
 
-        {pendingUsers.length > 0 && (
-          <div style={{ marginBottom: "2rem" }}>
-            <h2 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>
-              Pending Instructor Requests ({pendingUsers.length})
-            </h2>
-            <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #dee2e6" }}>
+        <div style={{ marginBottom: "2rem" }}>
+          <button
+            onClick={() => setPendingOpen((prev) => !prev)}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              border: "1px solid #dee2e6",
+              borderRadius: "8px 8px 0 0",
+              background: "#f8f9fa",
+              padding: "0.75rem 1rem",
+              fontSize: "1.1rem",
+              fontWeight: 700,
+              color: "#111827",
+              cursor: "pointer"
+            }}
+          >
+            <span style={{ marginRight: "0.5rem", fontSize: "0.85rem" }}>{pendingOpen ? "▼" : "▶"}</span>
+            Pending Instructor Requests ({pendingUsers.length})
+          </button>
+          {pendingOpen && (
+            <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #dee2e6", borderTop: "none" }}>
               <thead style={{ backgroundColor: "#f8f9fa" }}>
                 <tr style={{ textAlign: "left" }}>
-                  <th style={cellStyle}>Name</th>
-                  <th style={cellStyle}>Email</th>
-                  <th style={cellStyle}>Requested Instructor</th>
-                  <th style={cellStyle}>Actions</th>
+                  <th style={cellStyle}>id</th>
+                  <th style={cellStyle}>First Name</th>
+                  <th style={cellStyle}>Last Name</th>
+                  <th style={{ ...cellStyle, width: "30%" }}>Email</th>
+                  <th style={{ ...cellStyle, width: "18%", whiteSpace: "nowrap" }}>Approve/Deny</th>
                 </tr>
               </thead>
               <tbody>
-                {pendingUsers.map((u) => (
+                {pendingUsers.length > 0 ? pendingUsers.map((u) => (
                   <tr key={`pending-${u.user_id}`}>
-                    <td style={cellStyle}>{[u.first_name, u.last_name].filter(Boolean).join(" ") || "—"}</td>
+                    <td style={cellStyle}>{u.id}</td>
+                    <td style={cellStyle}>{u.first_name || "—"}</td>
+                    <td style={cellStyle}>{u.last_name || "—"}</td>
                     <td style={cellStyle}>{u.email || "—"}</td>
-                    <td style={cellStyle}>
-                      <RoleBox value={!!u.pending} disabled label="Pending" />
-                    </td>
-                    <td style={cellStyle}>
+                    <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>
                       {userIsAdmin ? (
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                           <button
                             disabled={!!updating[u.user_id]}
                             onClick={() => handleApproveInstructor(u.user_id)}
@@ -188,7 +204,15 @@ export default function Users({ currentUser }) {
                               background: "#16a34a",
                               color: "white",
                               cursor: updating[u.user_id] ? "not-allowed" : "pointer",
-                              opacity: updating[u.user_id] ? 0.6 : 1
+                              opacity: updating[u.user_id] ? 0.6 : 1,
+                              fontWeight: 600,
+                              minWidth: 88
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!updating[u.user_id]) e.currentTarget.style.background = "#15803d";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = "#16a34a";
                             }}
                           >
                             Approve
@@ -200,13 +224,23 @@ export default function Users({ currentUser }) {
                               border: "none",
                               borderRadius: 6,
                               padding: "6px 10px",
-                              background: "#6b7280",
+                              minWidth: 88,
+                              background: "#dc2626",
                               color: "white",
                               cursor: updating[u.user_id] ? "not-allowed" : "pointer",
-                              opacity: updating[u.user_id] ? 0.6 : 1
+                              opacity: updating[u.user_id] ? 0.6 : 1,
+                              fontWeight: 700
+                            }}
+                            title="Cancel instructor request"
+                            aria-label="Deny Request"
+                            onMouseEnter={(e) => {
+                              if (!updating[u.user_id]) e.currentTarget.style.background = "#b91c1c";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = "#dc2626";
                             }}
                           >
-                            Dismiss
+                            Deny
                           </button>
                         </div>
                       ) : (
@@ -214,13 +248,29 @@ export default function Users({ currentUser }) {
                       )}
                     </td>
                   </tr>
-                ))}
+                )) : (
+                  <tr><td colSpan="5" style={{ padding: "20px" }}>No pending instructor requests.</td></tr>
+                )}
               </tbody>
             </table>
-          </div>
-        )}
+          )}
+        </div>
   
-        <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #dee2e6" }}>
+        <div style={{ marginBottom: "2rem" }}>
+          <div
+            style={{
+              border: "1px solid #dee2e6",
+              borderRadius: "8px 8px 0 0",
+              background: "#f8f9fa",
+              padding: "0.75rem 1rem",
+              fontSize: "1.1rem",
+              fontWeight: 700,
+              color: "#111827"
+            }}
+          >
+            Users ({users.length})
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #dee2e6", borderTop: "none" }}>
           <thead style={{ backgroundColor: "#f8f9fa" }}>
             <tr style={{ textAlign: "left" }}>
               <th style={cellStyle}>
@@ -235,7 +285,6 @@ export default function Users({ currentUser }) {
               <th style={cellStyle}>
                 <span style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("email")}>Email <span style={{ fontSize: 12 }}>{arrow("email")}</span></span>
               </th>
-              <th style={cellStyle}>Pending</th>
               <th style={cellStyle}>Admin</th>
               <th style={cellStyle}>Instructor</th>
             </tr>
@@ -247,9 +296,6 @@ export default function Users({ currentUser }) {
                 <td style={cellStyle}>{u.first_name || "—"}</td>
                 <td style={cellStyle}>{u.last_name || "—"}</td>
                 <td style={cellStyle}>{u.email}</td>
-                <td style={cellStyle}>
-                  <RoleBox value={!!u.pending} disabled label="Pending" />
-                </td>
                 <td style={cellStyle}>
                   {userIsAdmin ? (
                     currentUser.user_id === u.user_id ? (
@@ -280,10 +326,11 @@ export default function Users({ currentUser }) {
                 </td>
               </tr>
             )) : (
-              <tr><td colSpan="7" style={{padding: "20px"}}>No users found.</td></tr>
+              <tr><td colSpan="6" style={{padding: "20px"}}>No users found.</td></tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     );
   }

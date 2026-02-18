@@ -94,6 +94,30 @@ export default function CreateEditAssignment() {
       setError('Title is required');
       return;
     }
+    if (!formData.release_date) {
+      setError('Release date is required');
+      return;
+    }
+    if (!formData.due_date_soft) {
+      setError('Due date is required');
+      return;
+    }
+    if (!formData.due_date_hard) {
+      setError('Due date (late) is required');
+      return;
+    }
+    if (!formData.late_policy_id) {
+      setError('Late policy percentage is required');
+      return;
+    }
+    if (!formData.assignment_questions || formData.assignment_questions.length < 1) {
+      setError('At least one question is required');
+      return;
+    }
+    if (new Date(formData.due_date_hard) < new Date(formData.due_date_soft)) {
+      setError('Due date (late) must be on or after due date');
+      return;
+    }
 
     setSaving(true);
     setError('');
@@ -349,51 +373,74 @@ export default function CreateEditAssignment() {
 
         {/* Release Date */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Release Date</label>
+          <label style={styles.label}>
+            Release Date <span style={{ color: '#dc2626' }}>*</span>
+          </label>
           <input
             type="datetime-local"
             value={formData.release_date}
             onChange={(e) => setFormData({ ...formData, release_date: e.target.value })}
             style={styles.input}
+            required
           />
           <div style={styles.helpText}>When students can see this assignment</div>
         </div>
 
         {/* Due Date (Soft) */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Due Date (Target)</label>
+          <label style={styles.label}>
+            Due Date <span style={{ color: '#dc2626' }}>*</span>
+          </label>
           <input
             type="datetime-local"
             value={formData.due_date_soft}
             onChange={(e) => setFormData({ ...formData, due_date_soft: e.target.value })}
             style={styles.input}
+            required
           />
           <div style={styles.helpText}>Target due date; no points deducted</div>
         </div>
 
         {/* Due Date (Hard) */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Due Date (Final)</label>
+          <label style={styles.label}>
+            Due Date (Late) <span style={{ color: '#dc2626' }}>*</span>
+          </label>
           <input
             type="datetime-local"
             value={formData.due_date_hard}
             onChange={(e) => setFormData({ ...formData, due_date_hard: e.target.value })}
             style={styles.input}
+            required
           />
           <div style={styles.helpText}>Final cut-off for submission</div>
         </div>
 
         {/* Late Policy */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Late Policy</label>
-          <input
-            type="text"
+          <label style={styles.label}>
+            Late Policy (%) <span style={{ color: '#dc2626' }}>*</span>
+          </label>
+          <select
             value={formData.late_policy_id}
             onChange={(e) => setFormData({ ...formData, late_policy_id: e.target.value })}
-            style={styles.input}
-            placeholder="e.g., Linear_Decay_10_Percent"
-          />
-          <div style={styles.helpText}>Reference to a policy template (optional)</div>
+            style={styles.select}
+            required
+          >
+            <option value="">Select late penalty</option>
+            <option value="0">0%</option>
+            <option value="5">5%</option>
+            <option value="10">10%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+            <option value="25">25%</option>
+            <option value="30">30%</option>
+            <option value="40">40%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </select>
+          <div style={styles.helpText}>Percent deducted for late submissions</div>
         </div>
 
         {/* Questions */}

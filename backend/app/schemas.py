@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class UserResponse(BaseModel):
@@ -124,6 +124,7 @@ class UploadResponse(BaseModel):
     """Schema for upload response."""
     status: str
     filename: str
+    storage_path: Optional[str] = None
     message: str
 
 
@@ -146,6 +147,32 @@ class AssignmentCreate(BaseModel):
     late_policy_id: Optional[str] = None
     assignment_questions: List[int] = []  # List of question IDs
 
+    @model_validator(mode='after')
+    def validate_required_dates_and_late_policy(self):
+        """Require release/due dates and late policy percentage for new assignments."""
+        if self.release_date is None:
+            raise ValueError("Release date is required")
+        if self.due_date_soft is None:
+            raise ValueError("Due date is required")
+        if self.due_date_hard is None:
+            raise ValueError("Due date (late) is required")
+        if self.late_policy_id is None or not str(self.late_policy_id).strip():
+            raise ValueError("Late policy percentage is required")
+        if not self.assignment_questions or len(self.assignment_questions) < 1:
+            raise ValueError("At least one question is required")
+
+        try:
+            late_percentage = int(str(self.late_policy_id).strip())
+        except ValueError as exc:
+            raise ValueError("Late policy percentage must be an integer between 0 and 100") from exc
+
+        if late_percentage < 0 or late_percentage > 100:
+            raise ValueError("Late policy percentage must be between 0 and 100")
+
+        if self.due_date_hard < self.due_date_soft:
+            raise ValueError("Due date (late) must be on or after due date")
+        return self
+
 
 class AssignmentUpdate(BaseModel):
     """Schema for updating an assignment."""
@@ -158,6 +185,26 @@ class AssignmentUpdate(BaseModel):
     due_date_hard: Optional[datetime] = None
     late_policy_id: Optional[str] = None
     assignment_questions: Optional[List[int]] = None
+
+    @model_validator(mode='after')
+    def validate_late_policy_if_present(self):
+        """Validate late policy percentage format when provided."""
+        if self.late_policy_id is None:
+            return self
+
+        raw_value = str(self.late_policy_id).strip()
+        if not raw_value:
+            raise ValueError("Late policy percentage is required")
+
+        try:
+            late_percentage = int(raw_value)
+        except ValueError as exc:
+            raise ValueError("Late policy percentage must be an integer between 0 and 100") from exc
+
+        if late_percentage < 0 or late_percentage > 100:
+            raise ValueError("Late policy percentage must be between 0 and 100")
+
+        return self
 
 
 class AssignmentResponse(BaseModel):

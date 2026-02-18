@@ -19,6 +19,7 @@ import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 import Users from './pages/Users.jsx'
+import Analytics from './pages/Analytics.jsx'
 import "./index.css";
 
 // Determine backend base URL from Vite env or default to localhost
@@ -329,6 +330,18 @@ function App() {
                   Courses
                 </a>
               )}
+              {isInstructorOrAdmin && (
+                <a
+                  href="#analytics"
+                  style={{
+                    color: page === 'analytics' ? '#fff' : '#aaa',
+                    textDecoration: 'none',
+                    fontWeight: page === 'analytics' ? 'bold' : 'normal'
+                  }}
+                >
+                  Analytics
+                </a>
+              )}
               <a
                 href="#student-courses"
                 style={{
@@ -441,6 +454,11 @@ function App() {
             {isInstructorOrAdmin && page === 'courses' && (
               <ProtectedRoute>
                 <InstructorCoursesPage />
+              </ProtectedRoute>
+            )}
+            {isInstructorOrAdmin && page === 'analytics' && (
+              <ProtectedRoute>
+                <Analytics />
               </ProtectedRoute>
             )}
             {page === 'student-courses' && (

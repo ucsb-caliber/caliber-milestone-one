@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+from datetime import datetime, timezone
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
@@ -8,7 +9,7 @@ from sqlmodel import Session, select, func
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
-from .models import Question, User, Course
+from .models import Question, User, Course, CourseStudent, Assignment
 from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, 
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
                      UserListResponse,
@@ -23,7 +24,8 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   enroll_student_in_course,
                   get_all_courses, get_all_courses_count,
                   get_course_assignments, create_assignment, get_assignment, get_assignments, update_assignment, 
-                  delete_assignment, get_assignment_progress, upsert_assignment_progress)
+                  delete_assignment, get_assignment_progress, upsert_assignment_progress,
+                  delete_unverified_questions_by_source)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -80,9 +82,53 @@ Path("data").mkdir(parents=True, exist_ok=True)
 def on_startup():
     """Initialize database on startup."""
     create_db_and_tables()
+    backfill_existing_assignment_dates()
 
 
-def process_pdf_background(storage_path: str, file_content: bytes, user_id: str):
+def backfill_existing_assignment_dates():
+    """
+    Backfill missing assignment dates for legacy records.
+
+    For previously created assignments with missing release/due dates, set:
+    - release_date: Feb 14, 2026
+    - due_date_soft: Feb 15, 2026
+    - due_date_hard: Feb 15, 2026
+    """
+    default_release = datetime(2026, 2, 14, 0, 0, 0)
+    default_due = datetime(2026, 2, 15, 0, 0, 0)
+
+    with Session(engine) as session:
+        assignments = list(session.exec(select(Assignment)).all())
+        changed = False
+
+        for assignment in assignments:
+            assignment_changed = False
+            if assignment.release_date is None:
+                assignment.release_date = default_release
+                assignment_changed = True
+            if assignment.due_date_soft is None:
+                assignment.due_date_soft = default_due
+                assignment_changed = True
+            if assignment.due_date_hard is None:
+                assignment.due_date_hard = default_due
+                assignment_changed = True
+
+            if assignment_changed:
+                changed = True
+                session.add(assignment)
+
+        if changed:
+            session.commit()
+
+
+def process_pdf_background(
+    storage_path: str,
+    file_content: bytes,
+    user_id: str,
+    school: str = "",
+    course: str = "",
+    course_type: str = ""
+):
     """
     Background task to process PDF and create question records.
     
@@ -93,31 +139,137 @@ def process_pdf_background(storage_path: str, file_content: bytes, user_id: str)
         file_content: The PDF file content as bytes
         user_id: The Supabase user ID
     """
+    inserted_count = 0
+    text = ""
+    question_dicts = []
+
     try:
-        # Extract text from PDF
         text = extract_text_from_pdf(file_content)
-        
-        # Send to stubbed agent pipeline
+    except Exception as e:
+        print(f"Error extracting text from {storage_path}: {e!r}")
+
+    try:
         question_dicts = send_to_agent_pipeline(text, storage_path)
-        
-        # Create a new session for the background task
+    except Exception as e:
+        print(f"Error in agent pipeline for {storage_path}: {e!r}")
+
+    if not question_dicts:
+        fallback_text = (text or "").strip()[:300]
+        question_dicts = [{
+            "title": "Extracted Preview",
+            "text": fallback_text or f"Unable to parse content from {storage_path}.",
+            "tags": "auto-generated,pdf-upload",
+            "keywords": "pdf,upload,fallback"
+        }]
+
+    try:
         with Session(engine) as session:
-            # Store questions in database
+            user = session.exec(select(User).where(User.user_id == user_id)).first()
+
+            selected_school = (school or "").strip()
+            selected_course = (course or "").strip()
+            selected_course_type = (course_type or "").strip()
+
+            profile_school = ""
+            profile_course_name = ""
+            profile_course_type = ""
+            try:
+                taught_course = session.exec(
+                    select(Course)
+                    .where(Course.instructor_id == user_id)
+                    .order_by(Course.updated_at.desc())
+                ).first()
+                enrolled_course = None
+                if not taught_course:
+                    enrolled_course = session.exec(
+                        select(Course)
+                        .join(CourseStudent, CourseStudent.course_id == Course.id)
+                        .where(CourseStudent.student_id == user_id)
+                        .order_by(Course.updated_at.desc())
+                    ).first()
+
+                profile_course = taught_course or enrolled_course
+                profile_school = (profile_course.school_name if profile_course else "") or ""
+                profile_course_name = (profile_course.course_name if profile_course else "") or ""
+                profile_course_type = "instructor-upload" if taught_course else ("student-upload" if enrolled_course else "")
+            except Exception as e:
+                print(f"Warning: failed profile enrichment for {user_id}: {e!r}")
+
+            effective_school = selected_school or profile_school
+            effective_course = selected_course or profile_course_name
+            effective_course_type = selected_course_type or profile_course_type
+
+            profile_name = ""
+            if user:
+                profile_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
+            profile_email = (user.email or "").strip() if user else ""
+
             for q_dict in question_dicts:
+                try:
+                    question_text = (q_dict.get("text") or "").strip()
+                    if not question_text:
+                        continue
+
+                    base_tags = (q_dict.get("tags", "") or "").strip()
+                    base_keywords = (q_dict.get("keywords", "") or "").strip()
+
+                    extra_tags = []
+                    if profile_name:
+                        extra_tags.append(f"uploader:{profile_name}")
+                    if effective_school:
+                        extra_tags.append(effective_school)
+
+                    extra_keywords = []
+                    if profile_name:
+                        extra_keywords.extend(profile_name.split())
+                    if profile_email:
+                        extra_keywords.append(profile_email)
+                    if effective_school:
+                        extra_keywords.append(effective_school)
+                    if effective_course:
+                        extra_keywords.append(effective_course)
+                    if effective_course_type:
+                        extra_keywords.append(effective_course_type)
+
+                    merged_tags = ",".join(filter(None, [base_tags, *extra_tags]))
+                    merged_keywords = ",".join(filter(None, [base_keywords, *extra_keywords]))
+
+                    create_question(
+                        session=session,
+                        text=question_text,
+                        title=q_dict.get("title", "Untitled Question"),
+                        tags=merged_tags,
+                        keywords=merged_keywords,
+                        school=effective_school,
+                        course=effective_course,
+                        course_type=effective_course_type,
+                        source_pdf=storage_path,
+                        user_id=user_id,
+                        is_verified=False
+                    )
+                    inserted_count += 1
+                except Exception as e:
+                    print(f"Skipping bad generated question for {storage_path}: {e!r}")
+
+            if inserted_count == 0:
                 create_question(
                     session=session,
-                    text=q_dict["text"],
-                    title=q_dict.get("title", "Untitled Question"),  # Use provided title or default
-                    tags=q_dict["tags"],
-                    keywords=q_dict["keywords"],
-                    source_pdf=storage_path,  # Store the Supabase Storage path
+                    text=f"Fallback draft generated for {storage_path}.",
+                    title="Extracted Preview",
+                    tags="auto-generated,pdf-upload,fallback",
+                    keywords="pdf,upload,fallback",
+                    school=effective_school,
+                    course=effective_course,
+                    course_type=effective_course_type,
+                    source_pdf=storage_path,
                     user_id=user_id,
-                    is_verified=False  # applies pending status to new questions
+                    is_verified=False
                 )
-        
-        print(f"Successfully processed {storage_path}: created {len(question_dicts)} questions for user {user_id}")
+                inserted_count = 1
+
+        print(f"Successfully processed {storage_path}: created {inserted_count} questions for user {user_id}")
     except Exception as e:
-        print(f"Error processing PDF {storage_path}: {e}")
+        print(f"Error storing generated questions for {storage_path}: {e!r}")
 
 
 @app.post("/api/upload-pdf", response_model=UploadResponse)
@@ -125,6 +277,9 @@ async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     storage_path: str = Form(...),
+    school: str = Form(""),
+    course: str = Form(""),
+    course_type: str = Form(""),
     user_id: str = Depends(get_current_user)
 ):
     """
@@ -144,11 +299,20 @@ async def upload_pdf(
     file_content = await file.read()
     
     # Queue background processing with user_id and storage_path
-    background_tasks.add_task(process_pdf_background, storage_path, file_content, user_id)
+    background_tasks.add_task(
+        process_pdf_background,
+        storage_path,
+        file_content,
+        user_id,
+        school,
+        course,
+        course_type
+    )
     
     return UploadResponse(
         status="queued",
         filename=file.filename,
+        storage_path=storage_path,
         message="PDF upload successful. Processing in background."
     )
 
@@ -324,6 +488,17 @@ def delete_existing_question(
     success = delete_question(session, question_id, user_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Question not found")
+
+
+@app.delete("/api/questions-by-source/unverified")
+def delete_unverified_by_source(
+    source_pdf: str,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Delete all unverified questions for the current user and a specific uploaded source_pdf."""
+    deleted_count = delete_unverified_questions_by_source(session, user_id=user_id, source_pdf=source_pdf)
+    return {"deleted_count": deleted_count}
 
 
 @app.get("/api/user")
@@ -972,6 +1147,26 @@ def update_existing_assignment(
     return AssignmentResponse.from_orm(assignment)
 
 
+@app.post("/api/assignments/{assignment_id}/release-now", response_model=AssignmentResponse)
+def release_assignment_now(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Release an assignment immediately by setting release_date to now (UTC)."""
+    assignment = update_assignment(
+        session=session,
+        assignment_id=assignment_id,
+        instructor_id=user_id,
+        release_date=datetime.now(timezone.utc)
+    )
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to release it")
+
+    return AssignmentResponse.from_orm(assignment)
+
+
 @app.delete("/api/assignments/{assignment_id}", status_code=204)
 def delete_existing_assignment(
     assignment_id: int,
@@ -1104,6 +1299,7 @@ def root():
             "POST /api/assignments",
             "GET /api/assignments/{assignment_id}",
             "PUT /api/assignments/{assignment_id}",
+            "POST /api/assignments/{assignment_id}/release-now",
             "DELETE /api/assignments/{assignment_id}",
             "GET /api/assignments/{assignment_id}/progress",
             "PUT /api/assignments/{assignment_id}/progress"

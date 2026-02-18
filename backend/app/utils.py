@@ -1,6 +1,7 @@
 import PyPDF2
 from typing import List, Dict
 import io
+import re
 
 
 def extract_text_from_pdf(file_content: bytes) -> str:
@@ -34,35 +35,36 @@ def send_to_agent_pipeline(text: str, filename: str) -> List[Dict[str, str]]:
     Returns:
         List of question dictionaries with keys: title, text, tags, keywords
     """
-    # Simple chunking: split by double newlines or every ~500 characters
-    chunks = []
-    current_chunk = ""
-    
-    for line in text.split('\n'):
-        if len(current_chunk) + len(line) > 500 and current_chunk:
-            chunks.append(current_chunk.strip())
-            current_chunk = line
-        else:
-            current_chunk += " " + line
-    
-    if current_chunk.strip():
-        chunks.append(current_chunk.strip())
-    
-    # Create mock questions from chunks
-    questions = []
-    for i, chunk in enumerate(chunks[:10]):  # Limit to 10 questions for demo
-        if not chunk or len(chunk) < 20:  # Skip very short chunks
-            continue
-        
-        # Mock extraction of tags and keywords
-        words = chunk.split()[:50]  # First 50 words
-        keywords = [w.strip('.,!?;:') for w in words if len(w) > 5][:5]
-        
+    # Very simple parser: tokenize words and build a few short excerpts.
+    words = re.findall(r"[A-Za-z0-9']+", text or "")
+
+    if not words:
+        return [{
+            "title": "Extracted Preview 1",
+            "text": f"No text could be extracted from {filename}.",
+            "tags": "auto-generated,pdf-upload",
+            "keywords": "pdf,upload,empty"
+        }]
+
+    excerpt_size = 14
+    max_questions = 5
+    questions: List[Dict[str, str]] = []
+
+    for i in range(max_questions):
+        start = i * excerpt_size
+        end = start + excerpt_size
+        if start >= len(words):
+            break
+
+        excerpt_words = words[start:end]
+        excerpt = " ".join(excerpt_words)
+        keywords = [w.lower() for w in excerpt_words if len(w) >= 5][:5]
+
         questions.append({
-            "title": f"Question {i+1} from PDF",  # Generate a simple title
-            "text": chunk[:500],  # Limit text length
-            "tags": f"chunk-{i+1},auto-generated",
-            "keywords": ",".join(keywords[:5]) if keywords else "sample"
+            "title": f"Extracted Preview {i + 1}",
+            "text": excerpt,
+            "tags": "auto-generated,pdf-upload",
+            "keywords": ",".join(keywords) if keywords else "pdf,upload"
         })
-    
+
     return questions

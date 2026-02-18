@@ -481,11 +481,11 @@ export default function AssignmentView() {
             <div style={styles.infoValue}>{formatDate(assignment.release_date)}</div>
           </div>
           <div style={styles.infoCard}>
-            <div style={styles.infoLabel}>Due Date (Soft)</div>
+            <div style={styles.infoLabel}>Due Date</div>
             <div style={styles.infoValue}>{formatDate(assignment.due_date_soft)}</div>
           </div>
           <div style={styles.infoCard}>
-            <div style={styles.infoLabel}>Due Date (Hard)</div>
+            <div style={styles.infoLabel}>Due Date (Late)</div>
             <div style={styles.infoValue}>{formatDate(assignment.due_date_hard)}</div>
           </div>
           <div style={styles.infoCard}>

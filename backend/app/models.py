@@ -26,7 +26,7 @@ class Question(SQLModel, table=True):
     """Question model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(default="")  # Question title (e.g., Invert a Linked List)
-    text: str = Field(index=True)
+    text: str  # Do not index large freeform text; can exceed Postgres btree row limits.
     tags: str = Field(default="")  # Question tags (e.g., recursion, sorting, runtime analysis)
     keywords: str = Field(default="")  # Stored as comma-separated string
     school: str = Field(default="")  # School name (e.g., UCSB)
