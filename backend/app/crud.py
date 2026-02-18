@@ -159,6 +159,28 @@ def delete_question(session: Session, question_id: int, user_id: str) -> bool:
     return True
 
 
+def delete_unverified_questions_by_source(session: Session, user_id: str, source_pdf: str) -> int:
+    """Delete all unverified questions for a user/source_pdf pair."""
+    if not source_pdf:
+        return 0
+
+    questions = list(session.exec(
+        select(Question).where(
+            Question.user_id == user_id,
+            Question.source_pdf == source_pdf,
+            Question.is_verified == False  # noqa: E712
+        )
+    ).all())
+
+    if not questions:
+        return 0
+
+    for question in questions:
+        session.delete(question)
+    session.commit()
+    return len(questions)
+
+
 # User CRUD operations
 
 def get_or_create_user(session: Session, user_id: str, email: Optional[str] = None) -> User:
