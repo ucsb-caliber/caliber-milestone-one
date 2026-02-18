@@ -124,6 +124,7 @@ class UploadResponse(BaseModel):
     """Schema for upload response."""
     status: str
     filename: str
+    storage_path: Optional[str] = None
     message: str
 
 

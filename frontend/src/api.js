@@ -78,10 +78,13 @@ export async function uploadPDFToStorage(file) {
  * @param {string} storagePath - The Supabase Storage path of the PDF
  * @returns {Promise<Object>} - Upload response with status and message
  */
-export async function uploadPDF(file, storagePath) {
+export async function uploadPDF(file, storagePath, metadata = {}) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('storage_path', storagePath);
+  formData.append('school', metadata.school || '');
+  formData.append('course', metadata.course || '');
+  formData.append('course_type', metadata.course_type || '');
   
   try {
     const headers = await getAuthHeaders();
@@ -375,13 +378,14 @@ export async function createQuestion(questionData) {
 /**
  * Delete a question by ID
  */
-export async function deleteQuestion(id) {
+export async function deleteQuestion(id, options = {}) {
   try {
     const headers = await getAuthHeaders();
     
     const response = await fetch(`${API_BASE}/api/questions/${id}`, {
       method: 'DELETE',
       headers,
+      keepalive: Boolean(options.keepalive),
     });
 
     if (!response.ok) {
@@ -397,6 +401,43 @@ export async function deleteQuestion(id) {
     }
 
     return true;
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete all unverified questions for the current user by source_pdf.
+ */
+export async function deleteUnverifiedQuestionsBySource(sourcePdf, options = {}) {
+  if (!sourcePdf) return { deleted_count: 0 };
+
+  try {
+    const headers = await getAuthHeaders();
+    const query = new URLSearchParams({ source_pdf: sourcePdf }).toString();
+
+    const response = await fetch(`${API_BASE}/api/questions-by-source/unverified?${query}`, {
+      method: 'DELETE',
+      headers,
+      keepalive: Boolean(options.keepalive),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to delete unverified questions';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
   } catch (error) {
     if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');

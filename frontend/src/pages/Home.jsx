@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { uploadPDF, uploadPDFToStorage } from '../api';
 
 export default function Home() {
@@ -7,6 +7,13 @@ export default function Home() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [showInstructions, setInstructions] = useState(false);
+  const [showMetadataModal, setShowMetadataModal] = useState(false);
+  const [metadata, setMetadata] = useState({
+    school: '',
+    course: '',
+    course_type: ''
+  });
+  const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -19,8 +26,7 @@ export default function Home() {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const runUpload = async () => {
     if (!file) {
       setError('Please select a file first');
       return;
@@ -34,21 +40,43 @@ export default function Home() {
       // First upload PDF to Supabase Storage
       const storagePath = await uploadPDFToStorage(file);
       
-      // Then upload to backend for processing with the storage path
-      const result = await uploadPDF(file, storagePath);
+      // Then upload to backend for processing with selected metadata
+      const result = await uploadPDF(file, storagePath, metadata);
       if (result.status === "queued") {
-      // This changes the hash, which triggers your useEffect in main.jsx to change the 'page' state
-        window.location.hash = `verify?file=${encodeURIComponent(result.filename)}`;
+        // Use storage path for verify filtering because backend stores source_pdf as storage path.
+        const sourcePath = result.storage_path || storagePath;
+        const fileName = result.filename || file.name;
+        window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
       }
       setMessage(`Success! ${result.message}`);
       setFile(null);
-      // Reset file input
-      e.target.reset();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (err) {
       setError(err.message || 'Upload failed');
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!file) {
+      setError('Please select a file first');
+      return;
+    }
+    setError('');
+    setShowMetadataModal(true);
+  };
+
+  const handleConfirmMetadata = async () => {
+    if (!metadata.school || !metadata.course || !metadata.course_type) {
+      setError('School, course, and course type are required before upload.');
+      return;
+    }
+    setShowMetadataModal(false);
+    await runUpload();
   };
 
   return (
@@ -69,6 +97,7 @@ export default function Home() {
         >
 
         <input
+          ref={fileInputRef}
           id="pdf-upload"
           type="file"
           accept=".pdf"
@@ -304,6 +333,94 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {showMetadataModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            width: 'min(520px, 92vw)',
+            background: 'white',
+            borderRadius: '12px',
+            padding: '1.25rem',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
+          }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', color: '#111827' }}>Before Uploading</h3>
+            <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.9rem' }}>
+              Select the school, course, and course type for generated questions.
+            </p>
+
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              <select
+                value={metadata.school}
+                onChange={(e) => setMetadata((prev) => ({ ...prev, school: e.target.value }))}
+                style={{ padding: '0.65rem', borderRadius: '8px', border: '1px solid #d1d5db' }}
+              >
+                <option value="">Select school</option>
+                <option value="UCSB">UCSB</option>
+                <option value="UCLA">UCLA</option>
+                <option value="UC Berkeley">UC Berkeley</option>
+                <option value="Other">Other</option>
+              </select>
+
+              <input
+                type="text"
+                placeholder="Course (e.g., CS 16)"
+                value={metadata.course}
+                onChange={(e) => setMetadata((prev) => ({ ...prev, course: e.target.value }))}
+                style={{ padding: '0.65rem', borderRadius: '8px', border: '1px solid #d1d5db' }}
+              />
+
+              <input
+                type="text"
+                placeholder="Course type (e.g., Intro CS)"
+                value={metadata.course_type}
+                onChange={(e) => setMetadata((prev) => ({ ...prev, course_type: e.target.value }))}
+                style={{ padding: '0.65rem', borderRadius: '8px', border: '1px solid #d1d5db' }}
+              />
+            </div>
+
+            <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
+              <button
+                onClick={() => setShowMetadataModal(false)}
+                disabled={uploading}
+                style={{
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '0.55rem 0.9rem',
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmMetadata}
+                disabled={uploading}
+                style={{
+                  background: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '0.55rem 0.9rem',
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                {uploading ? 'Uploading...' : 'Upload PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
