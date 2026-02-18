@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+from datetime import datetime, timezone
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
@@ -8,7 +9,7 @@ from sqlmodel import Session, select, func
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
-from .models import Question, User, Course
+from .models import Question, User, Course, Assignment
 from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, 
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
                      UserListResponse,
@@ -80,6 +81,43 @@ Path("data").mkdir(parents=True, exist_ok=True)
 def on_startup():
     """Initialize database on startup."""
     create_db_and_tables()
+    backfill_existing_assignment_dates()
+
+
+def backfill_existing_assignment_dates():
+    """
+    Backfill missing assignment dates for legacy records.
+
+    For previously created assignments with missing release/due dates, set:
+    - release_date: Feb 14, 2026
+    - due_date_soft: Feb 15, 2026
+    - due_date_hard: Feb 15, 2026
+    """
+    default_release = datetime(2026, 2, 14, 0, 0, 0)
+    default_due = datetime(2026, 2, 15, 0, 0, 0)
+
+    with Session(engine) as session:
+        assignments = list(session.exec(select(Assignment)).all())
+        changed = False
+
+        for assignment in assignments:
+            assignment_changed = False
+            if assignment.release_date is None:
+                assignment.release_date = default_release
+                assignment_changed = True
+            if assignment.due_date_soft is None:
+                assignment.due_date_soft = default_due
+                assignment_changed = True
+            if assignment.due_date_hard is None:
+                assignment.due_date_hard = default_due
+                assignment_changed = True
+
+            if assignment_changed:
+                changed = True
+                session.add(assignment)
+
+        if changed:
+            session.commit()
 
 
 def process_pdf_background(storage_path: str, file_content: bytes, user_id: str):
@@ -972,6 +1010,26 @@ def update_existing_assignment(
     return AssignmentResponse.from_orm(assignment)
 
 
+@app.post("/api/assignments/{assignment_id}/release-now", response_model=AssignmentResponse)
+def release_assignment_now(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Release an assignment immediately by setting release_date to now (UTC)."""
+    assignment = update_assignment(
+        session=session,
+        assignment_id=assignment_id,
+        instructor_id=user_id,
+        release_date=datetime.now(timezone.utc)
+    )
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to release it")
+
+    return AssignmentResponse.from_orm(assignment)
+
+
 @app.delete("/api/assignments/{assignment_id}", status_code=204)
 def delete_existing_assignment(
     assignment_id: int,
@@ -1104,6 +1162,7 @@ def root():
             "POST /api/assignments",
             "GET /api/assignments/{assignment_id}",
             "PUT /api/assignments/{assignment_id}",
+            "POST /api/assignments/{assignment_id}/release-now",
             "DELETE /api/assignments/{assignment_id}",
             "GET /api/assignments/{assignment_id}/progress",
             "PUT /api/assignments/{assignment_id}/progress"
