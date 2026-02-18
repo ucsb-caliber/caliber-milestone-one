@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getAssignment, getQuestionsBatch, getAssignmentProgress, saveAssignmentProgress } from '../api';
 import StudentPreview from '../components/StudentPreview';
 import { useAuth } from '../AuthContext';
@@ -14,22 +14,26 @@ export default function StudentAssignmentPage() {
   const [initialSubmitted, setInitialSubmitted] = useState(false);
   const [liveAnswers, setLiveAnswers] = useState({});
   const [liveQuestionIndex, setLiveQuestionIndex] = useState(0);
-  const [progressTick, setProgressTick] = useState(0);
   const [progressReady, setProgressReady] = useState(false);
   const [isInstructorPreview, setIsInstructorPreview] = useState(false);
+  const isSubmittingOnExitRef = useRef(false);
+  const latestProgressRef = useRef({ answers: {}, questionIndex: 0 });
+  const skipUnmountSubmitRef = useRef(false);
 
   const parseHash = () => {
     const hash = window.location.hash;
     const courseMatch = hash.match(/#student-course\/(\d+)/);
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
+    const resubmitRequested = hash.includes("resubmit=1");
 
     return {
       courseId: courseMatch ? parseInt(courseMatch[1], 10) : null,
-      assignmentId: assignmentMatch ? parseInt(assignmentMatch[1], 10) : null
+      assignmentId: assignmentMatch ? parseInt(assignmentMatch[1], 10) : null,
+      resubmitRequested
     };
   };
 
-  const { courseId, assignmentId } = parseHash();
+  const { courseId, assignmentId, resubmitRequested } = parseHash();
 
   useEffect(() => {
     async function loadData() {
@@ -58,7 +62,12 @@ export default function StudentAssignmentPage() {
           const progressData = await getAssignmentProgress(assignmentId);
           const loadedAnswers = progressData?.answers || {};
           const loadedIndex = progressData?.current_question_index || 0;
-          const loadedSubmitted = Boolean(progressData?.submitted);
+          const hasPriorSubmission = Boolean(progressData?.submitted || progressData?.submitted_at);
+          let loadedSubmitted = hasPriorSubmission;
+          if (resubmitRequested && loadedSubmitted) {
+            loadedSubmitted = false;
+          }
+
           setInitialAnswers(loadedAnswers);
           setInitialQuestionIndex(loadedIndex);
           setInitialSubmitted(loadedSubmitted);
@@ -81,10 +90,17 @@ export default function StudentAssignmentPage() {
     }
 
     loadData();
-  }, [assignmentId, user?.id]);
+  }, [assignmentId, user?.id, resubmitRequested]);
 
   useEffect(() => {
-    if (!assignmentId || !progressReady) return;
+    latestProgressRef.current = {
+      answers: liveAnswers || {},
+      questionIndex: liveQuestionIndex || 0
+    };
+  }, [liveAnswers, liveQuestionIndex]);
+
+  useEffect(() => {
+    if (!assignmentId || !progressReady || isInstructorPreview) return;
     const timer = setTimeout(async () => {
       try {
         await saveAssignmentProgress(assignmentId, {
@@ -96,7 +112,52 @@ export default function StudentAssignmentPage() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [assignmentId, progressReady, progressTick, liveAnswers, liveQuestionIndex]);
+  }, [assignmentId, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex]);
+
+  const saveAndSubmitOnExit = useCallback(async () => {
+    const isReadOnlySubmittedView = initialSubmitted && !resubmitRequested;
+    if (isInstructorPreview || isReadOnlySubmittedView || !assignmentId || !progressReady || isSubmittingOnExitRef.current) {
+      return null;
+    }
+    isSubmittingOnExitRef.current = true;
+    try {
+      const savedProgress = await saveAssignmentProgress(assignmentId, {
+        answers: latestProgressRef.current.answers || {},
+        current_question_index: latestProgressRef.current.questionIndex || 0,
+        submitted: true
+      });
+      return savedProgress;
+    } catch (err) {
+      console.error('Exit save failed:', err);
+      return null;
+    } finally {
+      isSubmittingOnExitRef.current = false;
+    }
+  }, [assignmentId, initialSubmitted, isInstructorPreview, progressReady, resubmitRequested]);
+
+  useEffect(() => () => {
+    const isReadOnlySubmittedView = initialSubmitted && !resubmitRequested;
+    if (
+      skipUnmountSubmitRef.current ||
+      isInstructorPreview ||
+      isReadOnlySubmittedView ||
+      !assignmentId ||
+      !progressReady ||
+      isSubmittingOnExitRef.current
+    ) {
+      return;
+    }
+    isSubmittingOnExitRef.current = true;
+    void saveAssignmentProgress(assignmentId, {
+      answers: latestProgressRef.current.answers || {},
+      current_question_index: latestProgressRef.current.questionIndex || 0,
+      submitted: true
+    }).catch((err) => {
+      console.error('Unmount save failed:', err);
+    }).finally(() => {
+      isSubmittingOnExitRef.current = false;
+    });
+  }, [assignmentId, initialSubmitted, isInstructorPreview, progressReady, resubmitRequested]);
 
   const styles = {
     container: {
@@ -187,33 +248,31 @@ export default function StudentAssignmentPage() {
       assignmentType={assignment.type}
       isPreviewMode={false}
       showCorrectAnswers={false}
-      onClose={() => {
-        window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
+      closeButtonText={resubmitRequested ? 'Resubmit Assignment' : 'Back to Course'}
+      onClose={async () => {
+        const savedProgress = await saveAndSubmitOnExit();
+        skipUnmountSubmitRef.current = true;
+        if (courseId) {
+          if (savedProgress?.submitted_at) {
+            const submissionType = resubmitRequested ? 'resubmitted' : 'submitted';
+            const submittedAt = encodeURIComponent(savedProgress.submitted_at);
+            const assignmentTitle = encodeURIComponent(assignment?.title || 'Assignment');
+            window.location.hash = `#student-course/${courseId}?submission=${submissionType}&submitted_at=${submittedAt}&assignment_title=${assignmentTitle}`;
+          } else {
+            window.location.hash = `#student-course/${courseId}`;
+          }
+        } else {
+          window.location.hash = '#student-courses';
+        }
       }}
       initialAnswers={initialAnswers}
       initialQuestionIndex={initialQuestionIndex}
       initialSubmitted={initialSubmitted}
       onAnswersChange={(answers) => {
         setLiveAnswers(answers || {});
-        setProgressTick((prev) => prev + 1);
       }}
       onQuestionChange={(index) => {
         setLiveQuestionIndex(index || 0);
-        setProgressTick((prev) => prev + 1);
-      }}
-      onSubmit={async (answers) => {
-        if (isInstructorPreview) return;
-        setLiveAnswers(answers || {});
-        try {
-          await saveAssignmentProgress(assignmentId, {
-            answers: answers || {},
-            current_question_index: liveQuestionIndex,
-            submitted: true
-          });
-          setInitialSubmitted(true);
-        } catch (err) {
-          console.error('Submit save failed:', err);
-        }
       }}
     />
   );
