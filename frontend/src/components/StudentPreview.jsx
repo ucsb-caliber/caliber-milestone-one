@@ -19,7 +19,6 @@ import { getImageSignedUrl } from '../api';
  * - assignmentType: Type of assignment (Quiz, Homework, etc.)
  * - onClose: Callback when preview is closed (for modal mode)
  * - isPreviewMode: Whether this is a preview (shows "Preview Mode" banner)
- * - onSubmit: Callback when assignment is submitted (optional, for student mode)
  * - showCorrectAnswers: Whether to show correct answers after selection (default: false for students, true for instructors in review)
  */
 export default function StudentPreview({
@@ -28,8 +27,8 @@ export default function StudentPreview({
   assignmentType = 'Assignment',
   onClose,
   isPreviewMode = true,
-  onSubmit,
   showCorrectAnswers = false,
+  closeButtonText = 'Back to Course',
   initialAnswers,
   initialQuestionIndex,
   initialSubmitted,
@@ -125,13 +124,6 @@ export default function StudentPreview({
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
       if (onQuestionChange) onQuestionChange(nextIndex);
-    }
-  };
-
-  const handleSubmit = () => {
-    setSubmitted(true);
-    if (onSubmit) {
-      onSubmit(answers);
     }
   };
 
@@ -490,7 +482,7 @@ export default function StudentPreview({
                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
               >
-                Back to Course
+                {closeButtonText}
               </button>
             </div>
           )}
@@ -548,7 +540,7 @@ export default function StudentPreview({
               onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
             >
-              Back to Course
+              {closeButtonText}
             </button>
           </div>
         )}
@@ -761,17 +753,6 @@ export default function StudentPreview({
           </button>
 
           <div style={{ display: 'flex', gap: '1rem' }}>
-            {isLastQuestion && !submitted && !isPreviewMode && (
-              <button
-                style={styles.submitButton}
-                onClick={handleSubmit}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
-              >
-                Submit Assignment
-              </button>
-            )}
-            
             {isLastQuestion && isPreviewMode && onClose && (
               <button
                 style={styles.submitButton}
