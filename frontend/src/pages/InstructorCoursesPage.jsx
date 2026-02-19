@@ -1,7 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getCourses, createCourse, updateCourse, deleteCourse, getAllUsers, getUserInfo } from '../api';
 import CourseCard from '../components/CourseCard';
 import { useAuth } from '../AuthContext';
+
+const SearchIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#94a3b8' }}>
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+);
+
+const RefreshIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 2v6h-6"></path>
+    <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+    <path d="M3 22v-6h6"></path>
+    <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+  </svg>
+);
 
 export default function InstructorCoursesPage() {
   const { user } = useAuth();
@@ -11,14 +27,29 @@ export default function InstructorCoursesPage() {
   const [error, setError] = useState('');
   const [isTeacher, setIsTeacher] = useState(false);
   
-  // Modal states
+  const [sortBy, setSortBy] = useState('name'); 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+
+  const [pinnedIds, setPinnedIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pinned_courses');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error("Failed to parse pinned courses:", e);
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('pinned_courses', JSON.stringify(pinnedIds));
+  }, [pinnedIds]);
   
-  // Form state
   const [formData, setFormData] = useState({
     course_name: '',
     school_name: '',
@@ -27,23 +58,18 @@ export default function InstructorCoursesPage() {
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // Check if current user is a teacher
   useEffect(() => {
     async function fetchUserInfo() {
       try {
         const info = await getUserInfo();
-        setIsTeacher(info.teacher === true);
+        setIsTeacher(info?.teacher === true);
       } catch (err) {
-        console.error('Failed to fetch user info:', err);
         setIsTeacher(false);
       }
     }
-    if (user) {
-      fetchUserInfo();
-    }
+    if (user) fetchUserInfo();
   }, [user]);
 
-  // Load courses and users
   const loadData = async () => {
     setLoading(true);
     setError('');
@@ -52,10 +78,10 @@ export default function InstructorCoursesPage() {
         getCourses(),
         getAllUsers()
       ]);
-      setCourses(coursesData.courses || []);
-      setAllUsers(usersData.users || []);
+      setCourses(coursesData?.courses || []);
+      setAllUsers(usersData?.users || []);
     } catch (err) {
-      setError(err.message || 'Failed to load data');
+      setError(err.message || 'Failed to load data. Please check your connection.');
     } finally {
       setLoading(false);
     }
@@ -65,24 +91,57 @@ export default function InstructorCoursesPage() {
     loadData();
   }, []);
 
-  // Reset form
-  const resetForm = () => {
-    setFormData({
-      course_name: '',
-      school_name: '',
-      student_ids: []
+  const processedCourses = useMemo(() => {
+    if (!Array.isArray(courses)) return [];
+    let filtered = courses.filter(c => {
+      const name = (c.course_name || '').toLowerCase();
+      const school = (c.school_name || '').toLowerCase();
+      const search = searchQuery.toLowerCase();
+      return name.includes(search) || school.includes(search);
     });
-    setFormError('');
+
+    if (sortBy === 'name') {
+      filtered.sort((a, b) => (a.course_name || '').localeCompare(b.course_name || ''));
+    } else if (sortBy === 'students') {
+      filtered.sort((a, b) => (b.student_ids?.length || 0) - (a.student_ids?.length || 0));
+    }
+    return filtered;
+  }, [courses, searchQuery, sortBy]);
+
+  const pinnedCourses = processedCourses.filter(c => pinnedIds.includes(c.id));
+  const otherCourses = processedCourses.filter(c => !pinnedIds.includes(c.id));
+
+  const togglePin = (id) => {
+    setPinnedIds(prev => 
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
   };
 
-  // Handle create course
+  const resetForm = () => {
+    setFormData({ course_name: '', school_name: '', student_ids: [] });
+    setFormError('');
+    setStudentSearchQuery('');
+  };
+
+  const handleOpenCreate = () => {
+    resetForm();
+    setShowCreateModal(true);
+  };
+
+  const handleOpenEdit = (course) => {
+    resetForm();
+    setSelectedCourse(course);
+    setFormData({
+      course_name: course.course_name || '',
+      school_name: course.school_name || '',
+      student_ids: course.student_ids || []
+    });
+    setShowEditModal(true);
+  };
+
   const handleCreateCourse = async (e) => {
     e.preventDefault();
-    if (!formData.course_name.trim()) {
-      setFormError('Course name is required');
-      return;
-    }
-
+    if (!formData.course_name.trim()) return setFormError('Course name is required');
     setFormLoading(true);
     setFormError('');
     try {
@@ -90,69 +149,36 @@ export default function InstructorCoursesPage() {
       setShowCreateModal(false);
       resetForm();
       await loadData();
-    } catch (err) {
-      setFormError(err.message || 'Failed to create course');
-    } finally {
-      setFormLoading(false);
-    }
+    } catch (err) { setFormError(err.message || 'Error creating course.'); }
+    finally { setFormLoading(false); }
   };
 
-  // Handle edit course
   const handleEditCourse = async (e) => {
     e.preventDefault();
-    if (!formData.course_name.trim()) {
-      setFormError('Course name is required');
-      return;
-    }
-
+    if (!formData.course_name.trim()) return setFormError('Course name is required');
     setFormLoading(true);
     setFormError('');
     try {
       await updateCourse(selectedCourse.id, formData);
       setShowEditModal(false);
       resetForm();
-      setSelectedCourse(null);
       await loadData();
-    } catch (err) {
-      setFormError(err.message || 'Failed to update course');
-    } finally {
-      setFormLoading(false);
-    }
+    } catch (err) { setFormError(err.message || 'Error updating course.'); }
+    finally { setFormLoading(false); }
   };
 
-  // Handle delete course
   const handleDeleteCourse = async () => {
     setFormLoading(true);
+    setError('');
     try {
       await deleteCourse(selectedCourse.id);
       setShowDeleteModal(false);
       setSelectedCourse(null);
       await loadData();
-    } catch (err) {
-      setError(err.message || 'Failed to delete course');
-    } finally {
-      setFormLoading(false);
-    }
+    } catch (err) { setError(err.message || 'Failed to delete course.'); }
+    finally { setFormLoading(false); }
   };
 
-  // Open edit modal
-  const openEditModal = (course) => {
-    setSelectedCourse(course);
-    setFormData({
-      course_name: course.course_name,
-      school_name: course.school_name || '',
-      student_ids: course.student_ids || []
-    });
-    setShowEditModal(true);
-  };
-
-  // Open delete modal
-  const openDeleteModal = (course) => {
-    setSelectedCourse(course);
-    setShowDeleteModal(true);
-  };
-
-  // Toggle student selection
   const toggleStudent = (studentId) => {
     setFormData(prev => ({
       ...prev,
@@ -162,389 +188,70 @@ export default function InstructorCoursesPage() {
     }));
   };
 
-  // Get display name for a user
-  const getUserDisplayName = (u) => {
-    if (u.first_name && u.last_name) {
-      return `${u.first_name} ${u.last_name}`;
-    }
-    return u.email || u.user_id;
-  };
+  const getUserDisplayName = (u) => (u?.first_name && u?.last_name) ? `${u.first_name} ${u.last_name}` : (u?.email || u?.user_id || 'Unknown');
 
-  // Filter out teachers from student list (students only)
   const availableStudents = allUsers.filter(u => !u.teacher && u.user_id !== user?.id);
 
-  
-
-  // Select all students
-  const handleSelectAll = () => {
-    setFormData(prev => ({
-      ...prev,
-      student_ids: [...availableStudents.map(u => u.user_id)]
-    }));
-  };
-
-  // Deselect all students
-  const handleDeselectAll = () => {
-    setFormData(prev => ({
-      ...prev,
-      student_ids: []
-    }));
-  };
-
-  // Styles
   const styles = {
-    container: {
-      maxWidth: '1400px',
-      margin: '0 auto',
-      paddingBottom: '2rem'
-    },
-    header: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '2rem'
-    },
-    title: {
-      margin: 0,
-      fontSize: '1.75rem',
-      fontWeight: '700',
-      color: '#111827'
-    },
-    createBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#4f46e5',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '1rem',
-      fontWeight: '600',
-      transition: 'background-color 0.15s'
-    },
-    grid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-      gap: '1.5rem'
-    },
-    emptyState: {
-      padding: '4rem',
-      background: '#f9fafb',
-      borderRadius: '12px',
-      textAlign: 'center',
-      color: '#6b7280'
-    },
-    modal: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    },
-    modalContent: {
-      background: 'white',
-      padding: '2rem',
-      borderRadius: '12px',
-      maxWidth: '500px',
-      width: '90%',
-      maxHeight: '80vh',
-      overflow: 'auto'
-    },
-    modalTitle: {
-      margin: '0 0 1.5rem 0',
-      fontSize: '1.25rem',
-      fontWeight: '700'
-    },
-    formGroup: {
-      marginBottom: '1rem'
-    },
-    label: {
-      display: 'block',
-      marginBottom: '0.2rem',
-      fontWeight: '600',
-      color: '#374151',
-      fontSize: '0.875rem'
-    },
-    input: {
-      width: '100%',
-      padding: '0.75rem',
-      border: '1px solid #d1d5db',
-      borderRadius: '6px',
-      fontSize: '1rem',
-      boxSizing: 'border-box'
-    },
-    studentsContainer: {
-      border: '1px solid #e5e7eb',
-      borderRadius: '12px',
-      padding: '12px',
-      backgroundColor: '#ffffff',
-    },
-    searchInput: {
-      width: '100%',
-      padding: '0.625rem 0.75rem',
-      border: '1px solid #d1d5db',
-      borderRadius: '6px',
-      fontSize: '0.875rem',
-      boxSizing: 'border-box',
-      marginTop: '-0.5rem',
-      marginBottom: '0.5rem',
-      background: '#ffffff',
-      transition: 'border-color 0.15s'
-    },
-    bulkActionButtons: {
-      display: 'flex',
-      alignItems: 'center',
-      marginBottom: '0.5rem'
-    },
-    bulkActionBtn: {
-      background: 'none',
-      border: 'none',
-      padding: 0,
-      color: '#4f46e5',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: 500,
-      textDecoration: 'none',
-      marginBottom: '0rem', 
-      marginRight: 'auto'
-    },
-    studentList: {
-      maxHeight: '200px',
-      minHeight: '200px',
-      overflow: 'auto',
-      border: '1px solid #e5e7eb',
-      borderRadius: '8px'
-    },
-    studentItem: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.75rem',
-      padding: '0.75rem',
-      borderBottom: '1px solid #f3f4f6',
-      cursor: 'pointer',
-      transition: 'background 0.15s'
-    },
-    checkbox: {
-      width: '18px',
-      height: '18px',
-      cursor: 'pointer'
-    },
-    buttonGroup: {
-      display: 'flex',
-      gap: '0.75rem',
-      justifyContent: 'flex-end',
-      marginTop: '1.5rem'
-    },
-    cancelBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#f3f4f6',
-      color: '#374151',
-      border: 'none',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: '500'
-    },
-    submitBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#4f46e5',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: '600'
-    },
-    deleteBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#dc2626',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: '600'
-    },
-    errorBanner: {
-      padding: '1rem',
-      background: '#fef2f2',
-      border: '1px solid #fecaca',
-      borderRadius: '8px',
-      color: '#dc2626',
-      marginBottom: '1rem',
-      fontSize: '0.875rem'
-    }
+    container: { maxWidth: '1300px', margin: '0 auto', padding: '40px 20px', minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' },
+    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px', gap: '20px', flexWrap: 'wrap' },
+    title: { fontSize: '2.5rem', fontWeight: '800', margin: 0, color: '#0f172a', letterSpacing: '-0.025em' },
+    createBtn: { transition: 'all 0.2s ease', padding: '14px 28px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '700', cursor: 'pointer'},
+    controls: { display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '32px' },
+    searchBar: { flexGrow: 1, maxWidth: '400px', padding: '12px 16px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', outline: 'none' },
+    select: {padding: '12px 40px 12px 16px', borderRadius: '12px',border: '2px solid #e2e8f0', background: 'white', fontWeight: '600', color: '#475569', cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px', outline: 'none',},   
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '24px' },
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' },
+    modalContent: { background: 'white', padding: '32px', borderRadius: '24px', maxWidth: '550px', width: '90%', maxHeight: '90vh', overflowY: 'auto' },
+    formInput: { width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', marginTop: '6px', fontSize: '1rem', boxSizing: 'border-box' },
+    errorBanner: { padding: '16px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '0.9rem', marginBottom: '24px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }
   };
 
-  // Render create/edit modal
   const renderFormModal = (isEdit) => {
-    const handleBackdropClick = (e) => {
-      if (e.target === e.currentTarget) {
-        setShowEditModal(false);
-        setShowCreateModal(false);
-        resetForm();
-        setSelectedCourse(null);
-        setStudentSearchQuery(''); // Reset search when closing
-      }
-    };
-
-    // Filter students based on search query
     const filteredStudents = availableStudents.filter(u => {
-      if (!studentSearchQuery.trim()) return true;
-      
-      const searchLower = studentSearchQuery.toLowerCase();
-      const displayName = getUserDisplayName(u).toLowerCase();
-      const email = (u.email || '').toLowerCase();
-      
-      return displayName.includes(searchLower) || email.includes(searchLower);
+      const search = studentSearchQuery.toLowerCase();
+      return getUserDisplayName(u).toLowerCase().includes(search) || (u.email || '').toLowerCase().includes(search);
     });
 
     return (
-      <div style={styles.modal} onClick={handleBackdropClick}>
-        <div style={styles.modalContent}>
-          <h2 style={styles.modalTitle}>{isEdit ? 'Edit Course' : 'Create Course'}</h2>
+      <div style={styles.modalOverlay} onClick={() => { setShowCreateModal(false); setShowEditModal(false); resetForm(); }}>
+        <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+          <h2 style={{ margin: '0 0 24px 0', fontSize: '1.5rem', fontWeight: '800' }}>{isEdit ? "Course Settings" : "Create New Course"}</h2>
           
           {formError && (
-            <div style={styles.errorBanner}>{formError}</div>
+            <div style={styles.errorBanner}>
+              <span>⚠️</span> {formError}
+            </div>
           )}
 
           <form onSubmit={isEdit ? handleEditCourse : handleCreateCourse}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Course Name *</label>
-              <input
-                type="text"
-                value={formData.course_name}
-                onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
-                style={styles.input}
-                placeholder="e.g., Introduction to Computer Science"
-                disabled={formLoading}
-              />
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontWeight: '700', fontSize: '0.9rem' }}>Course Name</label>
+              <input style={styles.formInput} value={formData.course_name} onChange={e => setFormData({...formData, course_name: e.target.value})} />
             </div>
 
-            <div style={styles.formGroup}>
-              <label style={styles.label}>School Name</label>
-              <input
-                type="text"
-                value={formData.school_name}
-                onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
-                style={styles.input}
-                placeholder="e.g., UCSB"
-                disabled={formLoading}
-              />
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontWeight: '700', fontSize: '0.9rem' }}>School Name</label>
+              <input style={styles.formInput} value={formData.school_name} onChange={e => setFormData({...formData, school_name: e.target.value})} />
             </div>
 
-            <div style={styles.formGroup}>
-              <div style={styles.bulkActionButtons}>
-                <label style={styles.label}>
-                  Students ({formData.student_ids.length} selected)
-                </label>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={handleSelectAll}
-                    disabled={formLoading}
-                    style={styles.bulkActionBtn}
-                    onMouseEnter={(e) => {
-                      if (!formLoading) e.currentTarget.style.background = '#ffffffff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#ffffffff';
-                    }}
-                  >
-                    Select All
-                  </button>
-                  <span style={{ display: 'inline-block', marginBottom: '0.2rem' }}>|</span>
-                  <button
-                    type="button"
-                    onClick={handleDeselectAll}
-                    disabled={formLoading}
-                    style={styles.bulkActionBtn}
-                    onMouseEnter={(e) => {
-                      if (!formLoading) e.currentTarget.style.background = '#ffffffff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#ffffffff';
-                    }}
-                  >
-                    Clear Selection
-                  </button>
-                </div>
-              </div>
-
-              {availableStudents.length === 0 ? (
-                <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>
-                  No students available to add.
-                </p>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    value={studentSearchQuery}
-                    onChange={(e) => setStudentSearchQuery(e.target.value)}
-                    style={styles.searchInput}
-                    placeholder="Search for students..."
-                    disabled={formLoading}
-                  />
-                  <div style={styles.studentList}>
-                    {filteredStudents.map(u => (
-                      <div
-                        key={u.user_id}
-                        style={{
-                          ...styles.studentItem,
-                          background: formData.student_ids.includes(u.user_id) ? '#eef2ff' : 'transparent'
-                        }}
-                        onClick={() => !formLoading && toggleStudent(u.user_id)}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.student_ids.includes(u.user_id)}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            toggleStudent(u.user_id);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={styles.checkbox}
-                          disabled={formLoading}
-                        />
-                        <span style={{ fontSize: '0.875rem', color: '#374151' }}>
-                          {getUserDisplayName(u)}
-                        </span>
-                      </div>
-                    ))}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontWeight: '700', fontSize: '0.9rem', display: 'block', marginBottom: '8px' }}>Roster ({formData.student_ids.length})</label>
+              <input style={{...styles.formInput, marginBottom: '10px'}} placeholder="Search students..." value={studentSearchQuery} onChange={e => setStudentSearchQuery(e.target.value)} />
+              <div style={{ border: '1px solid #f1f5f9', borderRadius: '12px', maxHeight: '180px', overflowY: 'auto' }}>
+                {filteredStudents.map(u => (
+                  <div key={u.user_id} onClick={() => toggleStudent(u.user_id)} style={{ padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', background: formData.student_ids.includes(u.user_id) ? '#f0f7ff' : 'transparent' }}>
+                    <input type="checkbox" checked={formData.student_ids.includes(u.user_id)} readOnly />
+                    <span style={{ fontSize: '0.9rem' }}>{getUserDisplayName(u)}</span>
                   </div>
-                </>
-              )}
+                ))}
+              </div>
             </div>
 
-            <div style={styles.buttonGroup}>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowEditModal(false);
-                  setShowCreateModal(false);
-                  resetForm();
-                  setSelectedCourse(null);
-                  setStudentSearchQuery('');
-                }}
-                style={styles.cancelBtn}
-                disabled={formLoading}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                style={{
-                  ...styles.submitBtn,
-                  opacity: formLoading ? 0.6 : 1,
-                  cursor: formLoading ? 'not-allowed' : 'pointer'
-                }}
-                disabled={formLoading}
-              >
-                {formLoading ? (isEdit ? 'Saving...' : 'Creating...') : (isEdit ? 'Save Changes' : 'Create Course')}
+            <div style={{ display: 'flex', gap: '12px', marginTop: '30px' }}>
+              <button type="button" onClick={() => { setShowCreateModal(false); setShowEditModal(false); resetForm(); }} style={{ marginLeft: 'auto', padding: '12px 20px', background: '#f1f5f9', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+              <button type="submit" disabled={formLoading} style={{ padding: '12px 24px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                {formLoading ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </form>
@@ -553,115 +260,113 @@ export default function InstructorCoursesPage() {
     );
   };
 
-  // Render delete confirmation modal
-  const renderDeleteModal = () => (
-    <div style={styles.modal}>
-      <div style={styles.modalContent}>
-        <h2 style={styles.modalTitle}>Delete Course</h2>
-        <p style={{ color: '#374151', marginBottom: '1.5rem' }}>
-          Are you sure you want to delete <strong>{selectedCourse?.course_name}</strong>? 
-          This action cannot be undone and will remove all associated data.
-        </p>
-        <div style={styles.buttonGroup}>
-          <button
-            onClick={() => {
-              setShowDeleteModal(false);
-              setSelectedCourse(null);
-            }}
-            style={styles.cancelBtn}
-            disabled={formLoading}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDeleteCourse}
-            style={{
-              ...styles.deleteBtn,
-              opacity: formLoading ? 0.6 : 1,
-              cursor: formLoading ? 'not-allowed' : 'pointer'
-            }}
-            disabled={formLoading}
-          >
-            {formLoading ? 'Deleting...' : 'Delete Course'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Courses</h1>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {isTeacher && (
-            <button
-              onClick={() => {
-                resetForm();
-                setShowCreateModal(true);
-              }}
-              style={styles.createBtn}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
-            >
-              + Create Course
-            </button>
-          )}
-          <button
-            onClick={loadData}
-            disabled={loading}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: '500',
-              opacity: loading ? 0.6 : 1
-            }}
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+      <header style={styles.header}>
+        <div>
+          <h1 style={styles.title}>Instructor Dashboard</h1>
         </div>
+        {isTeacher && (
+          <button style={styles.createBtn} onClick={handleOpenCreate} onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(79, 70, 229, 0.3)'
+            e.currentTarget.style.scale = 1.02
+          }} onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = 'none'
+            e.currentTarget.style.scale = 1
+          }}>
+            + Create New Course
+          </button>
+        )}
+      </header>
+
+      <div style={styles.controls}>
+        <input style={styles.searchBar} placeholder="Search courses..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+        <select style={styles.select} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option value="name">Sort by Name</option>
+          <option value="students">Sort by Size</option>
+        </select>
+        <button onClick={loadData} style={{ ...styles.select, backgroundImage: 'None', padding: '12px' }} title="Refresh dashboard"><RefreshIcon /></button>
       </div>
 
       {error && (
-        <div style={styles.errorBanner}>{error}</div>
+        <div style={styles.errorBanner}>
+          <span>❌</span> {error}
+          <button 
+            onClick={() => setError('')} 
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontWeight: 'bold' }}
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {loading ? (
-        <p>Loading courses...</p>
-      ) : courses.length === 0 ? (
-        <div style={styles.emptyState}>
-          <h3 style={{ margin: '0 0 0.5rem 0', color: '#374151' }}>No Courses Found</h3>
-          <p style={{ margin: 0 }}>
-            {isTeacher 
-              ? "You haven't created any courses yet. Click 'Create Course' to get started."
-              : "You're not enrolled in any courses yet."}
-          </p>
-        </div>
+        <div style={{ textAlign: 'center', padding: '100px', color: '#94a3b8' }}>Loading your dashboard...</div>
       ) : (
-        <div style={styles.grid}>
-          {courses.map(course => (
-            <CourseCard
-              key={course.id}
-              course={course}
-              isInstructor={course.instructor_id === user?.id}
-              allUsers={allUsers}
-              onEdit={course.instructor_id === user?.id ? openEditModal : null}
-              onDelete={course.instructor_id === user?.id ? openDeleteModal : null}
-              onViewDetails={(c) => window.location.hash = `course/${c.id}`}
-            />
-          ))}
-        </div>
+        <>
+          {pinnedCourses.length > 0 && (
+            <div style={{ marginBottom: '48px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '20px', display: 'block' }}>Pinned Courses</span>
+              <div style={styles.grid}>
+                {pinnedCourses.map(c => (
+                  <CourseCard 
+                    key={c.id} 
+                    course={c} 
+                    isPinned={true} 
+                    onPin={() => togglePin(c.id)} 
+                    onOpen={() => window.location.hash = `course/${c.id}`}
+                    onSettings={() => handleOpenEdit(c)}
+                    onDelete={() => {
+                      setSelectedCourse(c);
+                      setShowDeleteModal(true);
+                    }}
+                    isInstructor={c.instructor_id === user?.id}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '20px', display: 'block' }}>Your Courses</span>
+          <div style={styles.grid}>
+            {otherCourses.map(c => (
+              <CourseCard 
+                key={c.id} 
+                course={c} 
+                isPinned={false} 
+                onPin={() => togglePin(c.id)} 
+                onOpen={() => window.location.hash = `course/${c.id}`}
+                onSettings={() => handleOpenEdit(c)}
+                onDelete={() => {
+                  setSelectedCourse(c);
+                  setShowDeleteModal(true);
+                }}
+                isInstructor={c.instructor_id === user?.id}
+              />
+            ))}
+          </div>
+        </>
       )}
 
-      {/* Modals */}
       {showCreateModal && renderFormModal(false)}
       {showEditModal && renderFormModal(true)}
-      {showDeleteModal && renderDeleteModal()}
+      {showDeleteModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h2 style={{ color: '#ef4444', margin: '0 0 16px 0' }}>Delete Course?</h2>
+            
+            {formError && <div style={{...styles.errorBanner, marginBottom: '16px'}}>{formError}</div>}
+
+            <p>This will permanently delete <strong>{selectedCourse?.course_name}</strong>. This action is irreversible.</p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <button onClick={() => { setShowDeleteModal(false); setFormError(''); }} style={{ marginLeft: 'auto', padding: '12px 20px', background: '#f1f5f9', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleDeleteCourse} disabled={formLoading} style={{ padding: '12px 24px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', cursor: 'pointer', opacity: formLoading ? 0.7 : 1 }}>
+                {formLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
