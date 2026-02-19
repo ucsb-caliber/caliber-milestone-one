@@ -1,247 +1,149 @@
-import React, { useState } from 'react';
+import { Settings } from 'lucide-react';
+import React from 'react';
 
-/**
- * CourseCard - A reusable component to display a course
- * 
- * Props:
- * - course: The course object with id, course_name, school_name, instructor_id, student_ids, etc.
- * - onEdit: Callback when edit button is clicked (optional)
- * - onDelete: Callback when delete button is clicked (optional)
- * - onViewDetails: Callback when card is clicked to view details (optional)
- * - isInstructor: Boolean indicating if current user is the instructor
- * - allUsers: Array of all users for displaying student names (optional)
- */
-export default function CourseCard({ 
-  course, 
-  onEdit, 
-  onDelete, 
-  onViewDetails,
-  isInstructor = false,
-  allUsers = [],
-  showStudentsList = isInstructor,
-  assignmentCountOverride,
-  studentNameById = {}
-}) {
-  const [showStudents, setShowStudents] = useState(false);
+const SettingsIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+  </svg>
+);
 
-  // Get student names from user IDs
-  const getStudentInfo = (studentId) => {
-    if (studentNameById && studentNameById[studentId]) {
-      return studentNameById[studentId];
-    }
-    const user = allUsers.find(u => u.user_id === studentId);
-    if (user) {
-      if (user.first_name && user.last_name) {
-        return `${user.first_name} ${user.last_name}`;
-      }
-      return user.email || studentId;
-    }
-    return studentId;
-  };
+const TrashIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+  </svg>
+);
+
+const UserIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+    <circle cx="12" cy="7" r="4"></circle>
+  </svg>
+);
+
+const BookIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+  </svg>
+);
+
+export default function CourseCard({ course, isPinned, onPin, onOpen, onSettings, onDelete, isInstructor }) {
+  if (!course) return null;
 
   const studentCount = course.student_ids?.length || 0;
-  const assignmentCount = assignmentCountOverride ?? (course.assignments?.length || 0);
+  const assignmentCount = course.assignments?.length || 0;
+
+  const getHashColor = (str) => {
+    const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+    if (!str) return colors[0];
+    
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+  };
+
+  const themeColor = getHashColor(course.course_name);
+
+  const actionButtonStyle = {
+    padding: '10px',
+    background: 'white',
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '1rem'
+  };
 
   return (
-    <div
+    <div 
       style={{
         background: 'white',
-        borderRadius: '12px',
-        padding: '1.5rem',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-        border: '1px solid #e5e7eb',
-        transition: 'transform 0.2s, box-shadow 0.2s',
-        cursor: onViewDetails ? 'pointer' : 'default'
+        borderRadius: '20px',
+        border: '1px solid #e2e8f0',
+        padding: '24px',
+        transition: 'all 0.3s ease',
+        cursor: 'pointer',
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
       }}
-      onClick={() => onViewDetails && onViewDetails(course)}
+      onClick={onOpen}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateY(-2px)';
-        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+        e.currentTarget.style.transform = 'translateY(-5px)';
+        e.currentTarget.style.borderColor = themeColor;
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+        e.currentTarget.style.borderColor = '#e2e8f0';
       }}
     >
-      {/* Header */}
-      <div style={{ marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <h3 style={{ 
-            margin: 0, 
-            fontSize: '1.25rem', 
-            fontWeight: '700',
-            color: '#111827'
-          }}>
-            {course.course_name}
-          </h3>
-          {isInstructor && (
-            <span style={{
-              background: '#dbeafe',
-              color: '#1d4ed8',
-              padding: '0.25rem 0.5rem',
-              borderRadius: '4px',
-              fontSize: '0.75rem',
-              fontWeight: '600'
-            }}>
-              Instructor
-            </span>
-          )}
+      <div 
+        style={{ position: 'absolute', top: '20px', right: '20px', cursor: 'pointer', color: isPinned ? '#f59e0b' : '#cbd5e1', fontSize: '1.2rem' }}
+        onClick={(e) => { e.stopPropagation(); onPin(); }}
+      >
+        {isPinned ? '★' : '☆'}
+      </div>
+
+      <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: `${themeColor}15`, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px' }}>
+        {(course.course_name || '?').charAt(0)}
+      </div>
+
+      <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', fontWeight: '800', color: '#0f172a' }}>
+        {course.course_name || 'Untitled Course'}
+      </h3>
+      
+      <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '500', display: 'block', marginBottom: '20px' }}>
+        {course.school_name || 'General Course'}
+      </span>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+        <div style={{ background: '#f1f5f9', padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <UserIcon/> {studentCount} {studentCount === 1 ? 'Student' : "Students"}
         </div>
-        {course.school_name && (
-          <span style={{
-            display: 'inline-block',
-            marginTop: '0.5rem',
-            background: '#f3f4f6',
-            color: '#4b5563',
-            padding: '0.25rem 0.75rem',
-            borderRadius: '4px',
-            fontSize: '0.875rem'
-          }}>
-            {course.school_name}
-          </span>
+        <div style={{ background: '#f1f5f9', padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <BookIcon/> {assignmentCount} {assignmentCount === 1 ? 'Assignment' : 'Assignments'}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 'auto', display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
+        {isInstructor && (
+          <>
+            <button 
+              title="Course Settings"
+              onClick={(e) => { e.stopPropagation(); onSettings(); }}
+              style={actionButtonStyle}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+            >
+              <SettingsIcon/>
+            </button>
+            <button 
+              title="Delete Course"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              style={actionButtonStyle}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#fef2f2';
+                e.currentTarget.style.borderColor = '#fecaca';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'white';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+              }}
+            >
+              <TrashIcon/>
+            </button>
+          </>
         )}
       </div>
-
-      {/* Stats */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '1.5rem', 
-        marginBottom: '1rem',
-        padding: '0.75rem 0',
-        borderTop: '1px solid #f3f4f6',
-        borderBottom: '1px solid #f3f4f6'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#4f46e5' }}>
-            {studentCount}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-            {studentCount === 1 ? 'Student' : 'Students'}
-          </div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#059669' }}>
-            {assignmentCount}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-            {assignmentCount === 1 ? 'Assignment' : 'Assignments'}
-          </div>
-        </div>
-      </div>
-
-      {/* Students List (Collapsible) */}
-      {showStudentsList && studentCount > 0 && (
-        <div style={{ marginBottom: '1rem' }}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowStudents(!showStudents);
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#4f46e5',
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.25rem'
-            }}
-          >
-            <span style={{
-              transition: 'transform 0.2s',
-              transform: showStudents ? 'rotate(90deg)' : 'rotate(0deg)',
-              display: 'inline-block'
-            }}>
-              ▶
-            </span>
-            {showStudents ? 'Hide Students' : 'Show Students'}
-          </button>
-          
-          {showStudents && (
-            <div style={{
-              marginTop: '0.5rem',
-              padding: '0.75rem',
-              background: '#f9fafb',
-              borderRadius: '6px',
-              maxHeight: '150px',
-              overflowY: 'auto'
-            }}>
-              {course.student_ids.map((studentId, index) => (
-                <div 
-                  key={studentId}
-                  style={{
-                    padding: '0.25rem 0',
-                    fontSize: '0.875rem',
-                    color: '#374151',
-                    borderBottom: index < course.student_ids.length - 1 ? '1px solid #e5e7eb' : 'none'
-                  }}
-                >
-                  {getStudentInfo(studentId)}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      {isInstructor && (onEdit || onDelete) && (
-        <div style={{ 
-          display: 'flex', 
-          gap: '0.5rem', 
-          justifyContent: 'flex-end',
-          paddingTop: '0.5rem'
-        }}>
-          {onEdit && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(course);
-              }}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#4f46e5',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                transition: 'background-color 0.15s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
-            >
-              Edit
-            </button>
-          )}
-          {onDelete && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(course);
-              }}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#dc2626',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                transition: 'background-color 0.15s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
