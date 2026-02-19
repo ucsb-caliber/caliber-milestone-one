@@ -1,17 +1,57 @@
 import React, { useState, useEffect } from 'react';
-import { getCourse, updateCourse, getAllUsers, getUserInfo, deleteAssignment, releaseAssignmentNow } from '../api';
+import { getCourse, updateCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
 import { useAuth } from '../AuthContext';
-import AssignmentCard from '../components/AssignmentCard';
+
+const DAY_MS = 1000 * 60 * 60 * 24;
+const PACIFIC_TIMEZONE = 'America/Los_Angeles';
+
+function parseAssignmentDate(dateStr) {
+  if (!dateStr) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
+  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+}
+
+function formatAssignmentDate(dateStr) {
+  const parsed = parseAssignmentDate(dateStr);
+  if (!parsed) return 'Not set';
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: PACIFIC_TIMEZONE,
+    timeZoneName: 'short'
+  });
+}
+
+function formatDateObject(dateObj) {
+  if (!dateObj) return 'Not set';
+  return dateObj.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: PACIFIC_TIMEZONE,
+    timeZoneName: 'short'
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
 
 export default function CourseDashboard() {
   const { user } = useAuth();
   const [course, setCourse] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isInstructor, setIsInstructor] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  
+
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -22,12 +62,15 @@ export default function CourseDashboard() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
-  
+  const [showAddStudentsModal, setShowAddStudentsModal] = useState(false);
+  const [addStudentsSelection, setAddStudentsSelection] = useState([]);
+  const [addStudentSearchQuery, setAddStudentSearchQuery] = useState('');
+  const [addStudentsSaving, setAddStudentsSaving] = useState(false);
+  const [addStudentsError, setAddStudentsError] = useState('');
+
   // Delete assignment modal
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [releaseConfirmId, setReleaseConfirmId] = useState(null);
-  const [releasingAssignmentId, setReleasingAssignmentId] = useState(null);
 
   // Get course ID from URL hash (e.g., #course/123)
   const getCourseIdFromHash = () => {
@@ -40,7 +83,6 @@ export default function CourseDashboard() {
   const backToCoursesHash = isAdmin && !isInstructor ? '#admin/courses' : '#courses';
   const canViewAssignments = isInstructor || isAdmin;
 
-  // Load course data
   useEffect(() => {
     async function loadData() {
       if (!courseId) {
@@ -60,8 +102,7 @@ export default function CourseDashboard() {
         setAllUsers(usersData.users || []);
         setIsInstructor(courseData.instructor_id === user?.id);
         setIsAdmin(Boolean(userInfo?.admin));
-        
-        // Initialize form data
+
         setFormData({
           course_name: courseData.course_name || '',
           school_name: courseData.school_name || '',
@@ -77,7 +118,14 @@ export default function CourseDashboard() {
     loadData();
   }, [courseId, user]);
 
-  // Get user display name
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, []);
+
   const getUserDisplayName = (u) => {
     if (u.first_name && u.last_name) {
       return `${u.first_name} ${u.last_name}`;
@@ -85,83 +133,75 @@ export default function CourseDashboard() {
     return u.email || u.user_id;
   };
 
-  // Get instructor info
   const getInstructorName = () => {
     if (!course?.instructor_id) return 'Unknown';
-    const instructor = allUsers.find(u => u.user_id === course.instructor_id);
+    const instructor = allUsers.find((u) => u.user_id === course.instructor_id);
     return instructor ? getUserDisplayName(instructor) : 'Unknown';
   };
 
-  // Get student info
   const getStudentInfo = (studentId) => {
-    const student = allUsers.find(u => u.user_id === studentId);
+    const student = allUsers.find((u) => u.user_id === studentId);
     return student ? getUserDisplayName(student) : studentId;
   };
 
-  // Available students (non-teachers, excluding current user)
-  const availableStudents = allUsers.filter(u => !u.teacher && u.user_id !== user?.id);
+  const getInitials = (name) => {
+    if (!name || name === 'Unknown') return '?';
+    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  };
 
-  // Filter students based on search query
-  const filteredStudents = availableStudents.filter(u => {
+  const availableStudents = allUsers.filter((u) => !u.teacher && u.user_id !== user?.id);
+
+  const filteredStudents = availableStudents.filter((u) => {
     if (!studentSearchQuery.trim()) return true;
-    
+
     const searchLower = studentSearchQuery.toLowerCase();
     const displayName = getUserDisplayName(u).toLowerCase();
     const email = (u.email || '').toLowerCase();
-    
+
     return displayName.includes(searchLower) || email.includes(searchLower);
   });
 
-  // Toggle student selection
+  const addableStudents = availableStudents.filter(
+    (u) => !course?.student_ids?.includes(u.user_id)
+  );
+
+  const filteredAddableStudents = addableStudents.filter((u) => {
+    if (!addStudentSearchQuery.trim()) return true;
+
+    const searchLower = addStudentSearchQuery.toLowerCase();
+    const displayName = getUserDisplayName(u).toLowerCase();
+    const email = (u.email || '').toLowerCase();
+
+    return displayName.includes(searchLower) || email.includes(searchLower);
+  });
+
   const toggleStudent = (studentId) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       student_ids: prev.student_ids.includes(studentId)
-        ? prev.student_ids.filter(id => id !== studentId)
+        ? prev.student_ids.filter((id) => id !== studentId)
         : [...prev.student_ids, studentId]
     }));
   };
 
-  // Handle delete assignment
   const handleDeleteAssignment = async () => {
     if (!deleteConfirmId) return;
-    
+
     setDeleting(true);
     try {
       await deleteAssignment(deleteConfirmId);
-      // Update local state to remove the deleted assignment
-      setCourse(prev => ({
+      setCourse((prev) => ({
         ...prev,
-        assignments: prev.assignments.filter(a => a.id !== deleteConfirmId)
+        assignments: prev.assignments.filter((a) => a.id !== deleteConfirmId)
       }));
       setDeleteConfirmId(null);
     } catch (err) {
-      alert('Failed to delete assignment: ' + (err.message || 'Unknown error'));
+      alert(`Failed to delete assignment: ${err.message || 'Unknown error'}`);
     } finally {
       setDeleting(false);
     }
   };
 
-  // Handle release assignment now
-  const handleReleaseNow = async (assignmentId) => {
-    setReleasingAssignmentId(assignmentId);
-    try {
-      const updatedAssignment = await releaseAssignmentNow(assignmentId);
-      setCourse(prev => ({
-        ...prev,
-        assignments: (prev.assignments || []).map(a =>
-          a.id === assignmentId ? updatedAssignment : a
-        )
-      }));
-    } catch (err) {
-      alert('Failed to release assignment: ' + (err.message || 'Unknown error'));
-    } finally {
-      setReleasingAssignmentId(null);
-      setReleaseConfirmId(null);
-    }
-  };
-
-  // Save changes
   const handleSave = async () => {
     if (!formData.course_name.trim()) {
       setSaveError('Course name is required');
@@ -183,7 +223,6 @@ export default function CourseDashboard() {
     }
   };
 
-  // Cancel editing
   const handleCancel = () => {
     setFormData({
       course_name: course.course_name || '',
@@ -195,121 +234,148 @@ export default function CourseDashboard() {
     setSaveError('');
   };
 
-  // Select all students
   const handleSelectAll = () => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      student_ids: [...availableStudents.map(u => u.user_id)]
+      student_ids: [...availableStudents.map((u) => u.user_id)]
     }));
   };
 
-  // Deselect all students
   const handleDeselectAll = () => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       student_ids: []
     }));
   };
 
+  const openAddStudentsModal = () => {
+    setAddStudentsSelection([]);
+    setAddStudentSearchQuery('');
+    setAddStudentsError('');
+    setShowAddStudentsModal(true);
+  };
+
+  const closeAddStudentsModal = () => {
+    setShowAddStudentsModal(false);
+    setAddStudentsSelection([]);
+    setAddStudentSearchQuery('');
+    setAddStudentsError('');
+  };
+
+  const toggleAddStudent = (studentId) => {
+    setAddStudentsSelection((prev) => (
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    ));
+  };
+
+  const handleAddSelectedStudents = async () => {
+    if (!course) return;
+    if (addStudentsSelection.length === 0) {
+      setAddStudentsError('Select at least one student.');
+      return;
+    }
+
+    setAddStudentsSaving(true);
+    setAddStudentsError('');
+    try {
+      const mergedStudentIds = Array.from(
+        new Set([...(course.student_ids || []), ...addStudentsSelection])
+      );
+      const updated = await updateCourse(courseId, {
+        course_name: course.course_name,
+        school_name: course.school_name,
+        student_ids: mergedStudentIds
+      });
+      setCourse(updated);
+      setFormData((prev) => ({ ...prev, student_ids: updated.student_ids || [] }));
+      closeAddStudentsModal();
+    } catch (err) {
+      setAddStudentsError(err.message || 'Failed to add students');
+    } finally {
+      setAddStudentsSaving(false);
+    }
+  };
+
   const styles = {
     container: {
-      maxWidth: '1000px',
+      maxWidth: '1180px',
       margin: '0 auto',
-      padding: '2rem'
+      padding: '2rem',
+      color: '#111827'
     },
     backLink: {
       display: 'inline-flex',
       alignItems: 'center',
       gap: '0.5rem',
-      color: '#4f46e5',
+      color: '#2563eb',
       textDecoration: 'none',
       fontSize: '0.875rem',
-      fontWeight: '500',
-      marginBottom: '1.5rem',
+      fontWeight: '600',
+      marginBottom: '1rem',
       cursor: 'pointer'
     },
-    header: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: '2rem'
-    },
-    title: {
-      margin: 0,
-      fontSize: '2rem',
-      fontWeight: '700',
-      color: '#111827'
-    },
-    subtitle: {
-      margin: '0.5rem 0 0 0',
-      fontSize: '1rem',
-      color: '#6b7280'
-    },
-    editBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#4f46e5',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: '600'
-    },
     section: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '1.5rem',
-      marginBottom: '1.5rem',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-      border: '1px solid #e5e7eb'
+      background: '#ffffff',
+      borderRadius: '14px',
+      padding: '1.25rem',
+      marginBottom: '1.1rem',
+      border: '1px solid #e5e7eb',
+      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)'
     },
     sectionTitle: {
-      margin: '0 0 1rem 0',
-      fontSize: '1.125rem',
-      fontWeight: '600',
-      color: '#111827',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.5rem'
+      margin: 0,
+      fontSize: '1.05rem',
+      fontWeight: 700,
+      color: '#0f172a'
+    },
+    mutedText: {
+      margin: 0,
+      color: '#64748b',
+      fontSize: '0.9rem'
     },
     infoRow: {
       display: 'flex',
-      padding: '0.75rem 0',
-      borderBottom: '1px solid #f3f4f6'
+      padding: '0.7rem 0',
+      borderBottom: '1px solid #f1f5f9',
+      gap: '1rem'
     },
     infoLabel: {
-      width: '140px',
-      fontWeight: '600',
-      color: '#374151'
+      minWidth: '150px',
+      fontWeight: 600,
+      color: '#334155'
     },
     infoValue: {
-      color: '#6b7280',
+      color: '#475569',
       flex: 1
     },
     studentGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-      gap: '0.75rem'
+      gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
+      gap: '0.65rem'
     },
     studentCard: {
-      padding: '0.75rem 1rem',
-      background: '#f9fafb',
-      borderRadius: '8px',
+      padding: '0.75rem 0.9rem',
+      background: '#f8fafc',
+      border: '1px solid #e2e8f0',
+      borderRadius: '10px',
       display: 'flex',
       alignItems: 'center',
-      gap: '0.75rem'
+      gap: '0.65rem'
     },
     studentAvatar: {
       width: '36px',
       height: '36px',
-      borderRadius: '50%',
-      background: '#4f46e5',
+      borderRadius: '999px',
+      background: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
       color: 'white',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontWeight: '600',
-      fontSize: '0.875rem'
+      fontWeight: 700,
+      fontSize: '0.78rem',
+      letterSpacing: '0.02em'
     },
     formGroup: {
       marginBottom: '1rem'
@@ -317,35 +383,28 @@ export default function CourseDashboard() {
     label: {
       display: 'block',
       marginBottom: '0.2rem',
-      fontWeight: '600',
-      color: '#374151',
+      fontWeight: 600,
+      color: '#334155',
       fontSize: '0.875rem'
     },
     input: {
       width: '100%',
       padding: '0.75rem',
-      border: '1px solid #d1d5db',
+      border: '1px solid #cbd5e1',
       borderRadius: '8px',
       fontSize: '1rem',
       boxSizing: 'border-box'
     },
-    studentsContainer: {
-      border: '1px solid #e5e7eb',
-      borderRadius: '12px',
-      padding: '12px',
-      backgroundColor: '#ffffff',
-    },
     searchInput: {
       width: '100%',
       padding: '0.625rem 0.75rem',
-      border: '1px solid #d1d5db',
+      border: '1px solid #cbd5e1',
       borderRadius: '6px',
       fontSize: '0.875rem',
       boxSizing: 'border-box',
-      marginTop: '-0.5rem',
+      marginTop: '-0.4rem',
       marginBottom: '0.5rem',
-      background: '#ffffff',
-      transition: 'border-color 0.15s'
+      background: '#ffffff'
     },
     bulkActionButtons: {
       display: 'flex',
@@ -356,19 +415,18 @@ export default function CourseDashboard() {
       background: 'none',
       border: 'none',
       padding: 0,
-      color: '#4f46e5',
+      color: '#2563eb',
       cursor: 'pointer',
       fontSize: '0.875rem',
-      fontWeight: 500,
+      fontWeight: 600,
       textDecoration: 'none',
-      marginBottom: '0rem', 
       marginRight: 'auto'
     },
     studentList: {
       maxHeight: '200px',
       minHeight: '200px',
       overflow: 'auto',
-      border: '1px solid #e5e7eb',
+      border: '1px solid #e2e8f0',
       borderRadius: '8px'
     },
     studentItem: {
@@ -376,9 +434,8 @@ export default function CourseDashboard() {
       alignItems: 'center',
       gap: '0.75rem',
       padding: '0.75rem',
-      borderBottom: '1px solid #f3f4f6',
-      cursor: 'pointer',
-      transition: 'background 0.15s'
+      borderBottom: '1px solid #f1f5f9',
+      cursor: 'pointer'
     },
     checkbox: {
       width: '18px',
@@ -393,23 +450,33 @@ export default function CourseDashboard() {
     },
     saveBtn: {
       padding: '0.75rem 1.5rem',
-      background: '#4f46e5',
+      background: '#2563eb',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
-      fontWeight: '600'
+      fontWeight: 600
     },
     cancelBtn: {
       padding: '0.75rem 1.5rem',
-      background: '#f3f4f6',
-      color: '#374151',
+      background: '#f1f5f9',
+      color: '#334155',
       border: 'none',
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
-      fontWeight: '600'
+      fontWeight: 600
+    },
+    addStudentsBtn: {
+      padding: '0.55rem 0.9rem',
+      borderRadius: '8px',
+      border: '1px solid #93c5fd',
+      background: '#eff6ff',
+      color: '#1d4ed8',
+      fontWeight: 600,
+      cursor: 'pointer',
+      fontSize: '0.82rem'
     },
     error: {
       background: '#fef2f2',
@@ -442,29 +509,29 @@ export default function CourseDashboard() {
     modalTitle: {
       margin: '0 0 1.5rem 0',
       fontSize: '1.25rem',
-      fontWeight: '700'
+      fontWeight: 700
     },
-    noResults: {
-      padding: '1rem',
-      textAlign: 'center',
-      color: '#6b7280',
-      fontSize: '0.875rem',
-      fontStyle: 'italic'
+    timelineCard: {
+      border: '1px solid #dbeafe',
+      background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
+      borderRadius: '12px',
+      padding: '1.05rem 1.15rem',
+      marginBottom: '0.95rem'
     }
   };
 
-  // Render edit modal
   const renderEditModal = () => {
     const handleBackdropClick = (e) => {
       if (e.target === e.currentTarget) {
         handleCancel();
       }
     };
+
     return (
       <div style={styles.modal} onClick={handleBackdropClick}>
         <div style={styles.modalContent}>
           <h2 style={styles.modalTitle}>Edit Course</h2>
-          
+
           {saveError && (
             <div style={styles.error}>{saveError}</div>
           )}
@@ -505,12 +572,6 @@ export default function CourseDashboard() {
                     onClick={handleSelectAll}
                     disabled={saving}
                     style={styles.bulkActionBtn}
-                    onMouseEnter={(e) => {
-                      if (!saving) e.currentTarget.style.background = '#ffffffff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#ffffffff';
-                    }}
                   >
                     Select All
                   </button>
@@ -520,12 +581,6 @@ export default function CourseDashboard() {
                     onClick={handleDeselectAll}
                     disabled={saving}
                     style={styles.bulkActionBtn}
-                    onMouseEnter={(e) => {
-                      if (!saving) e.currentTarget.style.background = '#ffffffff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#ffffffff';
-                    }}
                   >
                     Clear Selection
                   </button>
@@ -539,20 +594,20 @@ export default function CourseDashboard() {
               ) : (
                 <>
                   <input
-                      type="text"
-                      value={studentSearchQuery}
-                      onChange={(e) => setStudentSearchQuery(e.target.value)}
-                      style={styles.searchInput}
-                      placeholder="Search for students..."
-                      disabled={saving}
+                    type="text"
+                    value={studentSearchQuery}
+                    onChange={(e) => setStudentSearchQuery(e.target.value)}
+                    style={styles.searchInput}
+                    placeholder="Search for students..."
+                    disabled={saving}
                   />
                   <div style={styles.studentList}>
-                    {filteredStudents.map(u => (
+                    {filteredStudents.map((u) => (
                       <div
                         key={u.user_id}
                         style={{
                           ...styles.studentItem,
-                          background: formData.student_ids.includes(u.user_id) ? '#eef2ff' : 'transparent'
+                          background: formData.student_ids.includes(u.user_id) ? '#eff6ff' : 'transparent'
                         }}
                         onClick={() => !saving && toggleStudent(u.user_id)}
                       >
@@ -567,7 +622,7 @@ export default function CourseDashboard() {
                           style={styles.checkbox}
                           disabled={saving}
                         />
-                        <span style={{ fontSize: '0.875rem', color: '#374151' }}>
+                        <span style={{ fontSize: '0.875rem', color: '#334155' }}>
                           {getUserDisplayName(u)}
                         </span>
                       </div>
@@ -604,10 +659,98 @@ export default function CourseDashboard() {
     );
   };
 
+  const renderAddStudentsModal = () => {
+    const handleBackdropClick = (e) => {
+      if (e.target === e.currentTarget) {
+        closeAddStudentsModal();
+      }
+    };
+
+    return (
+      <div style={styles.modal} onClick={handleBackdropClick}>
+        <div style={styles.modalContent}>
+          <h2 style={styles.modalTitle}>Add Students</h2>
+
+          {addStudentsError && (
+            <div style={styles.error}>{addStudentsError}</div>
+          )}
+
+          {addableStudents.length === 0 ? (
+            <p style={styles.mutedText}>No additional students are available to add.</p>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={addStudentSearchQuery}
+                onChange={(e) => setAddStudentSearchQuery(e.target.value)}
+                style={styles.searchInput}
+                placeholder="Search for students..."
+                disabled={addStudentsSaving}
+              />
+              <div style={styles.studentList}>
+                {filteredAddableStudents.map((u) => (
+                  <div
+                    key={u.user_id}
+                    style={{
+                      ...styles.studentItem,
+                      background: addStudentsSelection.includes(u.user_id) ? '#eff6ff' : 'transparent'
+                    }}
+                    onClick={() => !addStudentsSaving && toggleAddStudent(u.user_id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={addStudentsSelection.includes(u.user_id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleAddStudent(u.user_id);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={styles.checkbox}
+                      disabled={addStudentsSaving}
+                    />
+                    <span style={{ fontSize: '0.875rem', color: '#334155' }}>
+                      {getUserDisplayName(u)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ ...styles.mutedText, marginTop: '0.5rem' }}>
+                {addStudentsSelection.length} selected
+              </p>
+            </>
+          )}
+
+          <div style={styles.buttonGroup}>
+            <button
+              type="button"
+              onClick={closeAddStudentsModal}
+              style={styles.cancelBtn}
+              disabled={addStudentsSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleAddSelectedStudents}
+              style={{
+                ...styles.saveBtn,
+                opacity: addStudentsSaving ? 0.6 : 1,
+                cursor: addStudentsSaving ? 'not-allowed' : 'pointer'
+              }}
+              disabled={addStudentsSaving || addableStudents.length === 0}
+            >
+              {addStudentsSaving ? 'Adding...' : 'Add Selected'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div style={styles.container}>
-        <p style={{ textAlign: 'center', color: '#6b7280' }}>Loading course...</p>
+        <p style={{ textAlign: 'center', color: '#64748b' }}>Loading course...</p>
       </div>
     );
   }
@@ -630,300 +773,402 @@ export default function CourseDashboard() {
     );
   }
 
+  const now = currentTime;
   const allAssignments = course.assignments || [];
-  const now = new Date();
-  const parseAssignmentDate = (dateStr) => {
-    if (!dateStr) return null;
-    const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
-    return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+
+  const getRelevantDueDate = (assignment) => {
+    const dueSoft = parseAssignmentDate(assignment.due_date_soft);
+    const dueHard = parseAssignmentDate(assignment.due_date_hard);
+    return dueSoft || dueHard || null;
   };
+
+  const getSortDueTime = (assignment) => {
+    const due = getRelevantDueDate(assignment);
+    if (due) return due.getTime();
+    return Number.POSITIVE_INFINITY;
+  };
+
   const completedAssignments = allAssignments.filter((assignment) => {
-    if (!assignment.due_date_soft) return false;
-    const dueDate = parseAssignmentDate(assignment.due_date_soft);
+    const dueDate = getRelevantDueDate(assignment);
     return dueDate ? dueDate < now : false;
   });
+
   const releasedAssignments = allAssignments.filter((assignment) => {
     if (!assignment.release_date) return false;
     const releaseDate = parseAssignmentDate(assignment.release_date);
-    const dueDate = assignment.due_date_soft ? parseAssignmentDate(assignment.due_date_soft) : null;
+    const dueDate = getRelevantDueDate(assignment);
     const isReleased = releaseDate ? releaseDate <= now : false;
     const isCompleted = dueDate ? dueDate < now : false;
     return isReleased && !isCompleted;
   });
+
   const unreleasedAssignments = allAssignments.filter((assignment) => {
-    const dueDate = assignment.due_date_soft ? parseAssignmentDate(assignment.due_date_soft) : null;
-    if (dueDate && dueDate < now) return false;
     if (!assignment.release_date) return true;
     const releaseDate = parseAssignmentDate(assignment.release_date);
     return releaseDate ? releaseDate > now : true;
   });
-  const getSortDueTime = (assignment) => {
-    const dueSoft = parseAssignmentDate(assignment.due_date_soft);
-    const dueHard = parseAssignmentDate(assignment.due_date_hard);
-    if (dueSoft) return dueSoft.getTime();
-    if (dueHard) return dueHard.getTime();
-    return Number.POSITIVE_INFINITY;
-  };
 
   const sortByUpcomingDue = (assignments) => (
     [...assignments].sort((a, b) => getSortDueTime(a) - getSortDueTime(b))
   );
 
+  const timelineAssignments = sortByUpcomingDue(allAssignments);
+
+  const timelineWithMeta = timelineAssignments.map((assignment) => {
+    const releaseDate = parseAssignmentDate(assignment.release_date);
+    const softDueDate = parseAssignmentDate(assignment.due_date_soft);
+    const hardDueDate = parseAssignmentDate(assignment.due_date_hard);
+    const dueDate = softDueDate || hardDueDate || null;
+
+    const dueMs = dueDate ? dueDate.getTime() : null;
+    const releaseMs = releaseDate ? releaseDate.getTime() : null;
+    const softDueMs = softDueDate ? softDueDate.getTime() : null;
+    const hardDueMs = hardDueDate ? hardDueDate.getTime() : null;
+    const nowMs = now.getTime();
+
+    const daysUntilDue = dueMs === null ? null : Math.ceil((dueMs - nowMs) / DAY_MS);
+
+    const isClosed = hardDueMs !== null && nowMs > hardDueMs;
+    const isUnreleased = releaseMs === null || nowMs < releaseMs;
+    const isLate = softDueMs !== null && nowMs > softDueMs && !isClosed;
+    const isInProgress = !isUnreleased && !isLate && !isClosed &&
+      (releaseMs === null || nowMs >= releaseMs) &&
+      (softDueMs === null || nowMs <= softDueMs);
+
+    let status = { label: 'No schedule', tone: '#64748b', bg: '#f1f5f9' };
+    if (isUnreleased) {
+      status = { label: 'Unreleased', tone: '#1e3a8a', bg: '#dbeafe' };
+    } else if (isInProgress) {
+      status = { label: 'In Progress', tone: '#0f766e', bg: '#ccfbf1' };
+    } else if (isLate || isClosed) {
+      status = { label: 'Late', tone: '#b91c1c', bg: '#fef2f2' };
+    } else if (daysUntilDue !== null) {
+      status = { label: 'Upcoming', tone: '#0f766e', bg: '#ecfeff' };
+    }
+
+    const timeRemainingPercent = releaseMs && softDueMs && softDueMs > releaseMs
+      ? clamp(((nowMs - releaseMs) / (softDueMs - releaseMs)) * 100, 0, 100)
+      : null;
+
+    const formatRemainingTime = () => {
+      if (isUnreleased) return 'Unreleased';
+      const targetMs = isLate ? (hardDueMs ?? dueMs) : dueMs;
+      if (targetMs === null) return 'N/A';
+      const diffMs = targetMs - nowMs;
+      if (diffMs < 0) {
+        const daysLate = Math.ceil(Math.abs(diffMs) / DAY_MS);
+        return `${daysLate}d late`;
+      }
+      if (isLate) {
+        const totalSeconds = Math.floor(diffMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+      if (diffMs >= DAY_MS) {
+        return `${Math.ceil(diffMs / DAY_MS)}d`;
+      }
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    };
+
+    return {
+      assignment,
+      dueDate,
+      releaseDate,
+      softDueDate,
+      hardDueDate,
+      daysUntilDue,
+      status,
+      isLate,
+      isInProgress,
+      isClosed,
+      timeRemainingPercent,
+      remainingTimeLabel: formatRemainingTime(),
+      remainingTimePrefix: isLate ? 'Time Remaining (LATE):' : 'Time Remaining:'
+    };
+  });
+  const inProgressCount = timelineWithMeta.filter((item) => item.isInProgress || item.isLate).length;
+  const completedCount = timelineWithMeta.filter((item) => item.isClosed).length;
+  const unreleasedIdSet = new Set(unreleasedAssignments.map((assignment) => assignment.id));
+  const timelineInProgressOrLate = timelineWithMeta.filter((item) => (item.isInProgress || item.isLate) && !unreleasedIdSet.has(item.assignment.id));
+  const timelineCompleted = timelineWithMeta.filter((item) => item.isClosed);
+  const timelineUnreleased = timelineWithMeta.filter((item) => unreleasedIdSet.has(item.assignment.id));
+
   return (
     <div style={styles.container}>
       <a href={backToCoursesHash} style={styles.backLink}>← Back to Courses</a>
 
-      {/* Header */}
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>{course.course_name}</h1>
-          <p style={styles.subtitle}>
-            {course.school_name || 'No school specified'}
-          </p>
+      <div style={{
+        ...styles.section,
+        background: 'radial-gradient(circle at 8% 0%, #dbeafe 0%, #eff6ff 35%, #ffffff 100%)',
+        border: '1px solid #bfdbfe'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '2rem', lineHeight: 1.1, color: '#0f172a' }}>{course.course_name}</h1>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.6rem' }}>
+            {isInstructor && (
+              <button
+                style={{
+                  padding: '0.6rem 0.95rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#2563eb',
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+                onClick={() => window.location.hash = `#course/${courseId}/assignment/new`}
+              >
+                + New Assignment
+              </button>
+            )}
+            {isInstructor && (
+              <button
+                style={{
+                  padding: '0.6rem 0.95rem',
+                  borderRadius: '8px',
+                  border: '1px solid #93c5fd',
+                  background: 'white',
+                  color: '#1d4ed8',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+                onClick={() => setShowEditModal(true)}
+              >
+                Edit Course
+              </button>
+            )}
+          </div>
         </div>
-        {isInstructor && (
-          <button 
-            style={styles.editBtn}
-            onClick={() => setShowEditModal(true)}
-          >
-            Edit Course
-          </button>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: '0.7rem',
+          marginTop: '1rem'
+        }}>
+          {[
+            { label: 'Total Assignments', value: allAssignments.length },
+            { label: 'In Progress', value: inProgressCount },
+            { label: 'Completed', value: completedCount }
+          ].map((metric) => (
+            <div key={metric.label} style={{
+              background: '#ffffff',
+              border: '1px solid #dbeafe',
+              borderRadius: '10px',
+              padding: '0.7rem 0.8rem'
+            }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>{metric.value}</div>
+              <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#475569', letterSpacing: '0.03em' }}>{metric.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <div style={{ marginBottom: '1.15rem' }}>
+          <h2 style={{ ...styles.sectionTitle, fontSize: '1.3rem', fontWeight: 800 }}>Assignment Timeline</h2>
+        </div>
+
+        {timelineWithMeta.length === 0 ? (
+          <div style={{
+            border: '2px dashed #cbd5e1',
+            borderRadius: '12px',
+            padding: '2.2rem 1rem',
+            textAlign: 'center',
+            background: '#f8fafc'
+          }}>
+            <h3 style={{ margin: '0 0 0.5rem 0' }}>No assignments yet</h3>
+            <p style={{ margin: 0, color: '#64748b' }}>
+              {isInstructor ? 'Create your first assignment to initialize the timeline.' : 'Assignments will appear here once your instructor adds them.'}
+            </p>
+          </div>
+        ) : (
+          <div>
+            {[
+              { key: 'in-progress', title: 'In Progress', emptyLabel: 'No In Progress assignments.', items: timelineInProgressOrLate },
+              { key: 'completed', title: 'Completed', emptyLabel: 'No Completed assignments.', items: timelineCompleted },
+              { key: 'unreleased', title: 'Unreleased', emptyLabel: 'No Unreleased assignments.', items: timelineUnreleased }
+            ].map((section, sectionIndex) => (
+              <div key={section.key}>
+                <h3 style={{ margin: '0 0 0.65rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{section.title}</h3>
+                {section.items.length === 0 ? (
+                  <p style={styles.mutedText}>{section.emptyLabel}</p>
+                ) : (
+                  section.items.map((item) => (
+                    <div
+                      key={item.assignment.id}
+                      style={{
+                        ...styles.timelineCard,
+                        cursor: canViewAssignments ? 'pointer' : 'default',
+                        transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s'
+                      }}
+                      onClick={() => {
+                        if (canViewAssignments) {
+                          window.location.hash = `#course/${courseId}/assignment/${item.assignment.id}/view`;
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        if (canViewAssignments) {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 8px 16px rgba(15, 23, 42, 0.12)';
+                          e.currentTarget.style.borderColor = '#bfdbfe';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.borderColor = '#dbeafe';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
+                            <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>{item.assignment.title}</h3>
+                            {!(item.isClosed && item.status.label === 'Late') && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: item.status.tone, background: item.status.bg, borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
+                                {item.status.label}
+                              </span>
+                            )}
+                            {item.isClosed && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7f1d1d', background: '#fee2e2', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
+                                Completed
+                              </span>
+                            )}
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#1d4ed8', background: '#dbeafe', borderRadius: '6px', padding: '0.15rem 0.4rem' }}>
+                              {item.assignment.type}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: '0.7rem', fontSize: '0.82rem', color: '#475569', display: 'flex', gap: '1.15rem', rowGap: '0.45rem', flexWrap: 'wrap' }}>
+                            <span><strong>Release:</strong> {formatAssignmentDate(item.assignment.release_date)}</span>
+                            <span><strong>Due Date:</strong> {formatDateObject(item.softDueDate || item.dueDate)}</span>
+                            <span><strong>Late Due Date:</strong> {formatDateObject(item.hardDueDate)}</span>
+                            <span><strong>Questions:</strong> {item.assignment.assignment_questions?.length || 0}</span>
+                          </div>
+                        </div>
+                        {isInstructor && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmId(item.assignment.id);
+                            }}
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              padding: 0,
+                              background: '#fee2e2',
+                              color: '#dc2626',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.875rem',
+                              fontWeight: 'bold',
+                              flexShrink: 0
+                            }}
+                            title="Delete assignment"
+                          >
+                            x
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: '0.95rem' }}>
+                        <div>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1fr 1fr',
+                            alignItems: 'center',
+                            fontSize: '0.74rem',
+                            color: '#475569',
+                            marginBottom: '0.35rem',
+                            columnGap: '0.6rem'
+                          }}>
+                            <span style={{ textAlign: 'left' }}>{formatDateObject(item.releaseDate)}</span>
+                            <span style={{ textAlign: 'right' }}>{formatDateObject(item.softDueDate || item.dueDate)}</span>
+                          </div>
+                          <div style={{ height: '8px', borderRadius: '999px', background: '#dbeafe', overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%',
+                              width: `${item.timeRemainingPercent ?? 0}%`,
+                              background: '#2563eb'
+                            }} />
+                          </div>
+                          {section.key === 'in-progress' && (
+                            <div style={{ marginTop: '0.4rem', fontSize: '0.76rem', color: '#334155', fontWeight: 700 }}>
+                              {item.remainingTimePrefix} {item.remainingTimeLabel}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                {sectionIndex < 2 && (
+                  <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '0.85rem 0 1rem 0' }} />
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Course Info Section */}
       <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>
-          📚 Course Information
-        </h2>
-        <div style={styles.infoRow}>
-          <span style={styles.infoLabel}>Instructor</span>
-          <span style={styles.infoValue}>{getInstructorName()}</span>
-        </div>
-        <div style={styles.infoRow}>
-          <span style={styles.infoLabel}>Students</span>
-          <span style={styles.infoValue}>{course.student_ids?.length || 0} enrolled</span>
-        </div>
-        <div style={{ ...styles.infoRow, borderBottom: 'none' }}>
-          <span style={styles.infoLabel}>Course Code</span>
-          <span style={styles.infoValue}>{course.course_code || 'Not set'}</span>
+        <h2 style={styles.sectionTitle}>Course Information</h2>
+        <div style={{ marginTop: '0.5rem' }}>
+          <div style={styles.infoRow}>
+            <span style={styles.infoLabel}>Instructor</span>
+            <span style={styles.infoValue}>{getInstructorName()}</span>
+          </div>
+          <div style={styles.infoRow}>
+            <span style={styles.infoLabel}>School</span>
+            <span style={styles.infoValue}>{course.school_name || 'Not set'}</span>
+          </div>
+          <div style={{ ...styles.infoRow, borderBottom: 'none' }}>
+            <span style={styles.infoLabel}>Course Code</span>
+            <span style={styles.infoValue}>{course.course_code || 'Not set'}</span>
+          </div>
         </div>
       </div>
 
-      {/* Students Section */}
       <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>
-          👥 Enrolled Students ({course.student_ids?.length || 0})
-        </h2>
-        
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.7rem', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h2 style={styles.sectionTitle}>Students ({course.student_ids?.length || 0})</h2>
+          {isInstructor && (
+            <button style={styles.addStudentsBtn} onClick={openAddStudentsModal}>
+              + Add Students
+            </button>
+          )}
+        </div>
+
         {course.student_ids?.length > 0 ? (
           <div style={styles.studentGrid}>
-            {course.student_ids.map(studentId => {
-              const student = allUsers.find(u => u.user_id === studentId);
-              const initials = student?.first_name && student?.last_name
-                ? `${student.first_name[0]}${student.last_name[0]}`
-                : '?';
+            {course.student_ids.map((studentId) => {
+              const name = getStudentInfo(studentId);
               return (
                 <div key={studentId} style={styles.studentCard}>
-                  <div style={styles.studentAvatar}>
-                    {initials.toUpperCase()}
-                  </div>
-                  <span style={{ fontSize: '0.875rem', color: '#374151' }}>
-                    {getStudentInfo(studentId)}
-                  </span>
+                  <div style={styles.studentAvatar}>{getInitials(name)}</div>
+                  <span style={{ fontSize: '0.875rem', color: '#334155' }}>{name}</span>
                 </div>
               );
             })}
           </div>
         ) : (
-          <p style={{ color: '#6b7280', margin: 0 }}>No students enrolled yet.</p>
+          <p style={styles.mutedText}>No students enrolled yet.</p>
         )}
       </div>
 
-      {/* Assignments Section */}
-      <div style={styles.section}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h2 style={styles.sectionTitle}>
-            📝 Assignments ({allAssignments.length})
-          </h2>
-          {isInstructor && (
-            <button
-              onClick={() => window.location.hash = `#course/${courseId}/assignment/new`}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#4f46e5',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '600'
-              }}
-            >
-              + Create Assignment
-            </button>
-          )}
-        </div>
 
-        {allAssignments.length === 0 ? (
-          <div style={{
-            background: '#f9fafb',
-            borderRadius: '12px',
-            padding: '3rem',
-            textAlign: 'center',
-            border: '2px dashed #d1d5db'
-          }}>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', fontWeight: '600', color: '#374151' }}>
-              No Assignments Yet
-            </h3>
-            <p style={{ margin: 0, color: '#6b7280' }}>
-              {isInstructor 
-                ? 'Create your first assignment to get started.'
-                : 'Your instructor hasn\'t created any assignments yet.'
-              }
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div>
-              <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', color: '#111827' }}>
-                Unreleased ({unreleasedAssignments.length})
-              </h3>
-              {unreleasedAssignments.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {sortByUpcomingDue(unreleasedAssignments).map((assignment) => (
-                    <AssignmentCard
-                      key={assignment.id}
-                      assignment={assignment}
-                      onClick={canViewAssignments ? () => {
-                        window.location.hash = `#course/${courseId}/assignment/${assignment.id}/view`;
-                      } : undefined}
-                      showReleaseNow={isInstructor}
-                      onReleaseNow={() => setReleaseConfirmId(assignment.id)}
-                      releasing={releasingAssignmentId === assignment.id}
-                      onDelete={isInstructor ? () => setDeleteConfirmId(assignment.id) : undefined}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>No unreleased assignments.</p>
-              )}
-            </div>
-
-            <div>
-              <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', color: '#111827' }}>
-                Released ({releasedAssignments.length})
-              </h3>
-              {releasedAssignments.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {sortByUpcomingDue(releasedAssignments).map((assignment) => (
-                    <AssignmentCard
-                      key={assignment.id}
-                      assignment={assignment}
-                      onClick={canViewAssignments ? () => {
-                        window.location.hash = `#course/${courseId}/assignment/${assignment.id}/view`;
-                      } : undefined}
-                      onDelete={isInstructor ? () => setDeleteConfirmId(assignment.id) : undefined}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>No released assignments.</p>
-              )}
-            </div>
-
-            <div>
-              <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', color: '#111827' }}>
-                Completed ({completedAssignments.length})
-              </h3>
-              {completedAssignments.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {sortByUpcomingDue(completedAssignments).map((assignment) => (
-                    <AssignmentCard
-                      key={assignment.id}
-                      assignment={assignment}
-                      onClick={canViewAssignments ? () => {
-                        window.location.hash = `#course/${courseId}/assignment/${assignment.id}/view`;
-                      } : undefined}
-                      onDelete={isInstructor ? () => setDeleteConfirmId(assignment.id) : undefined}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>No completed assignments.</p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Release Assignment Confirmation Modal */}
-      {releaseConfirmId && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            maxWidth: '460px',
-            width: '90%',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-          }}>
-            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.25rem', fontWeight: '600', color: '#111827' }}>
-              Release Assignment Now?
-            </h3>
-            <p style={{ margin: '0 0 1.5rem 0', color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.5 }}>
-              This will release the assignment to all students enrolled in this course immediately. Do you want to continue?
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setReleaseConfirmId(null)}
-                disabled={releasingAssignmentId === releaseConfirmId}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: releasingAssignmentId === releaseConfirmId ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: '500'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleReleaseNow(releaseConfirmId)}
-                disabled={releasingAssignmentId === releaseConfirmId}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: releasingAssignmentId === releaseConfirmId ? '#93c5fd' : '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: releasingAssignmentId === releaseConfirmId ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: '500'
-                }}
-              >
-                {releasingAssignmentId === releaseConfirmId ? 'Releasing...' : 'Release Now'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Assignment Confirmation Modal */}
       {deleteConfirmId && (
         <div style={{
           position: 'fixed',
@@ -945,7 +1190,7 @@ export default function CourseDashboard() {
             width: '90%',
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
           }}>
-            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.25rem', fontWeight: '600', color: '#111827' }}>
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.25rem', fontWeight: 600, color: '#111827' }}>
               Delete Assignment?
             </h3>
             <p style={{ margin: '0 0 1.5rem 0', color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.5 }}>
@@ -963,7 +1208,7 @@ export default function CourseDashboard() {
                   borderRadius: '6px',
                   cursor: deleting ? 'not-allowed' : 'pointer',
                   fontSize: '0.875rem',
-                  fontWeight: '500'
+                  fontWeight: 500
                 }}
               >
                 Cancel
@@ -979,7 +1224,7 @@ export default function CourseDashboard() {
                   borderRadius: '6px',
                   cursor: deleting ? 'not-allowed' : 'pointer',
                   fontSize: '0.875rem',
-                  fontWeight: '500'
+                  fontWeight: 500
                 }}
               >
                 {deleting ? 'Deleting...' : 'Delete'}
@@ -989,8 +1234,8 @@ export default function CourseDashboard() {
         </div>
       )}
 
-      {/* Edit Course Modal */}
       {showEditModal && renderEditModal()}
+      {showAddStudentsModal && renderAddStudentsModal()}
     </div>
   );
 }
