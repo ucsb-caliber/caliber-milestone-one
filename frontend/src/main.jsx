@@ -25,6 +25,18 @@ import "./index.css";
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
+// Nav link that reserves space for bold text so active state doesn't shift layout
+function NavLink({ href, active, children, style = {}, ...props }) {
+  return (
+    <a href={href} style={{ color: active ? '#fff' : '#aaa', textDecoration: 'none', fontWeight: active ? 'bold' : 'normal', ...style }} {...props}>
+      <span style={{ position: 'relative', display: 'inline-block' }}>
+        <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{children}</span>
+        <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: active ? 'bold' : 'normal' }}>{children}</span>
+      </span>
+    </a>
+  );
+}
+
 // Protected component that requires authentication
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -224,28 +236,10 @@ function App() {
           {user && (
             <>
               {isInstructorOrAdmin && (
-                <a
-                  href="#home"
-                  style={{
-                    color: page === 'home' ? '#fff' : '#aaa',
-                    textDecoration: 'none',
-                    fontWeight: page === 'home' ? 'bold' : 'normal'
-                  }}
-                >
-                  Home
-                </a>
+                <NavLink href="#home" active={page === 'home'}>Home</NavLink>
               )}
               {isInstructorOrAdmin && (
-                <a
-                  href="#questions"
-                  style={{
-                    color: page === 'questions' ? '#fff' : '#aaa',
-                    textDecoration: 'none',
-                    fontWeight: page === 'questions' ? 'bold' : 'normal'
-                  }}
-                >
-                  Question Bank
-                </a>
+                <NavLink href="#questions" active={page === 'questions'}>Question Bank</NavLink>
               )}
               {isAdmin && (
                 <div
@@ -262,7 +256,6 @@ function App() {
                       margin: 0,
                       color: page.startsWith('admin/') ? '#fff' : '#aaa',
                       textDecoration: 'none',
-                      fontWeight: page.startsWith('admin/') ? 'bold' : 'normal',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '0.25rem',
@@ -270,7 +263,10 @@ function App() {
                       fontSize: '1rem'
                     }}
                   >
-                    Admin ▾
+                    <span style={{ position: 'relative', display: 'inline-block' }}>
+                      <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">Admin ▾</span>
+                      <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page.startsWith('admin/') ? 'bold' : 'normal' }}>Admin ▾</span>
+                    </span>
                   </button>
                   {showAdminMenu && (
                     <div
@@ -319,45 +315,19 @@ function App() {
                 </div>
               )}
               {isInstructorOrAdmin && (
-                <a
-                  href="#courses"
-                  style={{
-                    color: page === 'courses' ? '#fff' : '#aaa',
-                    textDecoration: 'none',
-                    fontWeight: page === 'courses' ? 'bold' : 'normal'
-                  }}
-                >
-                  Courses
-                </a>
+                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
               )}
               {isInstructorOrAdmin && (
-                <a
-                  href="#analytics"
-                  style={{
-                    color: page === 'analytics' ? '#fff' : '#aaa',
-                    textDecoration: 'none',
-                    fontWeight: page === 'analytics' ? 'bold' : 'normal'
-                  }}
-                >
-                  Analytics
-                </a>
+                <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
               )}
-              <a
-                href="#student-courses"
-                style={{
-                  color: page === 'student-courses' || page.startsWith('student-course/') ? '#fff' : '#aaa',
-                  textDecoration: 'none',
-                  fontWeight: page === 'student-courses' || page.startsWith('student-course/') ? 'bold' : 'normal'
-                }}
-              >
+              <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
                 {isInstructorOrAdmin ? 'Student View' : 'Courses'}
-              </a>
+              </NavLink>
               <a
                 href="#profile"
                 style={{
                   color: page === 'profile' ? '#fff' : '#aaa',
                   textDecoration: 'none',
-                  fontWeight: page === 'profile' ? 'bold' : 'normal',
                   fontSize: '0.9rem',
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -385,7 +355,10 @@ function App() {
                 >
                   {(profilePrefs.initials || '').toUpperCase()}
                 </span>
-                {user.email}
+                <span style={{ position: 'relative', display: 'inline-block' }}>
+                  <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{user.email}</span>
+                  <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page === 'profile' ? 'bold' : 'normal' }}>{user.email}</span>
+                </span>
               </a>
               <button
                 onClick={handleSignOut}
