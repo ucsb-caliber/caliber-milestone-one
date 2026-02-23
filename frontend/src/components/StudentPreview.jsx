@@ -548,11 +548,11 @@ export default function StudentPreview({
         {/* Submitted Banner */}
         {submitted && (
           <div style={styles.submittedBanner}>
-            ✓ {isPreviewMode ? 'Preview Complete' : 'Assignment Submitted'} - You answered {getAnsweredCount()} of {totalQuestions} questions
+            ✓ {isPreviewMode ? 'Preview Complete' : 'Assignment Submitted'} {/*- You answered {getAnsweredCount()} of {totalQuestions} questions*/}
           </div>
         )}
 
-        {/* Header with Progress */}
+        {/* Header with Progress */} 
         <div style={styles.header}>
           <div style={styles.titleRow}>
             <h1 style={styles.title}>{assignmentTitle}</h1>

@@ -51,6 +51,8 @@ export default function StudentCourseDashboard() {
   const [submissionNotice, setSubmissionNotice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [submissionStatusLoaded, setSubmissionStatusLoaded] = useState(false);
+
 
   const getCourseIdFromHash = () => {
     const hash = window.location.hash;
@@ -172,6 +174,7 @@ export default function StudentCourseDashboard() {
       );
 
       setSubmissionByAssignmentId(Object.fromEntries(statusEntries));
+      setSubmissionStatusLoaded(true);
     }
 
     loadSubmissionStatus();
@@ -327,6 +330,33 @@ export default function StudentCourseDashboard() {
       borderRadius: '8px',
       background: '#fee2e2',
       color: '#dc2626'
+    },
+    actionButtons: {
+      display: 'flex',
+      gap: '0.5rem',
+      flexShrink: 0
+    },
+    startButton: {
+      border: 'none',
+      borderRadius: '8px',
+      background: '#2563eb',
+      color: 'white',
+      padding: '0.45rem 0.75rem',
+      cursor: 'pointer',
+      fontWeight: 600,
+      fontSize: '0.75rem',
+      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+    },
+    editButton: {
+      border: 'none',
+      borderRadius: '8px',
+      background: '#2563eb',
+      color: 'white',
+      padding: '0.45rem 0.75rem',
+      cursor: 'pointer',
+      fontWeight: 600,
+      fontSize: '0.75rem',
+      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
     }
   };
 
@@ -439,21 +469,21 @@ export default function StudentCourseDashboard() {
                 ) : (
                   section.items.map((item) => {
                     const progress = getSubmissionMeta(item.assignment.id);
+                    const canStart =
+                      submissionStatusLoaded &&
+                      !progress.submitted &&
+                      !item.isClosed;
+
+                    const canEdit =
+                      submissionStatusLoaded &&
+                      progress.submitted &&
+                      !item.isClosed;
+
                     return (
                       <div
                         key={item.assignment.id}
                         style={styles.timelineCard}
                         onClick={() => handleAssignmentClick(item.assignment, progress)}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow = '0 8px 16px rgba(15, 23, 42, 0.12)';
-                          e.currentTarget.style.borderColor = '#bfdbfe';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = 'none';
-                          e.currentTarget.style.borderColor = '#dbeafe';
-                        }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
@@ -484,6 +514,40 @@ export default function StudentCourseDashboard() {
                               <span><strong>Late Due Date:</strong> {formatDateObject(item.hardDueDate)}</span>
                               <span><strong>Questions:</strong> {item.assignment.assignment_questions?.length || 0}</span>
                             </div>
+                          </div>
+                          <div style={styles.actionButtons}>
+                            {canStart && (
+                              <button
+                                style={styles.startButton}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAssignmentClick(item.assignment, progress);
+                                }}
+                              >
+                                Start
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button
+                                style={styles.editButton}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAssignmentClick(item.assignment, progress);
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#1d4ed8';
+                                  e.currentTarget.style.transform = 'translateY(-1px)';
+                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(37, 99, 235, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#2563eb';
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
+                              >
+                                Edit
+                              </button>
+                            )}
                           </div>
                         </div>
 
