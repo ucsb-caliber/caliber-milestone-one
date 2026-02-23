@@ -5,7 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { createQuestion, uploadImage } from '../api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../AuthContext';
 
 export default function CreateQuestion() {
   const { user } = useAuth();

@@ -126,7 +126,7 @@ def process_pdf_background(
     file_content: bytes,
     user_id: str,
     school: str = "",
-    user_school: str = ""
+    user_school: str = "",
     course: str = "",
     course_type: str = ""
 ):
