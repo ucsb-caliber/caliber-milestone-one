@@ -5,8 +5,10 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { createQuestion, uploadImage } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function CreateQuestion() {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     title: '',
     text: '',
@@ -263,6 +265,7 @@ export default function CreateQuestion() {
         title: formData.title,
         text: formData.text,
         school: formData.school,
+        user_school: user?.school_name || "Unknown University",
         course: formData.course,
         course_type: formData.course_type,
         question_type: formData.question_type,

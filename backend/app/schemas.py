@@ -63,6 +63,7 @@ class QuestionCreate(BaseModel):
     tags: str = ""
     keywords: str = ""
     school: str = ""
+    user_school: str = Field(..., min_length=1)
     course: str = ""
     course_type: str = ""
     question_type: str = ""
@@ -82,6 +83,7 @@ class QuestionUpdate(BaseModel):
     tags: Optional[str] = None
     keywords: Optional[str] = None
     school: Optional[str] = None
+    user_school: Optional[str] = None
     course: Optional[str] = None
     course_type: Optional[str] = None
     question_type: Optional[str] = None
@@ -103,6 +105,7 @@ class QuestionResponse(BaseModel):
     tags: str
     keywords: str
     school: str
+    user_school: str
     course: str
     course_type: str
     question_type: str

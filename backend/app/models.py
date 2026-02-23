@@ -30,6 +30,7 @@ class Question(SQLModel, table=True):
     tags: str = Field(default="")  # Question tags (e.g., recursion, sorting, runtime analysis)
     keywords: str = Field(default="")  # Stored as comma-separated string
     school: str = Field(default="")  # School name (e.g., UCSB)
+    user_school: str = Field(default="", index=True) # school of user
     course: str = Field(default="")  # Course name (kept for backward compatibility)
     course_type: str = Field(default="")  # Course type (e.g., intro CS, intermediate CS, linear algebra)
     question_type: str = Field(default="")  # Question type (e.g., mcq, fr, short answer)

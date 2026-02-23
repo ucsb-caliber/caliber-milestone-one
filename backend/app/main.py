@@ -126,6 +126,7 @@ def process_pdf_background(
     file_content: bytes,
     user_id: str,
     school: str = "",
+    user_school: str = ""
     course: str = "",
     course_type: str = ""
 ):
@@ -259,6 +260,7 @@ def process_pdf_background(
                     tags="auto-generated,pdf-upload,fallback",
                     keywords="pdf,upload,fallback",
                     school=effective_school,
+                    user_school=user_school,
                     course=effective_course,
                     course_type=effective_course_type,
                     source_pdf=storage_path,
@@ -401,6 +403,7 @@ def create_new_question(
     tags: str = Form(""),
     keywords: str = Form(""),
     school: str = Form(""),
+    user_school: str = Form(""),
     course: str = Form(""),
     course_type: str = Form(""),
     question_type: str = Form(""),
@@ -430,6 +433,7 @@ def create_new_question(
         tags=tags,
         keywords=keywords,
         school=school,
+        user_school=user_school,
         course=course,
         course_type=course_type,
         question_type=question_type,
