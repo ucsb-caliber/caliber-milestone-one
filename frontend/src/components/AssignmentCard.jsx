@@ -1,5 +1,7 @@
 import React from 'react';
 
+const PACIFIC_TIMEZONE = 'America/Los_Angeles';
+
 function parseAssignmentDate(dateStr) {
   if (!dateStr) return null;
   const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
@@ -14,7 +16,9 @@ function formatAssignmentDate(dateStr) {
     day: 'numeric',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZone: PACIFIC_TIMEZONE,
+    timeZoneName: 'short'
   });
 }
 

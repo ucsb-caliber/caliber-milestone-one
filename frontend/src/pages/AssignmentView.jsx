@@ -4,6 +4,14 @@ import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, get
 import QuestionCard from '../components/QuestionCard';
 import StudentPreview from '../components/StudentPreview';
 
+const PACIFIC_TIMEZONE = 'America/Los_Angeles';
+
+function parseAssignmentDate(dateStr) {
+  if (!dateStr) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
+  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+}
+
 export default function AssignmentView() {
   const { user } = useAuth();
   const [assignment, setAssignment] = useState(null);
@@ -175,14 +183,17 @@ export default function AssignmentView() {
 
   // Format date for display
   const formatDate = (dateStr) => {
-    if (!dateStr) return 'Not set';
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    const parsedDate = parseAssignmentDate(dateStr);
+    if (!parsedDate) return 'Not set';
+    return parsedDate.toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: PACIFIC_TIMEZONE,
+      timeZoneName: 'short'
     });
   };
 
@@ -485,7 +496,7 @@ export default function AssignmentView() {
             <div style={styles.infoValue}>{formatDate(assignment.due_date_soft)}</div>
           </div>
           <div style={styles.infoCard}>
-            <div style={styles.infoLabel}>Due Date (Late)</div>
+            <div style={styles.infoLabel}>Late Due Date</div>
             <div style={styles.infoValue}>{formatDate(assignment.due_date_hard)}</div>
           </div>
           <div style={styles.infoCard}>

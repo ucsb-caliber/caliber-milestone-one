@@ -2,6 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
 
+function parseAssignmentDate(dateStr) {
+  if (!dateStr) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
+  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+}
+
+function formatDateForDateTimeLocal(dateStr) {
+  const date = parseAssignmentDate(dateStr);
+  if (!date) return '';
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function CreateEditAssignment() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -57,21 +70,14 @@ export default function CreateEditAssignment() {
         if (assignmentId && !isNew) {
           setIsEditMode(true);
           const assignmentData = await getAssignment(assignmentId);
-          
-          // Format dates for datetime-local input
-          const formatDateForInput = (dateStr) => {
-            if (!dateStr) return '';
-            const date = new Date(dateStr);
-            return date.toISOString().slice(0, 16);
-          };
 
           setFormData({
             title: assignmentData.title || '',
             type: assignmentData.type || 'Homework',
             description: assignmentData.description || '',
-            release_date: formatDateForInput(assignmentData.release_date),
-            due_date_soft: formatDateForInput(assignmentData.due_date_soft),
-            due_date_hard: formatDateForInput(assignmentData.due_date_hard),
+            release_date: formatDateForDateTimeLocal(assignmentData.release_date),
+            due_date_soft: formatDateForDateTimeLocal(assignmentData.due_date_soft),
+            due_date_hard: formatDateForDateTimeLocal(assignmentData.due_date_hard),
             late_policy_id: assignmentData.late_policy_id || '',
             assignment_questions: assignmentData.assignment_questions || []
           });
@@ -386,7 +392,7 @@ export default function CreateEditAssignment() {
           <div style={styles.helpText}>When students can see this assignment</div>
         </div>
 
-        {/* Due Date (Soft) */}
+        {/* Due Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
             Due Date <span style={{ color: '#dc2626' }}>*</span>
@@ -401,10 +407,10 @@ export default function CreateEditAssignment() {
           <div style={styles.helpText}>Target due date; no points deducted</div>
         </div>
 
-        {/* Due Date (Hard) */}
+        {/* Late Due Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Due Date (Late) <span style={{ color: '#dc2626' }}>*</span>
+            Late Due Date <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="datetime-local"
