@@ -265,8 +265,7 @@ export default function CreateQuestion() {
         title: formData.title,
         text: formData.text,
         school: formData.school,
-        user_school: user?.school_name || "Unknown University",
-        course: formData.course,
+        user_school: user?.user_metadata?.school_name || "Unknown University",        course: formData.course,
         course_type: formData.course_type,
         question_type: formData.question_type,
         blooms_taxonomy: formData.blooms_taxonomy,
@@ -313,6 +312,12 @@ export default function CreateQuestion() {
         <header style={styles.header}>
           <div>
             <h1 style={{ margin: 0, fontSize: '28px', color: '#1a202c' }}>Create New Question</h1>
+            <div style={{ marginTop: '4px' }}>
+              <span style={styles.label}>Posting from: </span>
+              <span style={styles.badge}>
+                {user?.user_metadata?.school_name || "No School Detected"}
+                </span>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button type="button" style={styles.secondaryBtn} onClick={() => window.location.hash = 'questions'}>Cancel</button>

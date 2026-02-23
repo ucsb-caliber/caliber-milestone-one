@@ -12,7 +12,7 @@ const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 // User Icon Component
 const UserIcon = ({ userInfo, size = 40 }) => {
   if (!userInfo) return null;
-  
+
   const getInitials = () => {
     if (userInfo.initials) return userInfo.initials;
     if (userInfo.first_name && userInfo.last_name) {
@@ -23,30 +23,30 @@ const UserIcon = ({ userInfo, size = 40 }) => {
     }
     return 'U';
   };
-  
+
   const getName = () => {
     if (userInfo.first_name && userInfo.last_name) {
       return `${userInfo.first_name} ${userInfo.last_name}`;
     }
     return userInfo.email || userInfo.user_id;
   };
-  
+
   const shape = userInfo.icon_shape || 'circle';
   const color = userInfo.icon_color || '#4f46e5';
-  
+
   const getShapeStyles = () => {
     if (shape === 'circle') {
       return { borderRadius: '50%' };
     } else if (shape === 'square') {
       return { borderRadius: '4px' };
     } else if (shape === 'hex') {
-      return { 
+      return {
         clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
       };
     }
     return { borderRadius: '50%' };
   };
-  
+
   return (
     <div
       style={{
@@ -89,11 +89,11 @@ const UserIcon = ({ userInfo, size = 40 }) => {
  * - questionNumber: Optional question number to display (e.g., "Q1")
  * - editButtonLabel: Custom label for edit button (default: "Edit")
  */
-export default function QuestionCard({ 
-  question, 
+export default function QuestionCard({
+  question,
   userInfo,
   imageUrl,
-  showDeleteButton = false, 
+  showDeleteButton = false,
   showEditButton = false,
   showRemoveButton = false,
   onDelete,
@@ -147,11 +147,11 @@ export default function QuestionCard({
 
       {/* Question number badge if provided */}
       {questionNumber && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '1rem', 
+        <div style={{
+          position: 'absolute',
+          top: '1rem',
           left: '1rem',
-          fontSize: '0.75rem', 
+          fontSize: '0.75rem',
           fontWeight: '600',
           color: '#6b7280',
           background: '#e5e7eb',
@@ -163,14 +163,30 @@ export default function QuestionCard({
       )}
 
       {/* Header with school, course, and metadata */}
-      <div style={{ 
-        marginBottom: compact ? '0.75rem' : '1rem', 
-        paddingBottom: '0.75rem', 
-        borderBottom: '1px solid #eee', 
+      <div style={{
+        marginBottom: compact ? '0.75rem' : '1rem',
+        paddingBottom: '0.75rem',
+        borderBottom: '1px solid #eee',
         paddingRight: showUserIcon ? '50px' : '0',
         paddingTop: questionNumber ? '1.5rem' : '0'
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+
+          {question.user_school && (
+            <span style={{
+              background: '#28a745', // Green to differentiate from the Purple school badge
+              color: 'white',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '4px',
+              fontSize: '0.875rem',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <span style={{ fontSize: '10px', opacity: 0.9 }}>FROM:</span> {question.user_school}
+            </span>
+          )}
           {question.school && (
             <span style={{
               background: '#6f42c1',
@@ -232,7 +248,7 @@ export default function QuestionCard({
             </span>
           )}
         </div>
-        
+
         {question.title && (
           <div style={{ marginBottom: '0.9rem', marginTop: '0.35rem' }}>
             <h3 style={{
@@ -301,7 +317,7 @@ export default function QuestionCard({
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
                 components={{
-                  code({node, inline, className, children, ...props}) {
+                  code({ node, inline, className, children, ...props }) {
                     return inline ? (
                       <code style={{
                         background: '#e9ecef',
@@ -330,7 +346,7 @@ export default function QuestionCard({
                       </pre>
                     );
                   },
-                  p({children}) {
+                  p({ children }) {
                     return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
                   }
                 }}
@@ -348,17 +364,17 @@ export default function QuestionCard({
       {/* Image if present */}
       {(question.image_url && imageUrl) && (
         <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-          <img 
-            src={imageUrl} 
-            alt="Question illustration" 
-            style={{ 
-              maxWidth: '100%', 
+          <img
+            src={imageUrl}
+            alt="Question illustration"
+            style={{
+              maxWidth: '100%',
               height: 'auto',
               maxHeight: compact ? '200px' : '300px',
               border: '1px solid #ddd',
               borderRadius: '4px',
               objectFit: 'contain'
-            }} 
+            }}
           />
         </div>
       )}

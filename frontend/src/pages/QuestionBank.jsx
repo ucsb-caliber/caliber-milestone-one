@@ -109,8 +109,7 @@ export default function QuestionBank() {
       const keywords = (question.keywords || '').toLowerCase();
       const tags = (question.tags || '').toLowerCase();
       const course = (question.course || '').toLowerCase();
-      const school = (question.school || '').toLowerCase();
-      const questionType = (question.question_type || '').toLowerCase();
+      const school = (question.user_school || question.school || '').toLowerCase();      const questionType = (question.question_type || '').toLowerCase();
       const bloomsTaxonomy = (question.blooms_taxonomy || '').toLowerCase();
       
       switch (searchFilter) {
@@ -243,6 +242,7 @@ export default function QuestionBank() {
         questions={questions}
         userInfoCache={userInfoCache}
         user={user}
+        showUniversity={true}
         onDelete={(id) => setDeleteConfirm(id)}
       />
     );

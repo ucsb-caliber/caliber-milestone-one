@@ -88,10 +88,15 @@ export const AuthProvider = ({ children }) => {
     return () => subscription?.unsubscribe?.();
   }, []);
 
-  const signUp = async (email, password) => {
+  const signUp = async (email, password, schoolName) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          school_name: schoolName, // This stores it in the user's metadata
+        },
+      },
     });
     if (error) throw error;
     // Cookie will be set by onAuthStateChange listener
