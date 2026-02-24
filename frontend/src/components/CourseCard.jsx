@@ -1,5 +1,4 @@
-import { Settings } from 'lucide-react';
-import React from 'react';
+import React, { useState } from 'react';
 
 const SettingsIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -29,11 +28,35 @@ const BookIcon = () => (
   </svg>
 );
 
-export default function CourseCard({ course, isPinned, onPin, onOpen, onSettings, onDelete, isInstructor }) {
+export default function CourseCard({
+  course,
+  isPinned = false,
+  onPin,
+  onOpen,
+  onSettings,
+  onDelete,
+  isInstructor = false,
+  onViewDetails,
+  assignmentCountOverride,
+  showStudentsList = false,
+  allUsers = [],
+  studentNameById = {}
+}) {
   if (!course) return null;
+  const [showStudents, setShowStudents] = useState(false);
 
   const studentCount = course.student_ids?.length || 0;
-  const assignmentCount = course.assignments?.length || 0;
+  const assignmentCount = assignmentCountOverride ?? (course.assignments?.length || 0);
+  const canPin = typeof onPin === 'function';
+  const handleOpen = onOpen || (onViewDetails ? () => onViewDetails(course) : null);
+
+  const getStudentInfo = (studentId) => {
+    if (studentNameById && studentNameById[studentId]) return studentNameById[studentId];
+    const user = allUsers.find((u) => u.user_id === studentId);
+    if (!user) return studentId;
+    if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
+    return user.email || studentId;
+  };
 
   const getHashColor = (str) => {
     const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
@@ -70,13 +93,13 @@ export default function CourseCard({ course, isPinned, onPin, onOpen, onSettings
         border: '1px solid #e2e8f0',
         padding: '24px',
         transition: 'all 0.3s ease',
-        cursor: 'pointer',
+        cursor: handleOpen ? 'pointer' : 'default',
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
       }}
-      onClick={onOpen}
+      onClick={handleOpen || undefined}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'translateY(-5px)';
         e.currentTarget.style.borderColor = themeColor;
@@ -86,12 +109,14 @@ export default function CourseCard({ course, isPinned, onPin, onOpen, onSettings
         e.currentTarget.style.borderColor = '#e2e8f0';
       }}
     >
-      <div 
-        style={{ position: 'absolute', top: '20px', right: '20px', cursor: 'pointer', color: isPinned ? '#f59e0b' : '#cbd5e1', fontSize: '1.2rem' }}
-        onClick={(e) => { e.stopPropagation(); onPin(); }}
-      >
-        {isPinned ? '★' : '☆'}
-      </div>
+      {canPin && (
+        <div
+          style={{ position: 'absolute', top: '20px', right: '20px', cursor: 'pointer', color: isPinned ? '#f59e0b' : '#cbd5e1', fontSize: '1.2rem' }}
+          onClick={(e) => { e.stopPropagation(); onPin(); }}
+        >
+          {isPinned ? '★' : '☆'}
+        </div>
+      )}
 
       <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: `${themeColor}15`, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px' }}>
         {(course.course_name || '?').charAt(0)}
@@ -113,6 +138,36 @@ export default function CourseCard({ course, isPinned, onPin, onOpen, onSettings
           <BookIcon/> {assignmentCount} {assignmentCount === 1 ? 'Assignment' : 'Assignments'}
         </div>
       </div>
+
+      {showStudentsList && studentCount > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowStudents(!showStudents);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#4f46e5',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              padding: 0
+            }}
+          >
+            {showStudents ? 'Hide Students' : 'Show Students'}
+          </button>
+          {showStudents && (
+            <div style={{ marginTop: '8px', padding: '8px', borderRadius: '8px', background: '#f8fafc', maxHeight: '120px', overflowY: 'auto' }}>
+              {course.student_ids.map((studentId) => (
+                <div key={studentId} style={{ fontSize: '0.875rem', color: '#374151', padding: '2px 0' }}>
+                  {getStudentInfo(studentId)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ marginTop: 'auto', display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
         {isInstructor && (

@@ -302,6 +302,15 @@ export default function InstructorCoursesPage() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px', color: '#94a3b8' }}>Loading your dashboard...</div>
+      ) : processedCourses.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: '16px', background: '#f8fafc' }}>
+          <h3 style={{ margin: '0 0 8px 0', color: '#334155' }}>No Courses Found</h3>
+          <p style={{ margin: 0 }}>
+            {searchQuery
+              ? 'No courses match your current search.'
+              : (isTeacher ? "You haven't created any courses yet." : "You're not enrolled in any courses yet.")}
+          </p>
+        </div>
       ) : (
         <>
           {pinnedCourses.length > 0 && (
