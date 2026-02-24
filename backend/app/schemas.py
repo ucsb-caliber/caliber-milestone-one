@@ -211,7 +211,7 @@ class AssignmentResponse(BaseModel):
     """Schema for assignment response."""
     id: int
     node_id: Optional[str]
-    instructor_email: str
+    instructor_email: Optional[str] = None
     instructor_id: str
     course: str
     course_id: int
@@ -239,13 +239,13 @@ class AssignmentResponse(BaseModel):
         return v if v else []
 
     @classmethod
-    def from_orm(cls, obj):
-        """Custom from_orm to parse assignment_questions JSON string."""
+    def from_assignment(cls, obj, instructor_email: Optional[str] = None):
+        """Build assignment response while sourcing PII externally."""
         import json
         data = {
             'id': obj.id,
             'node_id': obj.node_id,
-            'instructor_email': obj.instructor_email,
+            'instructor_email': instructor_email,
             'instructor_id': obj.instructor_id,
             'course': obj.course,
             'course_id': obj.course_id,

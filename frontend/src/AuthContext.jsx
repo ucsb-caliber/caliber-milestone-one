@@ -111,14 +111,21 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     if (isTestModeEnabled()) {
       localStorage.removeItem('test-mode');
+      setSession(null);
       setUser(null);
       setAccessTokenCookie(null);
       return;
     }
     
     const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    // Cookie will be cleared by onAuthStateChange listener
+    const message = (error?.message || '').toLowerCase();
+    const isMissingSession = message.includes('auth session missing');
+    if (error && !isMissingSession) throw error;
+
+    // Ensure local auth state is cleared even when the server session is already gone.
+    setSession(null);
+    setUser(null);
+    setAccessTokenCookie(null);
   };
 
   const value = {

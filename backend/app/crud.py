@@ -602,7 +602,7 @@ def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
 
 # Assignment CRUD operations
 
-def create_assignment(session: Session, course_id: int, instructor_id: str, instructor_email: str,
+def create_assignment(session: Session, course_id: int, instructor_id: str,
                      title: str, type: str = "Other", description: str = "",
                      node_id: Optional[str] = None, release_date: Optional[datetime] = None,
                      due_date_soft: Optional[datetime] = None, due_date_hard: Optional[datetime] = None,
@@ -620,7 +620,6 @@ def create_assignment(session: Session, course_id: int, instructor_id: str, inst
     assignment = Assignment(
         course_id=course_id,
         instructor_id=instructor_id,
-        instructor_email=instructor_email,
         course=course_name,
         title=title,
         type=type,
