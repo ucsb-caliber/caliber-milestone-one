@@ -10,6 +10,7 @@ class UserResponse(BaseModel):
     email: Optional[str]
     first_name: Optional[str]
     last_name: Optional[str]
+    school_name: str
     admin: bool
     teacher: bool
     pending: bool
@@ -34,6 +35,7 @@ class UserProfileUpdate(BaseModel):
     """Schema for updating user profile (first/last name only - used after onboarding)."""
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    school_name: Optional[str] = Field(None, min_length=1, max_length=100)
 
 
 class UserPreferencesUpdate(BaseModel):

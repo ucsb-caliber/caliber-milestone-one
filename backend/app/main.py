@@ -533,6 +533,7 @@ def get_user_info(
         "email": user.email,
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "school_name": user.school_name or "",
         "admin": user.admin,
         "teacher": user.teacher,
         "pending": user.pending,
@@ -555,6 +556,7 @@ def update_user_profile_endpoint(
         user_id=user_id,
         first_name=profile_data.first_name,
         last_name=profile_data.last_name,
+        school_name=profile_data.school_name,
         teacher=None,  # Don't allow changing teacher status after onboarding
         pending=None
     )
@@ -606,6 +608,7 @@ def complete_user_onboarding(
         user_id=user_id,
         first_name=onboarding_data.first_name,
         last_name=onboarding_data.last_name,
+        school_name=None,
         teacher=False,
         pending=onboarding_data.teacher
     )

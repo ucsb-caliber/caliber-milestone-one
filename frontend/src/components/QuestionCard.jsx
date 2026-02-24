@@ -172,21 +172,6 @@ export default function QuestionCard({
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
 
-          {question.user_school && (
-            <span style={{
-              background: '#28a745', // Green to differentiate from the Purple school badge
-              color: 'white',
-              padding: '0.25rem 0.75rem',
-              borderRadius: '4px',
-              fontSize: '0.875rem',
-              fontWeight: 'bold',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}>
-              <span style={{ fontSize: '10px', opacity: 0.9 }}>FROM:</span> {question.user_school}
-            </span>
-          )}
           {question.school && (
             <span style={{
               background: '#6f42c1',
