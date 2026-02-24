@@ -159,6 +159,28 @@ def delete_question(session: Session, question_id: int, user_id: str) -> bool:
     return True
 
 
+def delete_unverified_questions_by_source(session: Session, user_id: str, source_pdf: str) -> int:
+    """Delete all unverified questions for a user/source_pdf pair."""
+    if not source_pdf:
+        return 0
+
+    questions = list(session.exec(
+        select(Question).where(
+            Question.user_id == user_id,
+            Question.source_pdf == source_pdf,
+            Question.is_verified == False  # noqa: E712
+        )
+    ).all())
+
+    if not questions:
+        return 0
+
+    for question in questions:
+        session.delete(question)
+    session.commit()
+    return len(questions)
+
+
 # User CRUD operations
 
 def get_or_create_user(session: Session, user_id: str, email: Optional[str] = None) -> User:
@@ -580,7 +602,7 @@ def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
 
 # Assignment CRUD operations
 
-def create_assignment(session: Session, course_id: int, instructor_id: str, instructor_email: str,
+def create_assignment(session: Session, course_id: int, instructor_id: str,
                      title: str, type: str = "Other", description: str = "",
                      node_id: Optional[str] = None, release_date: Optional[datetime] = None,
                      due_date_soft: Optional[datetime] = None, due_date_hard: Optional[datetime] = None,
@@ -598,7 +620,6 @@ def create_assignment(session: Session, course_id: int, instructor_id: str, inst
     assignment = Assignment(
         course_id=course_id,
         instructor_id=instructor_id,
-        instructor_email=instructor_email,
         course=course_name,
         title=title,
         type=type,

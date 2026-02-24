@@ -26,7 +26,7 @@ class Question(SQLModel, table=True):
     """Question model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(default="")  # Question title (e.g., Invert a Linked List)
-    text: str = Field(index=True)
+    text: str  # Do not index large freeform text; can exceed Postgres btree row limits.
     tags: str = Field(default="")  # Question tags (e.g., recursion, sorting, runtime analysis)
     keywords: str = Field(default="")  # Stored as comma-separated string
     school: str = Field(default="")  # School name (e.g., UCSB)
@@ -57,7 +57,6 @@ class Assignment(SQLModel, table=True):
     """Assignment model for course assignments."""
     id: Optional[int] = Field(default=None, primary_key=True)
     node_id: Optional[str] = Field(default=None)  # Foreign key to Course Tree Node (null for now)
-    instructor_email: str = Field(default="")  # Email of instructor who created assignment
     instructor_id: str = Field(default="")  # ID of instructor user who created assignment
     course: str = Field(default="")  # ID/name of course the assignment was created in
     course_id: int = Field(foreign_key="course.id", index=True)

@@ -114,7 +114,8 @@ export default function QuestionCard({
   const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
   const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
 
-  const handleEdit = () => {
+  const handleEdit = (e) => {
+    if (e) e.stopPropagation();
     if (onEdit) {
       onEdit(question);
     } else {
@@ -423,7 +424,10 @@ export default function QuestionCard({
           )}
           {showRemoveButton && onRemove && (
             <button
-              onClick={() => onRemove(question.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(question.id);
+              }}
               style={{
                 padding: '0.5rem 1rem',
                 background: '#f59e0b',
@@ -440,7 +444,10 @@ export default function QuestionCard({
           )}
           {showDeleteButton && onDelete && (
             <button
-              onClick={() => onDelete(question.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(question.id);
+              }}
               style={{
                 padding: '0.5rem 1rem',
                 background: '#dc3545',

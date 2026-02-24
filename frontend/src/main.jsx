@@ -19,6 +19,7 @@ import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 import Users from './pages/Users.jsx'
+import Analytics from './pages/Analytics.jsx'
 import "./index.css";
 
 // Determine backend base URL from Vite env or default to localhost
@@ -56,6 +57,9 @@ function App() {
   const adminMenuRef = React.useRef(null);
   const [userInfo, setUserInfo] = React.useState(null);
   const [checkingProfile, setCheckingProfile] = React.useState(true);
+  const [signingOut, setSigningOut] = React.useState(false);
+  const [toast, setToast] = React.useState(null);
+  const toastTimerRef = React.useRef(null);
   const [profilePrefs, setProfilePrefs] = React.useState({
     iconShape: 'circle',
     color: '#4f46e5',
@@ -132,12 +136,35 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showToast = React.useCallback((message, kind = 'info', ms = 2800) => {
+    setToast({ message, kind });
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => setToast(null), ms);
+  }, []);
+
   const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    showToast('Signing out...', 'info', 1500);
     try {
       await signOut();
+      showToast('Signed out successfully', 'success');
       window.location.hash = 'home';
     } catch (error) {
       console.error('Error signing out:', error);
+      showToast(`Sign out failed: ${error?.message || 'Unknown error'}`, 'error', 5000);
+    } finally {
+      setSigningOut(false);
     }
   };
 
@@ -190,7 +217,11 @@ function App() {
         padding: '1rem',
         display: 'flex',
         gap: '1rem',
-        alignItems: 'center'
+        alignItems: 'center',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10000,
+        isolation: 'isolate'
         
       }}>
         <h1 style={{ margin: 0 }}>
@@ -219,7 +250,7 @@ function App() {
           API Docs
         </a>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 1 }}>
           {user && (
             <>
               {isInstructorOrAdmin && (
@@ -329,6 +360,18 @@ function App() {
                   Courses
                 </a>
               )}
+              {isInstructorOrAdmin && (
+                <a
+                  href="#analytics"
+                  style={{
+                    color: page === 'analytics' ? '#fff' : '#aaa',
+                    textDecoration: 'none',
+                    fontWeight: page === 'analytics' ? 'bold' : 'normal'
+                  }}
+                >
+                  Analytics
+                </a>
+              )}
               <a
                 href="#student-courses"
                 style={{
@@ -376,22 +419,46 @@ function App() {
               </a>
               <button
                 onClick={handleSignOut}
+                disabled={signingOut}
                 style={{
                   background: '#555',
                   color: 'white',
                   border: 'none',
                   padding: '0.5rem 1rem',
                   borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
+                  cursor: signingOut ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                  position: 'relative',
+                  zIndex: 2,
+                  pointerEvents: 'auto',
+                  opacity: signingOut ? 0.75 : 1
                 }}
               >
-                Sign Out
+                {signingOut ? 'Signing Out...' : 'Sign Out'}
               </button>
             </>
           )}
         </div>
       </nav>
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '84px',
+            right: '16px',
+            zIndex: 11000,
+            maxWidth: '360px',
+            background: toast.kind === 'error' ? '#7f1d1d' : toast.kind === 'success' ? '#14532d' : '#1f2937',
+            color: 'white',
+            borderRadius: '8px',
+            padding: '0.7rem 0.85rem',
+            boxShadow: '0 12px 24px rgba(0,0,0,0.25)',
+            fontSize: '0.9rem'
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
       <main style={{ padding: '2rem' }}>
         {!user && !loading ? (
           <Auth />
@@ -441,6 +508,11 @@ function App() {
             {isInstructorOrAdmin && page === 'courses' && (
               <ProtectedRoute>
                 <InstructorCoursesPage />
+              </ProtectedRoute>
+            )}
+            {isInstructorOrAdmin && page === 'analytics' && (
+              <ProtectedRoute>
+                <Analytics />
               </ProtectedRoute>
             )}
             {page === 'student-courses' && (

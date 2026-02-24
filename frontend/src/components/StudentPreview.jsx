@@ -19,7 +19,6 @@ import { getImageSignedUrl } from '../api';
  * - assignmentType: Type of assignment (Quiz, Homework, etc.)
  * - onClose: Callback when preview is closed (for modal mode)
  * - isPreviewMode: Whether this is a preview (shows "Preview Mode" banner)
- * - onSubmit: Callback when assignment is submitted (optional, for student mode)
  * - showCorrectAnswers: Whether to show correct answers after selection (default: false for students, true for instructors in review)
  */
 export default function StudentPreview({
@@ -28,13 +27,16 @@ export default function StudentPreview({
   assignmentType = 'Assignment',
   onClose,
   isPreviewMode = true,
-  onSubmit,
   showCorrectAnswers = false,
+  closeButtonText = 'Back to Course',
   initialAnswers,
   initialQuestionIndex,
   initialSubmitted,
   onAnswersChange,
-  onQuestionChange
+  onQuestionChange,
+  onSubmit,
+  isSubmitting = false,
+  submitButtonText = 'Submit Assignment'
 }) {
   const [currentIndex, setCurrentIndex] = useState(Number.isInteger(initialQuestionIndex) ? initialQuestionIndex : 0);
   const [answers, setAnswers] = useState(initialAnswers || {});
@@ -128,13 +130,6 @@ export default function StudentPreview({
     }
   };
 
-  const handleSubmit = () => {
-    setSubmitted(true);
-    if (onSubmit) {
-      onSubmit(answers);
-    }
-  };
-
   const isQuestionAnswered = (questionId) => {
     const value = answers[questionId];
     if (value === undefined || value === null) return false;
@@ -164,7 +159,7 @@ export default function StudentPreview({
   const styles = {
     overlay: {
       position: 'fixed',
-      top: 0,
+      top: '72px',
       left: 0,
       right: 0,
       bottom: 0,
@@ -490,7 +485,7 @@ export default function StudentPreview({
                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
               >
-                Back to Course
+                {closeButtonText}
               </button>
             </div>
           )}
@@ -543,12 +538,25 @@ export default function StudentPreview({
               Assignment
             </div>
             <button
-              style={styles.closeButton}
+              style={{
+                ...styles.closeButton,
+                ...((closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  ? { background: '#10b981' }
+                  : {})
+              }}
               onClick={onClose}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  ? '#059669'
+                  : 'rgba(255,255,255,0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  ? '#10b981'
+                  : 'rgba(255,255,255,0.2)';
+              }}
             >
-              Back to Course
+              {closeButtonText}
             </button>
           </div>
         )}
@@ -761,17 +769,6 @@ export default function StudentPreview({
           </button>
 
           <div style={{ display: 'flex', gap: '1rem' }}>
-            {isLastQuestion && !submitted && !isPreviewMode && (
-              <button
-                style={styles.submitButton}
-                onClick={handleSubmit}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
-              >
-                Submit Assignment
-              </button>
-            )}
-            
             {isLastQuestion && isPreviewMode && onClose && (
               <button
                 style={styles.submitButton}
