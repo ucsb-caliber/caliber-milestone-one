@@ -1,18 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
+import QuestionCard from './QuestionCard';
+import { getImageSignedUrl } from '../api';
 
 // Color palette for tag bubbles
 const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
 /**
- * Generate QID from question (use title slugified or ID)
+ * Generate display QID: slugified title + unique backend qid
  */
 const getQID = (question) => {
+  const suffix = (question.qid || `Q${question.id}`);
+  const qidSuffix = String(suffix);
   if (question.title) {
-    return question.title.toLowerCase()
+    const slug = question.title.toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || `question-${question.id}`;
+      .replace(/^-+|-+$/g, '');
+
+    if (slug) return `${slug}-${qidSuffix}`;
   }
-  return `question-${question.id}`;
+  return `question-${qidSuffix}`;
 };
 
 /**
@@ -148,6 +154,7 @@ const TableRow = ({
   userInfo,
   canDelete,
   onDelete,
+  onPreview,
 
   selectable = false,
   selected = false,
@@ -186,7 +193,7 @@ const TableRow = ({
           href={`#question-${question.id}`}
           onClick={(e) => {
             e.preventDefault();
-            // Could navigate to question detail or scroll to it
+            onPreview(question);
           }}
           style={{
             color: '#0066cc',
@@ -226,7 +233,7 @@ const TableRow = ({
       <td style={{ padding: '0.75rem 1rem' }}>
         <TagList tagsString={question.tags} />
       </td>
-      {canDelete && (
+      {canDelete && typeof onDelete === 'function' && (
         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
           <button
             onClick={() => onDelete(question.id)}
@@ -268,8 +275,27 @@ export default function QuestionTable({
 
   selectable = false,
   selectedQuestionIds = [],
-  onToggleQuestion = () => { }
+  onToggleQuestion = () => { },
+  showActions = true
 }) {
+  const [previewQuestion, setPreviewQuestion] = useState(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
+
+  const handlePreview = async (question) => {
+    setPreviewQuestion(question);
+    setPreviewImageUrl(null);
+
+    if (!question?.image_url) return;
+
+    const signedUrl = await getImageSignedUrl(question.image_url);
+    setPreviewImageUrl(signedUrl || null);
+  };
+
+  const closePreview = () => {
+    setPreviewQuestion(null);
+    setPreviewImageUrl(null);
+  };
+
   if (questions.length === 0) {
     return (
       <div style={{
@@ -285,7 +311,7 @@ export default function QuestionTable({
   }
 
   // Check if any question can be deleted (for showing Actions column)
-  const hasDeletableQuestions = user &&
+  const hasDeletableQuestions = showActions && user &&
     questions.some(q => q.user_id === user.id);
 
   return (
@@ -428,7 +454,7 @@ export default function QuestionTable({
           <tbody>
             {questions.map(question => {
               // User can delete their own questions
-              const canDelete = user && question.user_id === user.id;
+              const canDelete = showActions && user && question.user_id === user.id;
               const userInfo = userInfoCache[question.user_id];
               return (
                 <TableRow
@@ -437,6 +463,7 @@ export default function QuestionTable({
                   userInfo={userInfo}
                   canDelete={canDelete}
                   onDelete={onDelete}
+                  onPreview={handlePreview}
 
                   selectable={selectable}
                   selected={selectedQuestionIds.includes(question.id)}
@@ -447,6 +474,58 @@ export default function QuestionTable({
           </tbody>
         </table>
       </div>
+
+      {previewQuestion && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 1200,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            overflowY: 'auto',
+            padding: '1rem'
+          }}
+          onClick={closePreview}
+        >
+          <div
+            style={{
+              width: 'min(1000px, 100%)',
+              background: 'transparent'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={closePreview}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <QuestionCard
+              question={previewQuestion}
+              userInfo={userInfoCache[previewQuestion.user_id]}
+              imageUrl={previewImageUrl}
+              showDeleteButton={false}
+              showEditButton={false}
+              showRemoveButton={false}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

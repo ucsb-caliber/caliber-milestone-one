@@ -25,6 +25,7 @@ class User(SQLModel, table=True):
 class Question(SQLModel, table=True):
     """Question model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
+    qid: str = Field(index=True, unique=True)  # Stable unique question identifier (e.g., Q00000001)
     title: str = Field(default="")  # Question title (e.g., Invert a Linked List)
     text: str  # Do not index large freeform text; can exceed Postgres btree row limits.
     tags: str = Field(default="")  # Question tags (e.g., recursion, sorting, runtime analysis)

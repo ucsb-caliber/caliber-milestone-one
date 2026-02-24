@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import QuestionTable from '../components/QuestionTable';
+import QuestionSearchBar from '../components/QuestionSearchBar';
 import { getUserById } from '../api';
 import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
+import { filterQuestionsBySearch } from '../utils/questionSearch';
 
 function parseAssignmentDate(dateStr) {
   if (!dateStr) return null;
@@ -26,6 +28,8 @@ export default function CreateEditAssignment() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [userInfoCache, setUserInfoCache] = useState({});
   const [showQuestionPicker, setShowQuestionPicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFilter, setSearchFilter] = useState('all');
 
 
 
@@ -205,6 +209,8 @@ export default function CreateEditAssignment() {
         : [...prev.assignment_questions, questionId]
     }));
   };
+
+  const filteredQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
 
   const styles = {
     container: {
@@ -504,7 +510,7 @@ export default function CreateEditAssignment() {
         <div
           style={{
             position: 'fixed',
-            inset: 0,
+            inset: '64px 0 0 0',
             background: 'rgba(0,0,0,0.4)',
             zIndex: 1000,
             display: 'flex'
@@ -516,7 +522,9 @@ export default function CreateEditAssignment() {
               width: '100%',
               height: '100%',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              overflow: 'hidden',
+              position: 'relative'
             }}
           >
             {/* Header */}
@@ -526,6 +534,13 @@ export default function CreateEditAssignment() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                position: 'fixed',
+                top: '64px',
+                left: 0,
+                right: 0,
+                zIndex: 1001,
+                background: 'white',
+                borderBottom: '1px solid #e5e7eb'
               }}
             >
               
@@ -564,7 +579,7 @@ export default function CreateEditAssignment() {
                   fontWeight: 600,
                 }}
               >
-                Done
+                Save Selection & Return
               </button>
             </div>
 
@@ -573,17 +588,27 @@ export default function CreateEditAssignment() {
               style={{
                 flex: 1,
                 overflow: 'auto',
-                padding: '1rem'
+                padding: '6rem 1rem 1rem'
               }}
             >
+              <QuestionSearchBar
+                searchQuery={searchQuery}
+                searchFilter={searchFilter}
+                onSearchQueryChange={setSearchQuery}
+                onSearchFilterChange={setSearchFilter}
+                onClearSearch={() => setSearchQuery('')}
+                compact
+              />
+
               <QuestionTable
-                questions={allQuestions}
+                questions={filteredQuestions}
                 userInfoCache={userInfoCache}
                 user={user}
 
                 selectable
                 selectedQuestionIds={formData.assignment_questions}
                 onToggleQuestion={toggleQuestion}
+                showActions={false}
               />
             </div>
           </div>
