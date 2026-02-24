@@ -8,6 +8,15 @@ import json
 from .models import Question, User
 
 
+def generate_unique_question_qid(session: Session) -> str:
+    """Generate a unique question QID string."""
+    while True:
+        candidate = "Q" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        existing = session.exec(select(Question).where(Question.qid == candidate)).first()
+        if not existing:
+            return candidate
+
+
 def create_question(session: Session, text: str, title: str, tags: str, keywords: str, user_id: str, 
                    school: str = "", user_school: str = "", course: str = "", course_type: str = "",
                    question_type: str = "", blooms_taxonomy: str = "",
@@ -16,6 +25,7 @@ def create_question(session: Session, text: str, title: str, tags: str, keywords
                    image_url: Optional[str] = None, is_verified: bool = False) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     question = Question(
+        qid=generate_unique_question_qid(session),
         title=title,
         text=text,
         tags=tags,
@@ -605,7 +615,7 @@ def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
 
 # Assignment CRUD operations
 
-def create_assignment(session: Session, course_id: int, instructor_id: str, instructor_email: str,
+def create_assignment(session: Session, course_id: int, instructor_id: str,
                      title: str, type: str = "Other", description: str = "",
                      node_id: Optional[str] = None, release_date: Optional[datetime] = None,
                      due_date_soft: Optional[datetime] = None, due_date_hard: Optional[datetime] = None,
@@ -623,7 +633,6 @@ def create_assignment(session: Session, course_id: int, instructor_id: str, inst
     assignment = Assignment(
         course_id=course_id,
         instructor_id=instructor_id,
-        instructor_email=instructor_email,
         course=course_name,
         title=title,
         type=type,

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
+import QuestionTable from '../components/QuestionTable';
+import QuestionSearchBar from '../components/QuestionSearchBar';
+import { getUserById } from '../api';
 import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
+import { filterQuestionsBySearch } from '../utils/questionSearch';
 
 function parseAssignmentDate(dateStr) {
   if (!dateStr) return null;
@@ -22,7 +26,13 @@ export default function CreateEditAssignment() {
   const [error, setError] = useState('');
   const [allQuestions, setAllQuestions] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
-  
+  const [userInfoCache, setUserInfoCache] = useState({});
+  const [showQuestionPicker, setShowQuestionPicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFilter, setSearchFilter] = useState('all');
+
+
+
   const [formData, setFormData] = useState({
     title: '',
     type: 'Homework',
@@ -41,7 +51,7 @@ export default function CreateEditAssignment() {
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const isNew = hash.includes('/assignment/new');
     const isEdit = hash.includes('/edit');
-    
+
     return {
       courseId: courseMatch ? parseInt(courseMatch[1]) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null,
@@ -65,6 +75,26 @@ export default function CreateEditAssignment() {
         // Load all questions for selection
         const questionsData = await getAllQuestions();
         setAllQuestions(questionsData.questions || []);
+
+        const qs = questionsData.questions || [];
+        const uniqueUserIds = [...new Set(qs.map(q => q.user_id).filter(Boolean))];
+
+        const userPromises = uniqueUserIds.map(async (uid) => {
+          try {
+            const info = await getUserById(uid);
+            return [uid, info];
+          } catch {
+            return [uid, null];
+          }
+        });
+
+        const entries = await Promise.all(userPromises);
+        const map = {};
+        for (const [uid, info] of entries) {
+          if (info) map[uid] = info;
+        }
+        setUserInfoCache(map);
+
 
         // If editing, load assignment data
         if (assignmentId && !isNew) {
@@ -95,7 +125,7 @@ export default function CreateEditAssignment() {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.title.trim()) {
       setError('Title is required');
       return;
@@ -157,7 +187,7 @@ export default function CreateEditAssignment() {
       }
 
       setSaving(false);
-      
+
       // Navigate to assignment view page
       if (savedAssignmentId) {
         window.location.hash = `#course/${courseId}/assignment/${savedAssignmentId}/view`;
@@ -179,6 +209,8 @@ export default function CreateEditAssignment() {
         : [...prev.assignment_questions, questionId]
     }));
   };
+
+  const filteredQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
 
   const styles = {
     container: {
@@ -246,29 +278,6 @@ export default function CreateEditAssignment() {
       fontSize: '1rem',
       boxSizing: 'border-box'
     },
-    questionsList: {
-      maxHeight: '300px',
-      overflow: 'auto',
-      border: '1px solid #e5e7eb',
-      borderRadius: '8px',
-      marginTop: '0.5rem'
-    },
-    questionItem: {
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: '0.75rem',
-      padding: '0.75rem',
-      borderBottom: '1px solid #f3f4f6',
-      cursor: 'pointer',
-      transition: 'background 0.15s'
-    },
-    checkbox: {
-      width: '18px',
-      height: '18px',
-      cursor: 'pointer',
-      marginTop: '0.2rem',
-      flexShrink: 0
-    },
     buttonGroup: {
       display: 'flex',
       gap: '0.75rem',
@@ -328,7 +337,7 @@ export default function CreateEditAssignment() {
   return (
     <div style={styles.container}>
       <a href={`#course/${courseId}`} style={styles.backLink}>← Back to Course</a>
-      
+
       <h1 style={styles.title}>{isEditMode ? 'Edit Assignment' : 'Create Assignment'}</h1>
 
       {error && <div style={styles.error}>{error}</div>}
@@ -454,43 +463,27 @@ export default function CreateEditAssignment() {
           <label style={styles.label}>
             Questions ({formData.assignment_questions.length} selected)
           </label>
-          {allQuestions.length === 0 ? (
-            <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>
-              No questions available. Create questions first from the Question Bank.
-            </p>
-          ) : (
-            <div style={styles.questionsList}>
-              {allQuestions.map(q => (
-                <div
-                  key={q.id}
-                  style={{
-                    ...styles.questionItem,
-                    background: formData.assignment_questions.includes(q.id) ? '#eef2ff' : 'transparent'
-                  }}
-                  onClick={() => toggleQuestion(q.id)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={formData.assignment_questions.includes(q.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      toggleQuestion(q.id);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={styles.checkbox}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', fontSize: '0.875rem', color: '#111827' }}>
-                      {q.title || 'Untitled Question'}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                      {q.text.substring(0, 100)}{q.text.length > 100 ? '...' : ''}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+            {/* Select Questions Button */}
+            <button
+              type="button"
+              onClick={() => setShowQuestionPicker(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600'
+              }}
+            >
+              Add / Edit Questions
+            </button>
+          </div>
+
         </div>
 
         {/* Buttons */}
@@ -512,6 +505,116 @@ export default function CreateEditAssignment() {
           </button>
         </div>
       </form>
+
+      {showQuestionPicker && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 1000,
+            display: 'flex'
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              position: 'relative'
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                position: 'fixed',
+                top: '64px',
+                left: 0,
+                right: 0,
+                zIndex: 1001,
+                background: 'white',
+                borderBottom: '1px solid #e5e7eb'
+              }}
+            >
+              
+              {/*Select Questions title and show # selected*/}
+              <h2
+                style={{
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                Select Questions
+                {formData.assignment_questions.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: '0.9rem',
+                      fontWeight: 500,
+                      color: '#6b7280',
+                    }}
+                  >
+                    ({formData.assignment_questions.length} selected)
+                  </span>
+                )}
+              </h2>
+
+              <button
+                onClick={() => setShowQuestionPicker(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Save Selection & Return
+              </button>
+            </div>
+
+            {/* Table area */}
+            <div
+              style={{
+                flex: 1,
+                overflow: 'auto',
+                padding: '6rem 1rem 1rem'
+              }}
+            >
+              <QuestionSearchBar
+                searchQuery={searchQuery}
+                searchFilter={searchFilter}
+                onSearchQueryChange={setSearchQuery}
+                onSearchFilterChange={setSearchFilter}
+                onClearSearch={() => setSearchQuery('')}
+                compact
+              />
+
+              <QuestionTable
+                questions={filteredQuestions}
+                userInfoCache={userInfoCache}
+                user={user}
+
+                selectable
+                selectedQuestionIds={formData.assignment_questions}
+                onToggleQuestion={toggleQuestion}
+                showActions={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
