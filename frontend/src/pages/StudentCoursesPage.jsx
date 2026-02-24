@@ -225,7 +225,8 @@ export default function StudentCoursesPage() {
               course={course}
               isInstructor={false}
               allUsers={[]}
-              onViewDetails={(c) => {
+              onOpen={() => {
+                const c = course;
                 window.location.hash = `student-course/${c.id}`;
               }}
             />
