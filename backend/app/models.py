@@ -12,6 +12,7 @@ class User(SQLModel, table=True):
     email: Optional[str] = Field(default=None, index=True)  # User's email address
     first_name: Optional[str] = Field(default=None)  # User's first name
     last_name: Optional[str] = Field(default=None)  # User's last name
+    school_name: str = Field(default="")  # User's home school/university
     admin: bool = Field(default=False)  # Whether user is an admin
     teacher: bool = Field(default=False)  # Whether user is a teacher/instructor
     pending: bool = Field(default=False)  # Whether user is awaiting instructor approval
@@ -25,11 +26,13 @@ class User(SQLModel, table=True):
 class Question(SQLModel, table=True):
     """Question model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
+    qid: str = Field(index=True, unique=True)  # Stable unique question identifier (e.g., Q00000001)
     title: str = Field(default="")  # Question title (e.g., Invert a Linked List)
     text: str  # Do not index large freeform text; can exceed Postgres btree row limits.
     tags: str = Field(default="")  # Question tags (e.g., recursion, sorting, runtime analysis)
     keywords: str = Field(default="")  # Stored as comma-separated string
     school: str = Field(default="")  # School name (e.g., UCSB)
+    user_school: str = Field(default="", index=True) # school of user
     course: str = Field(default="")  # Course name (kept for backward compatibility)
     course_type: str = Field(default="")  # Course type (e.g., intro CS, intermediate CS, linear algebra)
     question_type: str = Field(default="")  # Question type (e.g., mcq, fr, short answer)
@@ -57,7 +60,6 @@ class Assignment(SQLModel, table=True):
     """Assignment model for course assignments."""
     id: Optional[int] = Field(default=None, primary_key=True)
     node_id: Optional[str] = Field(default=None)  # Foreign key to Course Tree Node (null for now)
-    instructor_email: str = Field(default="")  # Email of instructor who created assignment
     instructor_id: str = Field(default="")  # ID of instructor user who created assignment
     course: str = Field(default="")  # ID/name of course the assignment was created in
     course_id: int = Field(foreign_key="course.id", index=True)

@@ -33,7 +33,10 @@ export default function StudentPreview({
   initialQuestionIndex,
   initialSubmitted,
   onAnswersChange,
-  onQuestionChange
+  onQuestionChange,
+  onSubmit,
+  isSubmitting = false,
+  submitButtonText = 'Submit Assignment'
 }) {
   const [currentIndex, setCurrentIndex] = useState(Number.isInteger(initialQuestionIndex) ? initialQuestionIndex : 0);
   const [answers, setAnswers] = useState(initialAnswers || {});
@@ -156,7 +159,7 @@ export default function StudentPreview({
   const styles = {
     overlay: {
       position: 'fixed',
-      top: 0,
+      top: '72px',
       left: 0,
       right: 0,
       bottom: 0,
@@ -535,10 +538,23 @@ export default function StudentPreview({
               Assignment
             </div>
             <button
-              style={styles.closeButton}
+              style={{
+                ...styles.closeButton,
+                ...((closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  ? { background: '#10b981' }
+                  : {})
+              }}
               onClick={onClose}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  ? '#059669'
+                  : 'rgba(255,255,255,0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  ? '#10b981'
+                  : 'rgba(255,255,255,0.2)';
+              }}
             >
               {closeButtonText}
             </button>

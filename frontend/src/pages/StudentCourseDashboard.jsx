@@ -48,6 +48,8 @@ export default function StudentCourseDashboard() {
   const [submissionByAssignmentId, setSubmissionByAssignmentId] = useState({});
   const [resubmitModalAssignment, setResubmitModalAssignment] = useState(null);
   const [resubmitModalTimestamp, setResubmitModalTimestamp] = useState(null);
+  const [resubmitAllowed, setResubmitAllowed] = useState(false);
+  const [resubmitPenaltyWarning, setResubmitPenaltyWarning] = useState(false);
   const [submissionNotice, setSubmissionNotice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -398,8 +400,15 @@ export default function StudentCourseDashboard() {
 
   const handleAssignmentClick = (assignment, progress) => {
     if (progress?.submitted) {
+      const hardDue = parseAssignmentDate(assignment?.due_date_hard);
+      const softDue = parseAssignmentDate(assignment?.due_date_soft);
+      const canResubmit = !hardDue || now.getTime() <= hardDue.getTime();
+      const incursLatePenalty = canResubmit && softDue && now.getTime() > softDue.getTime();
+
       setResubmitModalAssignment(assignment);
       setResubmitModalTimestamp(progress?.submitted_at || null);
+      setResubmitAllowed(Boolean(canResubmit));
+      setResubmitPenaltyWarning(Boolean(incursLatePenalty));
       return;
     }
     openAssignment(assignment.id, false);
@@ -630,7 +639,10 @@ export default function StudentCourseDashboard() {
       {resubmitModalAssignment && (
         <div style={{
           position: 'fixed',
-          inset: 0,
+          top: '72px',
+          left: 0,
+          right: 0,
+          bottom: 0,
           background: 'rgba(0, 0, 0, 0.45)',
           display: 'flex',
           alignItems: 'center',
@@ -645,16 +657,22 @@ export default function StudentCourseDashboard() {
             boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
           }}>
             <h3 style={{ margin: '0 0 0.75rem 0', color: '#111827' }}>
-              Re-submit this assignment?
+              {resubmitAllowed ? 'Re-submit this assignment?' : 'Assignment already submitted'}
             </h3>
             <p style={{ margin: '0 0 0.5rem 0', color: '#374151', lineHeight: 1.45 }}>
               You already submitted <strong>{resubmitModalAssignment.title}</strong> on{' '}
               <strong>{formatTimestamp(resubmitModalTimestamp)}</strong>.
             </p>
             <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.9rem' }}>
-              Choose <strong>Resubmit</strong> to edit answers. When you leave the assignment page, your latest answers
-              will be auto-saved and the submitted time will be updated.
+              {resubmitAllowed
+                ? 'You can submit again because the hard due date has not passed yet.'
+                : 'This assignment is read-only because the hard due date has passed.'}
             </p>
+            {resubmitPenaltyWarning && (
+              <p style={{ margin: '0 0 1rem 0', color: '#b45309', fontSize: '0.9rem', fontWeight: 600 }}>
+                Warning: resubmitting now will incur a late penalty.
+              </p>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <button
                 onClick={() => setResubmitModalAssignment(null)}
@@ -670,75 +688,78 @@ export default function StudentCourseDashboard() {
               >
                 Cancel
               </button>
-              <button
-                onClick={() => {
-                  const id = resubmitModalAssignment.id;
-                  setResubmitModalAssignment(null);
-                  openAssignment(id, true);
-                }}
-                style={{
-                  border: 'none',
-                  borderRadius: '8px',
-                  background: '#2563eb',
-                  color: 'white',
-                  padding: '0.5rem 0.85rem',
-                  cursor: 'pointer',
-                  fontWeight: 600
-                }}
-              >
-                Resubmit
-              </button>
+               {resubmitAllowed && (
+                <button
+                  onClick={() => {
+                    const id = resubmitModalAssignment.id;
+                    setResubmitModalAssignment(null);
+                    openAssignment(id, true);
+                  }}
+                  style={{
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: '#2563eb',
+                    color: 'white',
+                    padding: '0.5rem 0.85rem',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Resubmit
+                </button>
+              )}
             </div>
           </div>
         </div>
       )
       }
 
-      {
-        submissionNotice && (
+      {submissionNotice && (
+        <div style={{
+          position: 'fixed',
+          top: '72px',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100
+        }}>
           <div style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1100
+            background: 'white',
+            width: 'min(460px, 92vw)',
+            borderRadius: '12px',
+            padding: '1.1rem 1.2rem',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
           }}>
-            <div style={{
-              background: 'white',
-              width: 'min(460px, 92vw)',
-              borderRadius: '12px',
-              padding: '1.1rem 1.2rem',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
-            }}>
-              <h3 style={{ margin: '0 0 0.6rem 0', color: '#111827' }}>
-                {submissionNotice.assignmentTitle} {submissionNotice.type}
-              </h3>
-              <p style={{ margin: '0 0 0.95rem 0', color: '#374151', lineHeight: 1.45 }}>
-                {submissionNotice.assignmentTitle} {submissionNotice.type} at{' '}
-                <strong>{formatTimestamp(submissionNotice.submittedAt)}</strong>.
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setSubmissionNotice(null)}
-                  style={{
-                    border: 'none',
-                    borderRadius: '8px',
-                    background: '#2563eb',
-                    color: 'white',
-                    padding: '0.5rem 0.9rem',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                >
-                  OK
-                </button>
-              </div>
+            <h3 style={{ margin: '0 0 0.6rem 0', color: '#111827' }}>
+              {submissionNotice.assignmentTitle} {submissionNotice.type}
+            </h3>
+            <p style={{ margin: '0 0 0.95rem 0', color: '#374151', lineHeight: 1.45 }}>
+              {submissionNotice.assignmentTitle} {submissionNotice.type} at{' '}
+              <strong>{formatTimestamp(submissionNotice.submittedAt)}</strong>.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setSubmissionNotice(null)}
+                style={{
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: '#2563eb',
+                  color: 'white',
+                  padding: '0.5rem 0.9rem',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                OK
+              </button>
             </div>
           </div>
-        )
-      }
-    </div >
+        </div>
+      )}
+    </div>
   );
 }

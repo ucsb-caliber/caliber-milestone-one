@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { createQuestion, uploadImage } from '../api';
+import { createQuestion, uploadImage, getUserInfo } from '../api';
+import { useAuth } from '../AuthContext';
 
 export default function CreateQuestion() {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     title: '',
     text: '',
-    school: 'UCSB',
+    school: '',
     course: '',
     course_type: '',
     question_type: 'mcq',
@@ -28,6 +30,36 @@ export default function CreateQuestion() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [viewMode, setViewMode] = useState('edit');
+  const [profileSchool, setProfileSchool] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    async function loadUserSchool() {
+      if (!user) return;
+      try {
+        const info = await getUserInfo();
+        if (active) {
+          setProfileSchool((info?.school_name || '').trim());
+        }
+      } catch (e) {
+        if (active) {
+          setProfileSchool('');
+        }
+      }
+    }
+    loadUserSchool();
+    return () => { active = false; };
+  }, [user]);
+
+  const resolvedUserSchool = (profileSchool || user?.user_metadata?.school_name || '').trim();
+
+  useEffect(() => {
+    if (!resolvedUserSchool) return;
+    setFormData((prev) => {
+      if ((prev.school || '').trim()) return prev;
+      return { ...prev, school: resolvedUserSchool };
+    });
+  }, [resolvedUserSchool]);
 
   const styles = {
     container: {
@@ -263,6 +295,7 @@ export default function CreateQuestion() {
         title: formData.title,
         text: formData.text,
         school: formData.school,
+        user_school: resolvedUserSchool || 'Unknown University',
         course: formData.course,
         course_type: formData.course_type,
         question_type: formData.question_type,
@@ -280,7 +313,7 @@ export default function CreateQuestion() {
       setFormData({
         title: '',
         text: '',
-        school: 'UCSB',
+        school: resolvedUserSchool || '',
         course: '',
         course_type: '',
         question_type: '',
@@ -451,23 +484,14 @@ export default function CreateQuestion() {
               <h3 style={{ marginTop: 0, fontSize: '16px', marginBottom: '16px' }}>Question Metadata</h3>
               <div style={styles.sidebarSection}>
                 <label style={styles.label}>School</label>
-                <select
+                <input
+                  type="text"
                   name="school"
                   value={formData.school}
                   onChange={handleInputChange}
                   style={styles.input}
-                >
-                  <option disabled>Select school</option>
-                  <option value="UCB">UCB</option>
-                  <option value="UCD">UCD</option>
-                  <option value="UCI">UCI</option>
-                  <option value="UCLA">UCLA</option>
-                  <option value="UCM">UCM</option>
-                  <option value="UCR">UCR</option>
-                  <option value="UCSB">UCSB</option>
-                  <option value="UCSC">UCSC</option>
-                  <option value="UCSD">UCSD</option>
-                </select>
+                  placeholder="Enter school"
+                />
               </div>
 
               <div style={styles.sidebarSection}>

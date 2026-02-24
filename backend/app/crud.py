@@ -8,19 +8,38 @@ import json
 from .models import Question, User
 
 
+def generate_unique_question_qid(session: Session) -> str:
+    """Generate a unique question QID in numeric format: Q########."""
+    # Prefer continuing from the highest existing numeric QID.
+    max_numeric_qid = session.exec(
+        select(func.max(Question.qid)).where(Question.qid.op("~")(r"^Q[0-9]{8}$"))
+    ).one()
+
+    next_number = int(max_numeric_qid[1:]) + 1 if max_numeric_qid else 1
+
+    while True:
+        candidate = f"Q{next_number:08d}"
+        existing = session.exec(select(Question).where(Question.qid == candidate)).first()
+        if not existing:
+            return candidate
+        next_number += 1
+
+
 def create_question(session: Session, text: str, title: str, tags: str, keywords: str, user_id: str, 
-                   school: str = "", course: str = "", course_type: str = "",
+                   school: str = "", user_school: str = "", course: str = "", course_type: str = "",
                    question_type: str = "", blooms_taxonomy: str = "",
                    answer_choices: str = "[]", correct_answer: str = "",
                    pdf_url: Optional[str] = None, source_pdf: Optional[str] = None,
                    image_url: Optional[str] = None, is_verified: bool = False) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     question = Question(
+        qid=generate_unique_question_qid(session),
         title=title,
         text=text,
         tags=tags,
         keywords=keywords,
         school=school,
+        user_school=user_school,
         course=course,
         course_type=course_type,
         question_type=question_type,
@@ -100,7 +119,7 @@ def get_questions_by_ids(session: Session, question_ids: List[int]) -> List[Ques
 
 def update_question(session: Session, question_id: int, user_id: str, title: Optional[str] = None,
                    text: Optional[str] = None, tags: Optional[str] = None, keywords: Optional[str] = None, 
-                   school: Optional[str] = None, course: Optional[str] = None,
+                   school: Optional[str] = None, user_school: Optional[str] = None, course: Optional[str] = None,
                    course_type: Optional[str] = None, question_type: Optional[str] = None,
                    blooms_taxonomy: Optional[str] = None, answer_choices: Optional[str] = None, 
                    correct_answer: Optional[str] = None, pdf_url: Optional[str] = None,
@@ -121,6 +140,8 @@ def update_question(session: Session, question_id: int, user_id: str, title: Opt
         question.keywords = keywords
     if school is not None:
         question.school = school
+    if user_school is not None:
+        question.user_school = user_school
     if course is not None:
         question.course = course
     if course_type is not None:
@@ -237,7 +258,8 @@ def update_user_roles(session: Session, user_id: str, admin: Optional[bool] = No
 
 
 def update_user_profile(session: Session, user_id: str, first_name: Optional[str] = None,
-                       last_name: Optional[str] = None, teacher: Optional[bool] = None,
+                       last_name: Optional[str] = None, school_name: Optional[str] = None,
+                       teacher: Optional[bool] = None,
                        pending: Optional[bool] = None) -> Optional[User]:
     """Update user profile information (first/last name, teacher status, pending status)."""
     user = get_user_by_user_id(session, user_id)
@@ -254,6 +276,10 @@ def update_user_profile(session: Session, user_id: str, first_name: Optional[str
         last_name = last_name.strip()
         if last_name:  # Only update if not empty after stripping
             user.last_name = last_name
+    if school_name is not None:
+        school_name = school_name.strip()
+        if school_name:  # Only update if not empty after stripping
+            user.school_name = school_name
     if teacher is not None:
         user.teacher = teacher
     if pending is not None:
@@ -602,7 +628,7 @@ def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
 
 # Assignment CRUD operations
 
-def create_assignment(session: Session, course_id: int, instructor_id: str, instructor_email: str,
+def create_assignment(session: Session, course_id: int, instructor_id: str,
                      title: str, type: str = "Other", description: str = "",
                      node_id: Optional[str] = None, release_date: Optional[datetime] = None,
                      due_date_soft: Optional[datetime] = None, due_date_hard: Optional[datetime] = None,
@@ -620,7 +646,6 @@ def create_assignment(session: Session, course_id: int, instructor_id: str, inst
     assignment = Assignment(
         course_id=course_id,
         instructor_id=instructor_id,
-        instructor_email=instructor_email,
         course=course_name,
         title=title,
         type=type,

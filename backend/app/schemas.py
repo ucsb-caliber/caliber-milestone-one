@@ -10,6 +10,7 @@ class UserResponse(BaseModel):
     email: Optional[str]
     first_name: Optional[str]
     last_name: Optional[str]
+    school_name: str
     admin: bool
     teacher: bool
     pending: bool
@@ -34,6 +35,7 @@ class UserProfileUpdate(BaseModel):
     """Schema for updating user profile (first/last name only - used after onboarding)."""
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    school_name: Optional[str] = Field(None, min_length=1, max_length=100)
 
 
 class UserPreferencesUpdate(BaseModel):
@@ -63,6 +65,7 @@ class QuestionCreate(BaseModel):
     tags: str = ""
     keywords: str = ""
     school: str = ""
+    user_school: str = Field(..., min_length=1)
     course: str = ""
     course_type: str = ""
     question_type: str = ""
@@ -82,6 +85,7 @@ class QuestionUpdate(BaseModel):
     tags: Optional[str] = None
     keywords: Optional[str] = None
     school: Optional[str] = None
+    user_school: Optional[str] = None
     course: Optional[str] = None
     course_type: Optional[str] = None
     question_type: Optional[str] = None
@@ -98,11 +102,13 @@ class QuestionUpdate(BaseModel):
 class QuestionResponse(BaseModel):
     """Schema for question response."""
     id: int
+    qid: str
     title: str
     text: str
     tags: str
     keywords: str
     school: str
+    user_school: str
     course: str
     course_type: str
     question_type: str
@@ -211,7 +217,7 @@ class AssignmentResponse(BaseModel):
     """Schema for assignment response."""
     id: int
     node_id: Optional[str]
-    instructor_email: str
+    instructor_email: Optional[str] = None
     instructor_id: str
     course: str
     course_id: int
@@ -239,13 +245,13 @@ class AssignmentResponse(BaseModel):
         return v if v else []
 
     @classmethod
-    def from_orm(cls, obj):
-        """Custom from_orm to parse assignment_questions JSON string."""
+    def from_assignment(cls, obj, instructor_email: Optional[str] = None):
+        """Build assignment response while sourcing PII externally."""
         import json
         data = {
             'id': obj.id,
             'node_id': obj.node_id,
-            'instructor_email': obj.instructor_email,
+            'instructor_email': instructor_email,
             'instructor_id': obj.instructor_id,
             'course': obj.course,
             'course_id': obj.course_id,

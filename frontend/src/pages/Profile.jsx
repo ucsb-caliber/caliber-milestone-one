@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../AuthContext.jsx';
-import { getUserInfo, updateUserPreferences } from '../api.js';
+import { getUserInfo, updateUserPreferences, updateUserProfile } from '../api.js';
 
 function getAccountStatus(user) {
   const supabaseRole = user?.role || 'unknown';
@@ -57,6 +57,9 @@ export default function Profile() {
     color: '#4f46e5',
     initials: ''
   });
+  const [schoolName, setSchoolName] = React.useState('');
+  const [savingSchool, setSavingSchool] = React.useState(false);
+  const [schoolMessage, setSchoolMessage] = React.useState('');
 
   // Fetch user info from backend
   React.useEffect(() => {
@@ -69,6 +72,7 @@ export default function Profile() {
       try {
         const info = await getUserInfo();
         setUserInfo(info);
+        setSchoolName(info.school_name || '');
         // Set prefs from backend data
         setPrefs({
           iconShape: info.icon_shape || 'circle',
@@ -121,6 +125,26 @@ export default function Profile() {
       }));
     } catch (error) {
       console.error('Error updating preferences:', error);
+    }
+  };
+
+  const saveSchoolName = async () => {
+    const nextSchool = schoolName.trim();
+    if (!nextSchool) {
+      setSchoolMessage('School cannot be empty.');
+      return;
+    }
+    setSavingSchool(true);
+    setSchoolMessage('');
+    try {
+      const updatedUser = await updateUserProfile({ school_name: nextSchool });
+      setUserInfo(updatedUser);
+      setSchoolName(updatedUser.school_name || nextSchool);
+      setSchoolMessage('School updated.');
+    } catch (error) {
+      setSchoolMessage(error?.message || 'Failed to update school.');
+    } finally {
+      setSavingSchool(false);
     }
   };
 
@@ -182,6 +206,54 @@ export default function Profile() {
               )}
             </div>
           ) : null}
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+              Home School
+            </div>
+            <input
+              value={schoolName}
+              onChange={(e) => setSchoolName(e.target.value)}
+              list="school-options"
+              placeholder="Enter your school"
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px'
+              }}
+            />
+            <datalist id="school-options">
+              <option value="UCSB" />
+              <option value="UCLA" />
+              <option value="UCB" />
+              <option value="UCI" />
+              <option value="UCSD" />
+              <option value="Cal Poly SLO" />
+            </datalist>
+            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                onClick={saveSchoolName}
+                disabled={savingSchool}
+                style={{
+                  padding: '0.45rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  background: 'white',
+                  cursor: savingSchool ? 'not-allowed' : 'pointer',
+                  color: '#111827',
+                  fontWeight: 600
+                }}
+              >
+                {savingSchool ? 'Saving...' : 'Save School'}
+              </button>
+              {schoolMessage && (
+                <span style={{ fontSize: '0.85rem', color: schoolMessage.includes('updated') ? '#065f46' : '#b91c1c' }}>
+                  {schoolMessage}
+                </span>
+              )}
+            </div>
+          </div>
 
           <div>
             <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
@@ -315,4 +387,3 @@ export default function Profile() {
     </div>
   );
 }
-
