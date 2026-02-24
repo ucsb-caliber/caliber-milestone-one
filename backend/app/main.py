@@ -121,6 +121,15 @@ def backfill_existing_assignment_dates():
             session.commit()
 
 
+def build_assignment_response(session: Session, assignment: Assignment) -> AssignmentResponse:
+    """Build assignment response with instructor email sourced from User table."""
+    instructor = get_user_by_user_id(session, assignment.instructor_id)
+    return AssignmentResponse.from_assignment(
+        assignment,
+        instructor_email=instructor.email if instructor else None
+    )
+
+
 def process_pdf_background(
     storage_path: str,
     file_content: bytes,
@@ -714,7 +723,7 @@ def create_new_course(
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+        assignments=[build_assignment_response(session, a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
@@ -766,7 +775,7 @@ def list_courses(
             instructor_id=course.instructor_id,
             instructor_email=instructor.email if instructor else None,
             student_ids=student_ids,
-            assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+            assignments=[build_assignment_response(session, a) for a in assignments],
             created_at=course.created_at,
             updated_at=course.updated_at
         ))
@@ -806,7 +815,7 @@ def list_all_courses_admin(
             instructor_id=course.instructor_id,
             instructor_email=instructor.email if instructor else None,
             student_ids=student_ids,
-            assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+            assignments=[build_assignment_response(session, a) for a in assignments],
             created_at=course.created_at,
             updated_at=course.updated_at
         ))
@@ -934,7 +943,7 @@ def get_course_by_id(
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.from_orm(a) for a in assignments],
+        assignments=[build_assignment_response(session, a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
@@ -975,7 +984,7 @@ def update_existing_course(
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.from_orm(a) for a in assignments],
+        assignments=[build_assignment_response(session, a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
@@ -1029,7 +1038,7 @@ def join_course_by_code(
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+        assignments=[build_assignment_response(session, a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
@@ -1058,16 +1067,11 @@ def create_new_assignment(
             detail="Only the course instructor can create assignments"
         )
     
-    # Get user info for instructor email
-    user = get_user_by_user_id(session, user_id)
-    instructor_email = user.email if user else ""
-    
     # Create the assignment
     assignment = create_assignment(
         session=session,
         course_id=assignment_data.course_id,
         instructor_id=user_id,
-        instructor_email=instructor_email,
         title=assignment_data.title,
         type=assignment_data.type,
         description=assignment_data.description,
@@ -1079,7 +1083,7 @@ def create_new_assignment(
         assignment_questions=assignment_data.assignment_questions
     )
     
-    return AssignmentResponse.from_orm(assignment)
+    return build_assignment_response(session, assignment)
 
 
 @app.get("/api/assignments/{assignment_id}", response_model=AssignmentResponse)
@@ -1113,7 +1117,7 @@ def get_assignment_by_id(
             detail="You don't have access to this assignment"
         )
     
-    return AssignmentResponse.from_orm(assignment)
+    return build_assignment_response(session, assignment)
 
 
 @app.put("/api/assignments/{assignment_id}", response_model=AssignmentResponse)
@@ -1144,7 +1148,7 @@ def update_existing_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to update it")
     
-    return AssignmentResponse.from_orm(assignment)
+    return build_assignment_response(session, assignment)
 
 
 @app.post("/api/assignments/{assignment_id}/release-now", response_model=AssignmentResponse)
@@ -1164,7 +1168,7 @@ def release_assignment_now(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to release it")
 
-    return AssignmentResponse.from_orm(assignment)
+    return build_assignment_response(session, assignment)
 
 
 @app.delete("/api/assignments/{assignment_id}", status_code=204)

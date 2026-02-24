@@ -3,6 +3,12 @@ import { getAssignment, getQuestionsBatch, getAssignmentProgress, saveAssignment
 import StudentPreview from '../components/StudentPreview';
 import { useAuth } from '../AuthContext';
 
+function parseAssignmentDate(dateStr) {
+  if (!dateStr) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
+  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+}
+
 export default function StudentAssignmentPage() {
   const { user } = useAuth();
   const [assignment, setAssignment] = useState(null);
@@ -14,8 +20,10 @@ export default function StudentAssignmentPage() {
   const [initialSubmitted, setInitialSubmitted] = useState(false);
   const [liveAnswers, setLiveAnswers] = useState({});
   const [liveQuestionIndex, setLiveQuestionIndex] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
   const [progressReady, setProgressReady] = useState(false);
   const [isInstructorPreview, setIsInstructorPreview] = useState(false);
+  const [wasPreviouslySubmitted, setWasPreviouslySubmitted] = useState(false);
   const isSubmittingOnExitRef = useRef(false);
   const latestProgressRef = useRef({ answers: {}, questionIndex: 0 });
   const skipUnmountSubmitRef = useRef(false);
@@ -55,6 +63,7 @@ export default function StudentAssignmentPage() {
           setInitialAnswers({});
           setInitialQuestionIndex(0);
           setInitialSubmitted(false);
+          setWasPreviouslySubmitted(false);
           setLiveAnswers({});
           setLiveQuestionIndex(0);
           setProgressReady(false);
@@ -63,11 +72,12 @@ export default function StudentAssignmentPage() {
           const loadedAnswers = progressData?.answers || {};
           const loadedIndex = progressData?.current_question_index || 0;
           const hasPriorSubmission = Boolean(progressData?.submitted || progressData?.submitted_at);
-          let loadedSubmitted = hasPriorSubmission;
-          if (resubmitRequested && loadedSubmitted) {
-            loadedSubmitted = false;
-          }
+          const hardDue = parseAssignmentDate(assignmentData?.due_date_hard);
+          const canResubmitBeforeHardDue = !hardDue || Date.now() <= hardDue.getTime();
+          const allowResubmitMode = hasPriorSubmission && resubmitRequested && canResubmitBeforeHardDue;
+          const loadedSubmitted = hasPriorSubmission && !allowResubmitMode;
 
+          setWasPreviouslySubmitted(hasPriorSubmission);
           setInitialAnswers(loadedAnswers);
           setInitialQuestionIndex(loadedIndex);
           setInitialSubmitted(loadedSubmitted);
@@ -90,7 +100,7 @@ export default function StudentAssignmentPage() {
     }
 
     loadData();
-  }, [assignmentId, user?.id, resubmitRequested]);
+  }, [assignmentId, resubmitRequested, user?.id]);
 
   useEffect(() => {
     latestProgressRef.current = {
@@ -100,7 +110,7 @@ export default function StudentAssignmentPage() {
   }, [liveAnswers, liveQuestionIndex]);
 
   useEffect(() => {
-    if (!assignmentId || !progressReady || isInstructorPreview) return;
+    if (!assignmentId || !progressReady || isInstructorPreview || initialSubmitted) return;
     const timer = setTimeout(async () => {
       try {
         await saveAssignmentProgress(assignmentId, {
@@ -112,10 +122,10 @@ export default function StudentAssignmentPage() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [assignmentId, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex]);
+  }, [assignmentId, progressReady, isInstructorPreview, initialSubmitted, liveAnswers, liveQuestionIndex]);
 
   const saveAndSubmitOnExit = useCallback(async () => {
-    const isReadOnlySubmittedView = initialSubmitted && !resubmitRequested;
+    const isReadOnlySubmittedView = initialSubmitted;
     if (isInstructorPreview || isReadOnlySubmittedView || !assignmentId || !progressReady || isSubmittingOnExitRef.current) {
       return null;
     }
@@ -133,10 +143,41 @@ export default function StudentAssignmentPage() {
     } finally {
       isSubmittingOnExitRef.current = false;
     }
-  }, [assignmentId, initialSubmitted, isInstructorPreview, progressReady, resubmitRequested]);
+  }, [assignmentId, initialSubmitted, isInstructorPreview, progressReady]);
+
+  const submitAssignment = useCallback(async () => {
+    if (submitting || initialSubmitted || !assignmentId || !progressReady || isInstructorPreview) return;
+
+    setSubmitting(true);
+    try {
+      const savedProgress = await saveAssignmentProgress(assignmentId, {
+        answers: latestProgressRef.current.answers || {},
+        current_question_index: latestProgressRef.current.questionIndex || 0,
+        submitted: true
+      });
+
+      skipUnmountSubmitRef.current = true;
+      if (courseId) {
+        if (savedProgress?.submitted_at) {
+          const submissionType = wasPreviouslySubmitted ? 'resubmitted' : 'submitted';
+          const submittedAt = encodeURIComponent(savedProgress.submitted_at);
+          const safeAssignmentTitle = encodeURIComponent(assignment?.title || 'Assignment');
+          window.location.hash = `#student-course/${courseId}?submission=${submissionType}&submitted_at=${submittedAt}&assignment_title=${safeAssignmentTitle}`;
+        } else {
+          window.location.hash = `#student-course/${courseId}`;
+        }
+      } else {
+        window.location.hash = '#student-courses';
+      }
+    } catch (err) {
+      console.error('Submit failed:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [assignment?.title, assignmentId, courseId, initialSubmitted, isInstructorPreview, progressReady, submitting, wasPreviouslySubmitted]);
 
   useEffect(() => () => {
-    const isReadOnlySubmittedView = initialSubmitted && !resubmitRequested;
+    const isReadOnlySubmittedView = initialSubmitted;
     if (
       skipUnmountSubmitRef.current ||
       isInstructorPreview ||
@@ -157,7 +198,7 @@ export default function StudentAssignmentPage() {
     }).finally(() => {
       isSubmittingOnExitRef.current = false;
     });
-  }, [assignmentId, initialSubmitted, isInstructorPreview, progressReady, resubmitRequested]);
+  }, [assignmentId, initialSubmitted, isInstructorPreview, progressReady]);
 
   const styles = {
     container: {
@@ -248,13 +289,13 @@ export default function StudentAssignmentPage() {
       assignmentType={assignment.type}
       isPreviewMode={false}
       showCorrectAnswers={false}
-      closeButtonText={resubmitRequested ? 'Resubmit Assignment' : 'Back to Course'}
+      closeButtonText={!initialSubmitted ? (resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment') : 'Back to Course'}
       onClose={async () => {
         const savedProgress = await saveAndSubmitOnExit();
         skipUnmountSubmitRef.current = true;
         if (courseId) {
           if (savedProgress?.submitted_at) {
-            const submissionType = resubmitRequested ? 'resubmitted' : 'submitted';
+            const submissionType = wasPreviouslySubmitted ? 'resubmitted' : 'submitted';
             const submittedAt = encodeURIComponent(savedProgress.submitted_at);
             const assignmentTitle = encodeURIComponent(assignment?.title || 'Assignment');
             window.location.hash = `#student-course/${courseId}?submission=${submissionType}&submitted_at=${submittedAt}&assignment_title=${assignmentTitle}`;
@@ -274,6 +315,9 @@ export default function StudentAssignmentPage() {
       onQuestionChange={(index) => {
         setLiveQuestionIndex(index || 0);
       }}
+      onSubmit={submitAssignment}
+      isSubmitting={submitting}
+      submitButtonText={resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment'}
     />
   );
 }
