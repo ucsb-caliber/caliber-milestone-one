@@ -544,6 +544,16 @@ export default function StudentCourseDashboard() {
                                   e.stopPropagation();
                                   handleAssignmentClick(item.assignment, progress);
                                 }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#1d4ed8';
+                                  e.currentTarget.style.transform = 'translateY(-1px)';
+                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(37, 99, 235, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#2563eb';
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
                               >
                                 Start
                               </button>
