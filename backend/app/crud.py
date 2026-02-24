@@ -8,6 +8,15 @@ import json
 from .models import Question, User
 
 
+def generate_unique_question_qid(session: Session) -> str:
+    """Generate a unique question QID string."""
+    while True:
+        candidate = "Q" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        existing = session.exec(select(Question).where(Question.qid == candidate)).first()
+        if not existing:
+            return candidate
+
+
 def create_question(session: Session, text: str, title: str, tags: str, keywords: str, user_id: str, 
                    school: str = "", course: str = "", course_type: str = "",
                    question_type: str = "", blooms_taxonomy: str = "",
@@ -16,6 +25,7 @@ def create_question(session: Session, text: str, title: str, tags: str, keywords
                    image_url: Optional[str] = None, is_verified: bool = False) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     question = Question(
+        qid=generate_unique_question_qid(session),
         title=title,
         text=text,
         tags=tags,

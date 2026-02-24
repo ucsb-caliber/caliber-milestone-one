@@ -98,6 +98,7 @@ class QuestionUpdate(BaseModel):
 class QuestionResponse(BaseModel):
     """Schema for question response."""
     id: int
+    qid: str
     title: str
     text: str
     tags: str

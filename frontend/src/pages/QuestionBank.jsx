@@ -9,11 +9,13 @@ import { useAuth } from '../AuthContext';
 import QuestionCard from '../components/QuestionCard';
 import CollapsibleSection from '../components/CollapsibleSection';
 import QuestionTable from '../components/QuestionTable';
+import QuestionSearchBar from '../components/QuestionSearchBar';
+import { filterQuestionsBySearch } from '../utils/questionSearch';
 
 // User Icon Component
 const UserIcon = ({ userInfo, size = 40 }) => {
   if (!userInfo) return null;
-  
+
   const getInitials = () => {
     if (userInfo.initials) return userInfo.initials;
     if (userInfo.first_name && userInfo.last_name) {
@@ -24,17 +26,17 @@ const UserIcon = ({ userInfo, size = 40 }) => {
     }
     return 'U';
   };
-  
+
   const getName = () => {
     if (userInfo.first_name && userInfo.last_name) {
       return `${userInfo.first_name} ${userInfo.last_name}`;
     }
     return userInfo.email || userInfo.user_id;
   };
-  
+
   const shape = userInfo.icon_shape || 'circle';
   const color = userInfo.icon_color || '#4f46e5';
-  
+
   const getShapeStyles = () => {
     if (shape === 'circle') {
       return { borderRadius: '50%' };
@@ -42,13 +44,13 @@ const UserIcon = ({ userInfo, size = 40 }) => {
       return { borderRadius: '4px' };
     } else if (shape === 'hex') {
       // True hexagon using clip-path
-      return { 
+      return {
         clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
       };
     }
     return { borderRadius: '50%' };
   };
-  
+
   return (
     <div
       style={{
@@ -97,50 +99,9 @@ export default function QuestionBank() {
 
   const itemsPerPage = 6;
 
-  // Filter questions based on search query and filter type
-  const filterQuestions = (questions) => {
-    if (!searchQuery.trim()) return questions;
-    
-    const query = searchQuery.toLowerCase().trim();
-    
-    return questions.filter(question => {
-      const text = (question.text || '').toLowerCase();
-      const title = (question.title || '').toLowerCase();
-      const keywords = (question.keywords || '').toLowerCase();
-      const tags = (question.tags || '').toLowerCase();
-      const course = (question.course || '').toLowerCase();
-      const school = (question.school || '').toLowerCase();
-      const questionType = (question.question_type || '').toLowerCase();
-      const bloomsTaxonomy = (question.blooms_taxonomy || '').toLowerCase();
-      
-      switch (searchFilter) {
-        case 'keywords':
-          return keywords.includes(query);
-        case 'tags':
-          return tags.includes(query);
-        case 'course':
-          return course.includes(query) || school.includes(query);
-        case 'text':
-          return text.includes(query) || title.includes(query);
-        case 'all':
-        default:
-          return (
-            text.includes(query) ||
-            title.includes(query) ||
-            keywords.includes(query) ||
-            tags.includes(query) ||
-            course.includes(query) ||
-            school.includes(query) ||
-            questionType.includes(query) ||
-            bloomsTaxonomy.includes(query)
-          );
-      }
-    });
-  };
-
   // Filtered questions
-  const filteredMyQuestions = filterQuestions(myQuestions);
-  const filteredAllQuestions = filterQuestions(allQuestions);
+  const filteredMyQuestions = filterQuestionsBySearch(myQuestions, searchQuery, searchFilter);
+  const filteredAllQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
 
   // Fetch current user info to check if they are a teacher
   useEffect(() => {
@@ -175,17 +136,17 @@ export default function QuestionBank() {
       const verifiedAllQuestions = (allData.questions || [])
         .filter(q => q.is_verified === true)
         .sort(sortByNewest);
-      
+
       setMyQuestions(verifiedMyQuestions);
       setAllQuestions(verifiedAllQuestions);
-      
+
       // Generate signed URLs for all questions with images
       const allQuestionsWithImages = [...verifiedMyQuestions, ...verifiedAllQuestions].filter(q => q.image_url);
       const urlPromises = allQuestionsWithImages.map(async (q) => {
         const signedUrl = await getImageSignedUrl(q.image_url);
         return { id: q.id, url: signedUrl };
       });
-      
+
       const urls = await Promise.all(urlPromises);
       const urlMap = {};
       urls.forEach(({ id, url }) => {
@@ -194,7 +155,7 @@ export default function QuestionBank() {
         }
       });
       setImageUrls(urlMap);
-      
+
       // Fetch user info for all questions
       const uniqueUserIds = [...new Set([...verifiedMyQuestions, ...verifiedAllQuestions].map(q => q.user_id))];
       const userPromises = uniqueUserIds.map(async (userId) => {
@@ -206,7 +167,7 @@ export default function QuestionBank() {
           return { userId, userInfo: null };
         }
       });
-      
+
       const users = await Promise.all(userPromises);
       const userMap = {};
       users.forEach(({ userId, userInfo }) => {
@@ -351,124 +312,16 @@ export default function QuestionBank() {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div style={{
-        background: 'white',
-        borderRadius: '12px',
-        padding: '1rem 1.5rem',
-        marginBottom: '2rem',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        display: 'flex',
-        gap: '1rem',
-        alignItems: 'center',
-        flexWrap: 'wrap'
-      }}>
-        {/* Search Input */}
-        <div style={{ flex: 1, minWidth: '250px', position: 'relative' }}>
-          <div style={{
-            position: 'absolute',
-            left: '1rem',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: '#9ca3af',
-            pointerEvents: 'none'
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="m21 21-4.35-4.35"></path>
-            </svg>
-          </div>
-          <input
-            type="text"
-            placeholder="Search questions by keyword, tag, course, or text..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.875rem 1rem 0.875rem 3rem',
-              border: '2px solid #e5e7eb',
-              borderRadius: '8px',
-              fontSize: '1rem',
-              outline: 'none',
-              transition: 'border-color 0.15s ease',
-              boxSizing: 'border-box'
-            }}
-            onFocus={(e) => e.target.style.borderColor = '#007bff'}
-            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{
-                position: 'absolute',
-                right: '0.75rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: '#e5e7eb',
-                border: 'none',
-                borderRadius: '50%',
-                width: '24px',
-                height: '24px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#6b7280',
-                fontSize: '1rem',
-                lineHeight: 1
-              }}
-              title="Clear search"
-            >
-              ×
-            </button>
-          )}
-        </div>
-
-        {/* Filter Dropdown */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: '500' }}>
-            Search in:
-          </label>
-          <select
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            style={{
-              padding: '0.75rem 2rem 0.75rem 1rem',
-              border: '2px solid #e5e7eb',
-              borderRadius: '8px',
-              fontSize: '0.875rem',
-              background: 'white',
-              cursor: 'pointer',
-              outline: 'none',
-              appearance: 'none',
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 0.75rem center',
-              minWidth: '140px'
-            }}
-          >
-            <option value="all">All Fields</option>
-            <option value="text">Question Text</option>
-            <option value="keywords">Keywords</option>
-            <option value="tags">Tags</option>
-            <option value="course">Course/School</option>
-          </select>
-        </div>
-
-        {/* Search Results Count */}
-        {searchQuery && (
-          <div style={{
-            fontSize: '0.875rem',
-            color: '#6b7280',
-            padding: '0.5rem 1rem',
-            background: '#f3f4f6',
-            borderRadius: '6px',
-            whiteSpace: 'nowrap'
-          }}>
-            Found <strong style={{ color: '#111827' }}>{filteredMyQuestions.length + filteredAllQuestions.length}</strong> questions
-          </div>
-        )}
-      </div>
+      <QuestionSearchBar
+        searchQuery={searchQuery}
+        searchFilter={searchFilter}
+        onSearchQueryChange={setSearchQuery}
+        onSearchFilterChange={setSearchFilter}
+        onClearSearch={() => setSearchQuery('')}
+        showResultCount={Boolean(searchQuery)}
+        resultCount={filteredMyQuestions.length + filteredAllQuestions.length}
+        containerStyle={{ marginBottom: '2rem' }}
+      />
 
       {loading && <p>Loading questions...</p>}
 
