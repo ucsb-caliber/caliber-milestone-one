@@ -547,6 +547,16 @@ export default function StudentCourseDashboard() {
                                   e.stopPropagation();
                                   openAssignment(item.assignment.id, false);
                                 }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#111827';
+                                  e.currentTarget.style.transform = 'translateY(-1px)';
+                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(15, 23, 42, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#1f2937';
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
                               >
                                 View Submitted
                               </button>
@@ -616,7 +626,7 @@ export default function StudentCourseDashboard() {
           </div>
         )}
       </div>
-      
+
       {resubmitModalAssignment && (
         <div style={{
           position: 'fixed',
@@ -635,100 +645,100 @@ export default function StudentCourseDashboard() {
             boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
           }}>
             <h3 style={{ margin: '0 0 0.75rem 0', color: '#111827' }}>
-            Re-submit this assignment?
-          </h3>
-          <p style={{ margin: '0 0 0.5rem 0', color: '#374151', lineHeight: 1.45 }}>
-            You already submitted <strong>{resubmitModalAssignment.title}</strong> on{' '}
-            <strong>{formatTimestamp(resubmitModalTimestamp)}</strong>.
-          </p>
-          <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.9rem' }}>
-            Choose <strong>Resubmit</strong> to edit answers. When you leave the assignment page, your latest answers
-            will be auto-saved and the submitted time will be updated.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-            <button
-              onClick={() => setResubmitModalAssignment(null)}
-              style={{
-                border: 'none',
-                borderRadius: '8px',
-                background: '#f3f4f6',
-                color: '#374151',
-                padding: '0.5rem 0.85rem',
-                cursor: 'pointer',
-                fontWeight: 600
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                const id = resubmitModalAssignment.id;
-                setResubmitModalAssignment(null);
-                openAssignment(id, true);
-              }}
-              style={{
-                border: 'none',
-                borderRadius: '8px',
-                background: '#2563eb',
-                color: 'white',
-                padding: '0.5rem 0.85rem',
-                cursor: 'pointer',
-                fontWeight: 600
-              }}
-            >
-              Resubmit
-            </button>
+              Re-submit this assignment?
+            </h3>
+            <p style={{ margin: '0 0 0.5rem 0', color: '#374151', lineHeight: 1.45 }}>
+              You already submitted <strong>{resubmitModalAssignment.title}</strong> on{' '}
+              <strong>{formatTimestamp(resubmitModalTimestamp)}</strong>.
+            </p>
+            <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.9rem' }}>
+              Choose <strong>Resubmit</strong> to edit answers. When you leave the assignment page, your latest answers
+              will be auto-saved and the submitted time will be updated.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                onClick={() => setResubmitModalAssignment(null)}
+                style={{
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  padding: '0.5rem 0.85rem',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const id = resubmitModalAssignment.id;
+                  setResubmitModalAssignment(null);
+                  openAssignment(id, true);
+                }}
+                style={{
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: '#2563eb',
+                  color: 'white',
+                  padding: '0.5rem 0.85rem',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Resubmit
+              </button>
+            </div>
           </div>
         </div>
-        </div>
-  )
-}
+      )
+      }
 
-{
-  submissionNotice && (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0, 0, 0, 0.35)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1100
-    }}>
-      <div style={{
-        background: 'white',
-        width: 'min(460px, 92vw)',
-        borderRadius: '12px',
-        padding: '1.1rem 1.2rem',
-        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
-      }}>
-        <h3 style={{ margin: '0 0 0.6rem 0', color: '#111827' }}>
-          {submissionNotice.assignmentTitle} {submissionNotice.type}
-        </h3>
-        <p style={{ margin: '0 0 0.95rem 0', color: '#374151', lineHeight: 1.45 }}>
-          {submissionNotice.assignmentTitle} {submissionNotice.type} at{' '}
-          <strong>{formatTimestamp(submissionNotice.submittedAt)}</strong>.
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setSubmissionNotice(null)}
-            style={{
-              border: 'none',
-              borderRadius: '8px',
-              background: '#2563eb',
-              color: 'white',
-              padding: '0.5rem 0.9rem',
-              cursor: 'pointer',
-              fontWeight: 600
-            }}
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+      {
+        submissionNotice && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100
+          }}>
+            <div style={{
+              background: 'white',
+              width: 'min(460px, 92vw)',
+              borderRadius: '12px',
+              padding: '1.1rem 1.2rem',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
+            }}>
+              <h3 style={{ margin: '0 0 0.6rem 0', color: '#111827' }}>
+                {submissionNotice.assignmentTitle} {submissionNotice.type}
+              </h3>
+              <p style={{ margin: '0 0 0.95rem 0', color: '#374151', lineHeight: 1.45 }}>
+                {submissionNotice.assignmentTitle} {submissionNotice.type} at{' '}
+                <strong>{formatTimestamp(submissionNotice.submittedAt)}</strong>.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setSubmissionNotice(null)}
+                  style={{
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: '#2563eb',
+                    color: 'white',
+                    padding: '0.5rem 0.9rem',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
     </div >
   );
 }
