@@ -12,6 +12,7 @@ class User(SQLModel, table=True):
     email: Optional[str] = Field(default=None, index=True)  # User's email address
     first_name: Optional[str] = Field(default=None)  # User's first name
     last_name: Optional[str] = Field(default=None)  # User's last name
+    school_name: str = Field(default="")  # User's home school/university
     admin: bool = Field(default=False)  # Whether user is an admin
     teacher: bool = Field(default=False)  # Whether user is a teacher/instructor
     pending: bool = Field(default=False)  # Whether user is awaiting instructor approval
@@ -31,6 +32,7 @@ class Question(SQLModel, table=True):
     tags: str = Field(default="")  # Question tags (e.g., recursion, sorting, runtime analysis)
     keywords: str = Field(default="")  # Stored as comma-separated string
     school: str = Field(default="")  # School name (e.g., UCSB)
+    user_school: str = Field(default="", index=True) # school of user
     course: str = Field(default="")  # Course name (kept for backward compatibility)
     course_type: str = Field(default="")  # Course type (e.g., intro CS, intermediate CS, linear algebra)
     question_type: str = Field(default="")  # Question type (e.g., mcq, fr, short answer)

@@ -204,6 +204,7 @@ export default function QuestionBank() {
         questions={questions}
         userInfoCache={userInfoCache}
         user={user}
+        showUniversity={true}
         onDelete={(id) => setDeleteConfirm(id)}
       />
     );

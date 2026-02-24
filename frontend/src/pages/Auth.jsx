@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 
 export default function Auth() {
+  const [schoolName, setSchoolName] = useState('UCSB');
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +20,7 @@ export default function Auth() {
 
     try {
       if (isSignUp) {
-        await signUp(email, password);
+        await signUp(email, password, schoolName);
         setMessage('Sign up successful! Please check your email to verify your account.');
       } else {
         await signIn(email, password);
@@ -48,6 +49,30 @@ export default function Auth() {
       </h2>
       
       <form onSubmit={handleSubmit}>
+      {isSignUp && (
+  <div style={{ marginBottom: '1rem' }}>
+    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+      University
+    </label>
+    <select
+      value={schoolName}
+      onChange={(e) => setSchoolName(e.target.value)}
+      style={{
+        width: '100%',
+        padding: '0.5rem',
+        border: '1px solid #ccc',
+        borderRadius: '4px',
+        fontSize: '1rem'
+      }}
+    >
+      <option value="UCSB">UC Santa Barbara</option>
+      <option value="UCLA">UC Los Angeles</option>
+      <option value="UCB">UC Berkeley</option>
+      <option value="UCI">UC Irvine</option>
+      {/* Add more as needed */}
+    </select>
+  </div>
+)}
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
             Email

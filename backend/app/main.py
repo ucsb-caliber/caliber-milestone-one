@@ -135,6 +135,7 @@ def process_pdf_background(
     file_content: bytes,
     user_id: str,
     school: str = "",
+    user_school: str = "",
     course: str = "",
     course_type: str = ""
 ):
@@ -268,6 +269,7 @@ def process_pdf_background(
                     tags="auto-generated,pdf-upload,fallback",
                     keywords="pdf,upload,fallback",
                     school=effective_school,
+                    user_school=user_school,
                     course=effective_course,
                     course_type=effective_course_type,
                     source_pdf=storage_path,
@@ -410,6 +412,7 @@ def create_new_question(
     tags: str = Form(""),
     keywords: str = Form(""),
     school: str = Form(""),
+    user_school: str = Form(""),
     course: str = Form(""),
     course_type: str = Form(""),
     question_type: str = Form(""),
@@ -439,6 +442,7 @@ def create_new_question(
         tags=tags,
         keywords=keywords,
         school=school,
+        user_school=user_school,
         course=course,
         course_type=course_type,
         question_type=question_type,
@@ -529,6 +533,7 @@ def get_user_info(
         "email": user.email,
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "school_name": user.school_name or "",
         "admin": user.admin,
         "teacher": user.teacher,
         "pending": user.pending,
@@ -551,6 +556,7 @@ def update_user_profile_endpoint(
         user_id=user_id,
         first_name=profile_data.first_name,
         last_name=profile_data.last_name,
+        school_name=profile_data.school_name,
         teacher=None,  # Don't allow changing teacher status after onboarding
         pending=None
     )
@@ -602,6 +608,7 @@ def complete_user_onboarding(
         user_id=user_id,
         first_name=onboarding_data.first_name,
         last_name=onboarding_data.last_name,
+        school_name=None,
         teacher=False,
         pending=onboarding_data.teacher
     )
