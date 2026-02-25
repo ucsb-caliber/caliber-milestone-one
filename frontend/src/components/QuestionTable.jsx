@@ -88,7 +88,8 @@ const UserProfileIcon = ({ userInfo }) => {
  * Render a single value as a badge
  */
 const Badge = ({ value, color = '#e5e7eb' }) => {
-  if (!value || !value.trim()) {
+  const text = typeof value === 'string' ? value : (value == null ? '' : String(value));
+  if (!text.trim()) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.875rem' }}>-</span>;
   }
 
@@ -106,7 +107,7 @@ const Badge = ({ value, color = '#e5e7eb' }) => {
         display: 'inline-block'
       }}
     >
-      {value}
+      {text}
     </span>
   );
 };
@@ -115,10 +116,11 @@ const Badge = ({ value, color = '#e5e7eb' }) => {
  * Render tags as colored badges
  */
 const TagList = ({ tagsString }) => {
-  if (!tagsString || !tagsString.trim()) {
+  const text = typeof tagsString === 'string' ? tagsString : (tagsString == null ? '' : String(tagsString));
+  if (!text.trim()) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>-</span>;
   }
-  const tags = tagsString.split(',').map(t => t.trim()).filter(t => t);
+  const tags = text.split(',').map(t => t.trim()).filter(t => t);
   if (tags.length === 0) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>-</span>;
   }

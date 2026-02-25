@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { getCourses, joinCourseByCode } from '../api';
+import { getCourses, joinCourseByCode, getPinnedCourseIds, setCoursePinned } from '../api';
 import CourseCard from '../components/CourseCard';
+import { useAuth } from '../AuthContext';
 
 export default function StudentCoursesPage() {
+  const { user } = useAuth();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -11,13 +13,29 @@ export default function StudentCoursesPage() {
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState('');
   const [joinSuccess, setJoinSuccess] = useState('');
+  const [pinnedIds, setPinnedIds] = useState([]);
 
   const loadCourses = async () => {
     setLoading(true);
     setError('');
     try {
       const data = await getCourses();
-      setCourses(data.courses || []);
+      const normalizedCourses = (data.courses || []).map((course) => ({
+        ...course,
+        id: Number(course.id)
+      }));
+      setCourses(normalizedCourses);
+
+      try {
+        const pinnedCourseIds = await getPinnedCourseIds();
+        const normalizedPinned = Array.isArray(pinnedCourseIds)
+          ? pinnedCourseIds.map((id) => Number(id))
+          : [];
+        setPinnedIds(normalizedPinned);
+      } catch (pinErr) {
+        setPinnedIds([]);
+        setError(pinErr.message || 'Failed to load pinned courses');
+      }
     } catch (err) {
       setError(err.message || 'Failed to load courses');
     } finally {
@@ -25,9 +43,37 @@ export default function StudentCoursesPage() {
     }
   };
 
+  const togglePin = async (courseId) => {
+    const normalizedCourseId = Number(courseId);
+    const isCurrentlyPinned = pinnedIds.includes(normalizedCourseId);
+    const nextPinned = !isCurrentlyPinned;
+
+    setPinnedIds((prev) =>
+      nextPinned
+        ? Array.from(new Set([...prev, normalizedCourseId]))
+        : prev.filter((id) => id !== normalizedCourseId)
+    );
+
+    try {
+      await setCoursePinned(normalizedCourseId, nextPinned);
+    } catch (err) {
+      setPinnedIds((prev) =>
+        isCurrentlyPinned
+          ? Array.from(new Set([...prev, normalizedCourseId]))
+          : prev.filter((id) => id !== normalizedCourseId)
+      );
+      setError(err.message || 'Failed to update course pin');
+    }
+  };
+
+  const pinnedCourses = courses.filter((course) => pinnedIds.includes(course.id));
+  const otherCourses = courses.filter((course) => !pinnedIds.includes(course.id));
+
   useEffect(() => {
-    loadCourses();
-  }, []);
+    if (user?.id) {
+      loadCourses();
+    }
+  }, [user?.id]);
 
   const handleJoinCourse = async (e) => {
     e.preventDefault();
@@ -218,20 +264,49 @@ export default function StudentCoursesPage() {
           <p style={{ margin: 0 }}>You are not enrolled in any courses yet.</p>
         </div>
       ) : (
-        <div style={styles.grid}>
-          {courses.map((course) => (
-            <CourseCard
-              key={course.id}
-              course={course}
-              isInstructor={false}
-              allUsers={[]}
-              onOpen={() => {
-                const c = course;
-                window.location.hash = `student-course/${c.id}`;
-              }}
-            />
-          ))}
-        </div>
+        <>
+          {pinnedCourses.length > 0 && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '14px', display: 'block' }}>
+                Pinned Courses
+              </span>
+              <div style={styles.grid}>
+                {pinnedCourses.map((course) => (
+                  <CourseCard
+                    key={course.id}
+                    course={course}
+                    isPinned={true}
+                    onPin={() => togglePin(course.id)}
+                    isInstructor={false}
+                    allUsers={[]}
+                    onOpen={() => {
+                      window.location.hash = `student-course/${course.id}`;
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '14px', display: 'block' }}>
+            Your Courses
+          </span>
+          <div style={styles.grid}>
+            {otherCourses.map((course) => (
+              <CourseCard
+                key={course.id}
+                course={course}
+                isPinned={false}
+                onPin={() => togglePin(course.id)}
+                isInstructor={false}
+                allUsers={[]}
+                onOpen={() => {
+                  window.location.hash = `student-course/${course.id}`;
+                }}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {showJoinModal && (
