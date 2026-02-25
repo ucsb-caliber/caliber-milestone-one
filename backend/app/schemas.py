@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class UserResponse(BaseModel):
@@ -10,8 +10,10 @@ class UserResponse(BaseModel):
     email: Optional[str]
     first_name: Optional[str]
     last_name: Optional[str]
+    school_name: str
     admin: bool
     teacher: bool
+    pending: bool
     icon_shape: str
     icon_color: str
     initials: Optional[str]
@@ -26,12 +28,14 @@ class UserUpdate(BaseModel):
     """Schema for updating user admin/teacher status."""
     admin: Optional[bool] = None
     teacher: Optional[bool] = None
+    pending: Optional[bool] = None
 
 
 class UserProfileUpdate(BaseModel):
     """Schema for updating user profile (first/last name only - used after onboarding)."""
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    school_name: Optional[str] = Field(None, min_length=1, max_length=100)
 
 
 class UserPreferencesUpdate(BaseModel):
@@ -61,6 +65,7 @@ class QuestionCreate(BaseModel):
     tags: str = ""
     keywords: str = ""
     school: str = ""
+    user_school: str = Field(..., min_length=1)
     course: str = ""
     course_type: str = ""
     question_type: str = ""
@@ -80,6 +85,7 @@ class QuestionUpdate(BaseModel):
     tags: Optional[str] = None
     keywords: Optional[str] = None
     school: Optional[str] = None
+    user_school: Optional[str] = None
     course: Optional[str] = None
     course_type: Optional[str] = None
     question_type: Optional[str] = None
@@ -96,11 +102,13 @@ class QuestionUpdate(BaseModel):
 class QuestionResponse(BaseModel):
     """Schema for question response."""
     id: int
+    qid: str
     title: str
     text: str
     tags: str
     keywords: str
     school: str
+    user_school: str
     course: str
     course_type: str
     question_type: str
@@ -122,6 +130,7 @@ class UploadResponse(BaseModel):
     """Schema for upload response."""
     status: str
     filename: str
+    storage_path: Optional[str] = None
     message: str
 
 
@@ -144,6 +153,32 @@ class AssignmentCreate(BaseModel):
     late_policy_id: Optional[str] = None
     assignment_questions: List[int] = []  # List of question IDs
 
+    @model_validator(mode='after')
+    def validate_required_dates_and_late_policy(self):
+        """Require release/due dates and late policy percentage for new assignments."""
+        if self.release_date is None:
+            raise ValueError("Release date is required")
+        if self.due_date_soft is None:
+            raise ValueError("Due date is required")
+        if self.due_date_hard is None:
+            raise ValueError("Due date (late) is required")
+        if self.late_policy_id is None or not str(self.late_policy_id).strip():
+            raise ValueError("Late policy percentage is required")
+        if not self.assignment_questions or len(self.assignment_questions) < 1:
+            raise ValueError("At least one question is required")
+
+        try:
+            late_percentage = int(str(self.late_policy_id).strip())
+        except ValueError as exc:
+            raise ValueError("Late policy percentage must be an integer between 0 and 100") from exc
+
+        if late_percentage < 0 or late_percentage > 100:
+            raise ValueError("Late policy percentage must be between 0 and 100")
+
+        if self.due_date_hard < self.due_date_soft:
+            raise ValueError("Due date (late) must be on or after due date")
+        return self
+
 
 class AssignmentUpdate(BaseModel):
     """Schema for updating an assignment."""
@@ -157,12 +192,32 @@ class AssignmentUpdate(BaseModel):
     late_policy_id: Optional[str] = None
     assignment_questions: Optional[List[int]] = None
 
+    @model_validator(mode='after')
+    def validate_late_policy_if_present(self):
+        """Validate late policy percentage format when provided."""
+        if self.late_policy_id is None:
+            return self
+
+        raw_value = str(self.late_policy_id).strip()
+        if not raw_value:
+            raise ValueError("Late policy percentage is required")
+
+        try:
+            late_percentage = int(raw_value)
+        except ValueError as exc:
+            raise ValueError("Late policy percentage must be an integer between 0 and 100") from exc
+
+        if late_percentage < 0 or late_percentage > 100:
+            raise ValueError("Late policy percentage must be between 0 and 100")
+
+        return self
+
 
 class AssignmentResponse(BaseModel):
     """Schema for assignment response."""
     id: int
     node_id: Optional[str]
-    instructor_email: str
+    instructor_email: Optional[str] = None
     instructor_id: str
     course: str
     course_id: int
@@ -190,13 +245,13 @@ class AssignmentResponse(BaseModel):
         return v if v else []
 
     @classmethod
-    def from_orm(cls, obj):
-        """Custom from_orm to parse assignment_questions JSON string."""
+    def from_assignment(cls, obj, instructor_email: Optional[str] = None):
+        """Build assignment response while sourcing PII externally."""
         import json
         data = {
             'id': obj.id,
             'node_id': obj.node_id,
-            'instructor_email': obj.instructor_email,
+            'instructor_email': instructor_email,
             'instructor_id': obj.instructor_id,
             'course': obj.course,
             'course_id': obj.course_id,
@@ -232,6 +287,7 @@ class CourseResponse(BaseModel):
     """Schema for course response."""
     id: int
     course_name: str
+    course_code: str
     school_name: str
     instructor_id: str
     instructor_email: Optional[str] = None  # Populated from User table
@@ -248,3 +304,58 @@ class CourseListResponse(BaseModel):
     """Schema for list of courses."""
     courses: List[CourseResponse]
     total: int
+
+
+class CourseJoinRequest(BaseModel):
+    """Schema for joining a course by course code."""
+    course_code: str = Field(..., min_length=3)
+
+
+class CoursePinUpdate(BaseModel):
+    """Set or clear pin state for a course for the current user."""
+    pinned: bool
+
+
+class CoursePinResponse(BaseModel):
+    course_id: int
+    pinned: bool
+
+
+class CoursePinsResponse(BaseModel):
+    pinned_course_ids: List[int]
+
+
+class AdminCourseOverview(BaseModel):
+    """Compact course payload optimized for admin all-courses page."""
+    id: int
+    course_name: str
+    course_code: str
+    school_name: str
+    instructor_id: str
+    assignment_count: int = 0
+    student_ids: List[str] = []
+    student_name_by_id: dict = Field(default_factory=dict)
+
+
+class AdminCourseOverviewResponse(BaseModel):
+    """List response for admin all-courses overview."""
+    courses: List[AdminCourseOverview]
+    total: int
+
+
+class AssignmentProgressResponse(BaseModel):
+    """Schema for student assignment progress."""
+    assignment_id: int
+    student_id: str
+    answers: dict = Field(default_factory=dict)
+    current_question_index: int = 0
+    submitted: bool = False
+    submitted_at: Optional[datetime] = None
+    updated_at: datetime
+
+
+class AssignmentProgressUpdate(BaseModel):
+    """Schema for updating student assignment progress."""
+    answers: Optional[dict] = None
+    current_question_index: Optional[int] = None
+    submitted: Optional[bool] = None

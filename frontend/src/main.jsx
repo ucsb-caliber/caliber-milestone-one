@@ -11,13 +11,31 @@ import InstructorCoursesPage from './pages/InstructorCoursesPage.jsx'
 import CourseDashboard from './pages/CourseDashboard.jsx'
 import CreateEditAssignment from './pages/CreateEditAssignment.jsx'
 import AssignmentView from './pages/AssignmentView.jsx'
+import StudentCoursesPage from './pages/StudentCoursesPage.jsx'
+import StudentCourseDashboard from './pages/StudentCourseDashboard.jsx'
+import StudentAssignmentPage from './pages/StudentAssignmentPage.jsx'
+import AdminCoursesPage from './pages/AdminCoursesPage.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
+import Users from './pages/Users.jsx'
+import Analytics from './pages/Analytics.jsx'
 import "./index.css";
 
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
+// Nav link that reserves space for bold text so active state doesn't shift layout
+function NavLink({ href, active, children, style = {}, ...props }) {
+  return (
+    <a href={href} style={{ color: active ? '#fff' : '#aaa', textDecoration: 'none', fontWeight: active ? 'bold' : 'normal', ...style }} {...props}>
+      <span style={{ position: 'relative', display: 'inline-block' }}>
+        <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{children}</span>
+        <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: active ? 'bold' : 'normal' }}>{children}</span>
+      </span>
+    </a>
+  );
+}
 
 // Protected component that requires authentication
 function ProtectedRoute({ children }) {
@@ -47,8 +65,13 @@ function App() {
   };
 
   const [page, setPage] = React.useState(getPageFromHash());
+  const [showAdminMenu, setShowAdminMenu] = React.useState(false);
+  const adminMenuRef = React.useRef(null);
   const [userInfo, setUserInfo] = React.useState(null);
   const [checkingProfile, setCheckingProfile] = React.useState(true);
+  const [signingOut, setSigningOut] = React.useState(false);
+  const [toast, setToast] = React.useState(null);
+  const toastTimerRef = React.useRef(null);
   const [profilePrefs, setProfilePrefs] = React.useState({
     iconShape: 'circle',
     color: '#4f46e5',
@@ -57,6 +80,8 @@ function App() {
 
 
   const { user, signOut, loading } = useAuth();
+  const isInstructorOrAdmin = Boolean(userInfo?.teacher || userInfo?.admin);
+  const isAdmin = Boolean(userInfo?.admin);
 
   // Check if user profile is complete and load preferences
   React.useEffect(() => {
@@ -107,23 +132,57 @@ function App() {
   React.useEffect(() => {
     const handleHashChange = () => {
       setPage(getPageFromHash());
+      setShowAdminMenu(false);
     };
      window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target)) {
+        setShowAdminMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showToast = React.useCallback((message, kind = 'info', ms = 2800) => {
+    setToast({ message, kind });
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => setToast(null), ms);
+  }, []);
+
   const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    showToast('Signing out...', 'info', 1500);
     try {
       await signOut();
+      showToast('Signed out successfully', 'success');
       window.location.hash = 'home';
     } catch (error) {
       console.error('Error signing out:', error);
+      showToast(`Sign out failed: ${error?.message || 'Unknown error'}`, 'error', 5000);
+    } finally {
+      setSigningOut(false);
     }
   };
 
   const handleLogoClick = () => {
-    // Navigate to home and refresh the page
-    window.location.hash = 'home';
+    // Students land on courses; instructors/admins land on home
+    window.location.hash = isInstructorOrAdmin ? 'home' : 'student-courses';
     window.location.reload();
   };
 
@@ -137,6 +196,22 @@ function App() {
     }
   };
 
+  const needsOnboarding = user && userInfo && !userInfo.profile_complete;
+
+  React.useEffect(() => {
+    if (!user || loading || checkingProfile || !userInfo || needsOnboarding) return;
+    if (isInstructorOrAdmin) return;
+
+    const isAllowedStudentPage =
+      page === 'profile' ||
+      page === 'student-courses' ||
+      page.startsWith('student-course/');
+
+    if (!isAllowedStudentPage) {
+      window.location.hash = 'student-courses';
+    }
+  }, [user, loading, checkingProfile, userInfo, needsOnboarding, isInstructorOrAdmin, page]);
+
   // Show loading state while checking profile
   if (user && checkingProfile) {
     return (
@@ -146,9 +221,6 @@ function App() {
     );
   }
 
-  // Show onboarding if user is authenticated but profile is incomplete
-  const needsOnboarding = user && userInfo && !userInfo.profile_complete;
-
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', margin: 0, padding: 0 }}>
       <nav style={{
@@ -157,7 +229,12 @@ function App() {
         padding: '1rem',
         display: 'flex',
         gap: '1rem',
-        alignItems: 'center'
+        alignItems: 'center',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10000,
+        isolation: 'isolate'
+        
       }}>
         <h1 style={{ margin: 0 }}>
           <a
@@ -185,45 +262,102 @@ function App() {
           API Docs
         </a>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 1 }}>
           {user && (
             <>
-              <a
-                href="#home"
-                style={{
-                  color: page === 'home' ? '#fff' : '#aaa',
-                  textDecoration: 'none',
-                  fontWeight: page === 'home' ? 'bold' : 'normal'
-                }}
-              >
-                Home
-              </a>
-              <a
-                href="#questions"
-                style={{
-                  color: page === 'questions' ? '#fff' : '#aaa',
-                  textDecoration: 'none',
-                  fontWeight: page === 'questions' ? 'bold' : 'normal'
-                }}
-              >
-                Question Bank
-              </a>
-              <a
-                href="#courses"
-                style={{
-                  color: page === 'courses' ? '#fff' : '#aaa',
-                  textDecoration: 'none',
-                  fontWeight: page === 'courses' ? 'bold' : 'normal'
-                }}
-              >
-                Courses
-              </a>
+              {isInstructorOrAdmin && (
+                <NavLink href="#home" active={page === 'home'}>Home</NavLink>
+              )}
+              {isInstructorOrAdmin && (
+                <NavLink href="#questions" active={page === 'questions'}>Question Bank</NavLink>
+              )}
+              {isAdmin && (
+                <div
+                  ref={adminMenuRef}
+                  style={{ position: 'relative' }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminMenu((prev) => !prev)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      color: page.startsWith('admin/') ? '#fff' : '#aaa',
+                      textDecoration: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      cursor: 'pointer',
+                      fontSize: '1rem'
+                    }}
+                  >
+                    <span style={{ position: 'relative', display: 'inline-block' }}>
+                      <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">Admin ▾</span>
+                      <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page.startsWith('admin/') ? 'bold' : 'normal' }}>Admin ▾</span>
+                    </span>
+                  </button>
+                  {showAdminMenu && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: '0.4rem',
+                        background: '#111827',
+                        border: '1px solid #374151',
+                        borderRadius: '8px',
+                        minWidth: '160px',
+                        boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
+                        zIndex: 1000
+                      }}
+                    >
+                      <a
+                        href="#admin/users"
+                        onClick={() => setShowAdminMenu(false)}
+                        style={{
+                          display: 'block',
+                          padding: '0.6rem 0.75rem',
+                          color: '#e5e7eb',
+                          textDecoration: 'none',
+                          fontSize: '0.9rem',
+                          borderBottom: '1px solid #374151'
+                        }}
+                      >
+                        Users
+                      </a>
+                      <a
+                        href="#admin/courses"
+                        onClick={() => setShowAdminMenu(false)}
+                        style={{
+                          display: 'block',
+                          padding: '0.6rem 0.75rem',
+                          color: '#e5e7eb',
+                          textDecoration: 'none',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        All Courses
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+              {isInstructorOrAdmin && (
+                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
+              )}
+              {isInstructorOrAdmin && (
+                <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
+              )}
+              <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
+                {isInstructorOrAdmin ? 'Student View' : 'Courses'}
+              </NavLink>
               <a
                 href="#profile"
                 style={{
                   color: page === 'profile' ? '#fff' : '#aaa',
                   textDecoration: 'none',
-                  fontWeight: page === 'profile' ? 'bold' : 'normal',
                   fontSize: '0.9rem',
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -251,26 +385,53 @@ function App() {
                 >
                   {(profilePrefs.initials || '').toUpperCase()}
                 </span>
-                {user.email}
+                <span style={{ position: 'relative', display: 'inline-block' }}>
+                  <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{user.email}</span>
+                  <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page === 'profile' ? 'bold' : 'normal' }}>{user.email}</span>
+                </span>
               </a>
               <button
                 onClick={handleSignOut}
+                disabled={signingOut}
                 style={{
                   background: '#555',
                   color: 'white',
                   border: 'none',
                   padding: '0.5rem 1rem',
                   borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
+                  cursor: signingOut ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                  position: 'relative',
+                  zIndex: 2,
+                  pointerEvents: 'auto',
+                  opacity: signingOut ? 0.75 : 1
                 }}
               >
-                Sign Out
+                {signingOut ? 'Signing Out...' : 'Sign Out'}
               </button>
             </>
           )}
         </div>
       </nav>
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '84px',
+            right: '16px',
+            zIndex: 11000,
+            maxWidth: '360px',
+            background: toast.kind === 'error' ? '#7f1d1d' : toast.kind === 'success' ? '#14532d' : '#1f2937',
+            color: 'white',
+            borderRadius: '8px',
+            padding: '0.7rem 0.85rem',
+            boxShadow: '0 12px 24px rgba(0,0,0,0.25)',
+            fontSize: '0.9rem'
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
       <main style={{ padding: '2rem' }}>
         {!user && !loading ? (
           <Auth />
@@ -278,22 +439,22 @@ function App() {
           <Onboarding onComplete={handleOnboardingComplete} />
         ) : (
           <>
-            {page === 'home' && (
+            {isInstructorOrAdmin && page === 'home' && (
               <ProtectedRoute>
                 <Home />
               </ProtectedRoute>
             )}
-            {page === 'questions' && (
+            {isInstructorOrAdmin && page === 'questions' && (
               <ProtectedRoute>
                 <QuestionBank />
               </ProtectedRoute>
             )}
-            {page === 'create-question' && (
+            {isInstructorOrAdmin && page === 'create-question' && (
               <ProtectedRoute>
                 <CreateQuestion />
               </ProtectedRoute>
             )}
-            {page === 'edit-question' && (
+            {isInstructorOrAdmin && page === 'edit-question' && (
               <ProtectedRoute>
                 <EditQuestion />
               </ProtectedRoute>
@@ -303,27 +464,56 @@ function App() {
                 <Profile />
               </ProtectedRoute>
             )}
-            {page === 'verify' && (
+            {isInstructorOrAdmin && page === 'verify' && (
               <ProtectedRoute>
                 <VerifyQuestions />
               </ProtectedRoute>
             )}
-            {page === 'courses' && (
+            {isAdmin && page === 'admin/users' && (
+            <ProtectedRoute>
+              <Users currentUser={userInfo} />
+              </ProtectedRoute>)}
+            {isAdmin && page === 'admin/courses' && (
+              <ProtectedRoute>
+                <AdminCoursesPage />
+              </ProtectedRoute>
+            )}
+            {isInstructorOrAdmin && page === 'courses' && (
               <ProtectedRoute>
                 <InstructorCoursesPage />
               </ProtectedRoute>
             )}
-            {page.startsWith('course/') && !page.includes('/assignment/') && (
+            {isInstructorOrAdmin && page === 'analytics' && (
+              <ProtectedRoute>
+                <Analytics />
+              </ProtectedRoute>
+            )}
+            {page === 'student-courses' && (
+              <ProtectedRoute>
+                <StudentCoursesPage />
+              </ProtectedRoute>
+            )}
+            {isInstructorOrAdmin && page.startsWith('course/') && !page.includes('/assignment/') && (
               <ProtectedRoute>
                 <CourseDashboard />
               </ProtectedRoute>
             )}
-            {page.includes('/assignment/') && page.includes('/view') && (
+            {page.startsWith('student-course/') && page.includes('/assignment/') && (
+              <ProtectedRoute>
+                <StudentAssignmentPage />
+              </ProtectedRoute>
+            )}
+            {page.startsWith('student-course/') && !page.includes('/assignment/') && (
+              <ProtectedRoute>
+                <StudentCourseDashboard />
+              </ProtectedRoute>
+            )}
+            {isInstructorOrAdmin && page.includes('/assignment/') && page.includes('/view') && (
               <ProtectedRoute>
                 <AssignmentView />
               </ProtectedRoute>
             )}
-            {page.includes('/assignment/') && (page.includes('/edit') || page.includes('/new')) && (
+            {isInstructorOrAdmin && page.includes('/assignment/') && (page.includes('/edit') || page.includes('/new')) && (
               <ProtectedRoute>
                 <CreateEditAssignment />
               </ProtectedRoute>

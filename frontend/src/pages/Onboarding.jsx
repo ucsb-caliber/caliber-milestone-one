@@ -53,7 +53,7 @@ export default function Onboarding({ onComplete }) {
         Complete Your Profile
       </h2>
       <p style={{ textAlign: 'center', color: '#666', marginBottom: '2rem' }}>
-        Please provide some additional information to get started.
+        Please provide some additional information to get started. New accounts begin as students.
       </p>
       
       <form onSubmit={handleSubmit}>
@@ -118,10 +118,10 @@ export default function Onboarding({ onComplete }) {
                 cursor: loading ? 'not-allowed' : 'pointer'
               }}
             />
-            I am a teacher/instructor
+            Request teacher/instructor access
           </label>
           <small style={{ color: '#666', fontSize: '0.85rem', marginLeft: '1.5rem', display: 'block', marginTop: '0.25rem' }}>
-            Leave unchecked if you are a student
+            Leave unchecked to stay a student. Instructor requests require admin approval.
           </small>
         </div>
 

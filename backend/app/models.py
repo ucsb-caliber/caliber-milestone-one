@@ -2,7 +2,7 @@ from typing import Optional, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column
 import json
-from sqlalchemy import TEXT
+from sqlalchemy import TEXT, UniqueConstraint
 
 
 class User(SQLModel, table=True):
@@ -12,8 +12,10 @@ class User(SQLModel, table=True):
     email: Optional[str] = Field(default=None, index=True)  # User's email address
     first_name: Optional[str] = Field(default=None)  # User's first name
     last_name: Optional[str] = Field(default=None)  # User's last name
+    school_name: str = Field(default="")  # User's home school/university
     admin: bool = Field(default=False)  # Whether user is an admin
     teacher: bool = Field(default=False)  # Whether user is a teacher/instructor
+    pending: bool = Field(default=False)  # Whether user is awaiting instructor approval
     icon_shape: str = Field(default="circle")  # Profile icon shape: circle, square, or hex
     icon_color: str = Field(default="#4f46e5")  # Profile icon color (hex code)
     initials: Optional[str] = Field(default=None, max_length=2)  # User's custom initials (max 2 chars)
@@ -24,11 +26,13 @@ class User(SQLModel, table=True):
 class Question(SQLModel, table=True):
     """Question model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
+    qid: str = Field(index=True, unique=True)  # Stable unique question identifier (e.g., Q00000001)
     title: str = Field(default="")  # Question title (e.g., Invert a Linked List)
-    text: str = Field(index=True)
+    text: str  # Do not index large freeform text; can exceed Postgres btree row limits.
     tags: str = Field(default="")  # Question tags (e.g., recursion, sorting, runtime analysis)
     keywords: str = Field(default="")  # Stored as comma-separated string
     school: str = Field(default="")  # School name (e.g., UCSB)
+    user_school: str = Field(default="", index=True) # school of user
     course: str = Field(default="")  # Course name (kept for backward compatibility)
     course_type: str = Field(default="")  # Course type (e.g., intro CS, intermediate CS, linear algebra)
     question_type: str = Field(default="")  # Question type (e.g., mcq, fr, short answer)
@@ -52,11 +56,23 @@ class CourseStudent(SQLModel, table=True):
     enrolled_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class CoursePin(SQLModel, table=True):
+    """Per-user pin state for course cards."""
+    __tablename__ = "course_pin"
+    __table_args__ = (
+        UniqueConstraint("course_id", "user_id", name="uq_course_pin_course_user"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    course_id: int = Field(foreign_key="course.id", index=True)
+    user_id: str = Field(foreign_key="user.user_id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Assignment(SQLModel, table=True):
     """Assignment model for course assignments."""
     id: Optional[int] = Field(default=None, primary_key=True)
     node_id: Optional[str] = Field(default=None)  # Foreign key to Course Tree Node (null for now)
-    instructor_email: str = Field(default="")  # Email of instructor who created assignment
     instructor_id: str = Field(default="")  # ID of instructor user who created assignment
     course: str = Field(default="")  # ID/name of course the assignment was created in
     course_id: int = Field(foreign_key="course.id", index=True)
@@ -72,10 +88,29 @@ class Assignment(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class AssignmentProgress(SQLModel, table=True):
+    """Student progress state for an assignment."""
+    __tablename__ = "assignment_progress"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "student_id", name="uq_assignment_progress_assignment_student"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    assignment_id: int = Field(foreign_key="assignment.id", index=True)
+    student_id: str = Field(foreign_key="user.user_id", index=True)
+    answers: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id
+    current_question_index: int = Field(default=0)
+    submitted: bool = Field(default=False)
+    submitted_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Course(SQLModel, table=True):
     """Course model stored in the database."""
     id: Optional[int] = Field(default=None, primary_key=True)
     course_name: str = Field(index=True)
+    course_code: str = Field(index=True, unique=True)
     school_name: str = Field(default="")
     instructor_id: str = Field(foreign_key="user.user_id", index=True)  # Supabase user ID of instructor
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+from datetime import datetime, timezone
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
@@ -8,18 +9,24 @@ from sqlmodel import Session, select, func
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
-from .models import Question, User, Course
+from .models import Question, User, Course, CourseStudent, Assignment
 from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionCreate, QuestionUpdate, 
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
                      UserListResponse,
-                     CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, 
-                     AssignmentResponse, AssignmentCreate, AssignmentUpdate)
+                     CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, CourseJoinRequest,
+                     CoursePinUpdate, CoursePinResponse, CoursePinsResponse,
+                     AdminCourseOverview, AdminCourseOverviewResponse,
+                     AssignmentResponse, AssignmentCreate, AssignmentUpdate,
+                     AssignmentProgressResponse, AssignmentProgressUpdate)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
                   get_questions_by_ids, update_question, delete_question, get_user_by_user_id, update_user_roles, 
                   get_or_create_user, update_user_profile, update_user_preferences, create_course, get_course, 
-                  get_courses, get_courses_count, update_course, delete_course, get_course_students, 
+                  get_courses, get_courses_count, update_course, delete_course, get_course_students, get_course_by_code,
+                  enroll_student_in_course, get_user_pinned_course_ids, set_user_course_pin,
+                  get_all_courses, get_all_courses_count,
                   get_course_assignments, create_assignment, get_assignment, get_assignments, update_assignment, 
-                  delete_assignment)
+                  delete_assignment, get_assignment_progress, upsert_assignment_progress,
+                  delete_unverified_questions_by_source)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline
 from .auth import get_current_user
 
@@ -76,9 +83,63 @@ Path("data").mkdir(parents=True, exist_ok=True)
 def on_startup():
     """Initialize database on startup."""
     create_db_and_tables()
+    backfill_existing_assignment_dates()
 
 
-def process_pdf_background(storage_path: str, file_content: bytes, user_id: str):
+def backfill_existing_assignment_dates():
+    """
+    Backfill missing assignment dates for legacy records.
+
+    For previously created assignments with missing release/due dates, set:
+    - release_date: Feb 14, 2026
+    - due_date_soft: Feb 15, 2026
+    - due_date_hard: Feb 15, 2026
+    """
+    default_release = datetime(2026, 2, 14, 0, 0, 0)
+    default_due = datetime(2026, 2, 15, 0, 0, 0)
+
+    with Session(engine) as session:
+        assignments = list(session.exec(select(Assignment)).all())
+        changed = False
+
+        for assignment in assignments:
+            assignment_changed = False
+            if assignment.release_date is None:
+                assignment.release_date = default_release
+                assignment_changed = True
+            if assignment.due_date_soft is None:
+                assignment.due_date_soft = default_due
+                assignment_changed = True
+            if assignment.due_date_hard is None:
+                assignment.due_date_hard = default_due
+                assignment_changed = True
+
+            if assignment_changed:
+                changed = True
+                session.add(assignment)
+
+        if changed:
+            session.commit()
+
+
+def build_assignment_response(session: Session, assignment: Assignment) -> AssignmentResponse:
+    """Build assignment response with instructor email sourced from User table."""
+    instructor = get_user_by_user_id(session, assignment.instructor_id)
+    return AssignmentResponse.from_assignment(
+        assignment,
+        instructor_email=instructor.email if instructor else None
+    )
+
+
+def process_pdf_background(
+    storage_path: str,
+    file_content: bytes,
+    user_id: str,
+    school: str = "",
+    user_school: str = "",
+    course: str = "",
+    course_type: str = ""
+):
     """
     Background task to process PDF and create question records.
     
@@ -89,31 +150,138 @@ def process_pdf_background(storage_path: str, file_content: bytes, user_id: str)
         file_content: The PDF file content as bytes
         user_id: The Supabase user ID
     """
+    inserted_count = 0
+    text = ""
+    question_dicts = []
+
     try:
-        # Extract text from PDF
         text = extract_text_from_pdf(file_content)
-        
-        # Send to stubbed agent pipeline
+    except Exception as e:
+        print(f"Error extracting text from {storage_path}: {e!r}")
+
+    try:
         question_dicts = send_to_agent_pipeline(text, storage_path)
-        
-        # Create a new session for the background task
+    except Exception as e:
+        print(f"Error in agent pipeline for {storage_path}: {e!r}")
+
+    if not question_dicts:
+        fallback_text = (text or "").strip()[:300]
+        question_dicts = [{
+            "title": "Extracted Preview",
+            "text": fallback_text or f"Unable to parse content from {storage_path}.",
+            "tags": "auto-generated,pdf-upload",
+            "keywords": "pdf,upload,fallback"
+        }]
+
+    try:
         with Session(engine) as session:
-            # Store questions in database
+            user = session.exec(select(User).where(User.user_id == user_id)).first()
+
+            selected_school = (school or "").strip()
+            selected_course = (course or "").strip()
+            selected_course_type = (course_type or "").strip()
+
+            profile_school = ""
+            profile_course_name = ""
+            profile_course_type = ""
+            try:
+                taught_course = session.exec(
+                    select(Course)
+                    .where(Course.instructor_id == user_id)
+                    .order_by(Course.updated_at.desc())
+                ).first()
+                enrolled_course = None
+                if not taught_course:
+                    enrolled_course = session.exec(
+                        select(Course)
+                        .join(CourseStudent, CourseStudent.course_id == Course.id)
+                        .where(CourseStudent.student_id == user_id)
+                        .order_by(Course.updated_at.desc())
+                    ).first()
+
+                profile_course = taught_course or enrolled_course
+                profile_school = (profile_course.school_name if profile_course else "") or ""
+                profile_course_name = (profile_course.course_name if profile_course else "") or ""
+                profile_course_type = "instructor-upload" if taught_course else ("student-upload" if enrolled_course else "")
+            except Exception as e:
+                print(f"Warning: failed profile enrichment for {user_id}: {e!r}")
+
+            effective_school = selected_school or profile_school
+            effective_course = selected_course or profile_course_name
+            effective_course_type = selected_course_type or profile_course_type
+
+            profile_name = ""
+            if user:
+                profile_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
+            profile_email = (user.email or "").strip() if user else ""
+
             for q_dict in question_dicts:
+                try:
+                    question_text = (q_dict.get("text") or "").strip()
+                    if not question_text:
+                        continue
+
+                    base_tags = (q_dict.get("tags", "") or "").strip()
+                    base_keywords = (q_dict.get("keywords", "") or "").strip()
+
+                    extra_tags = []
+                    if profile_name:
+                        extra_tags.append(f"uploader:{profile_name}")
+                    if effective_school:
+                        extra_tags.append(effective_school)
+
+                    extra_keywords = []
+                    if profile_name:
+                        extra_keywords.extend(profile_name.split())
+                    if profile_email:
+                        extra_keywords.append(profile_email)
+                    if effective_school:
+                        extra_keywords.append(effective_school)
+                    if effective_course:
+                        extra_keywords.append(effective_course)
+                    if effective_course_type:
+                        extra_keywords.append(effective_course_type)
+
+                    merged_tags = ",".join(filter(None, [base_tags, *extra_tags]))
+                    merged_keywords = ",".join(filter(None, [base_keywords, *extra_keywords]))
+
+                    create_question(
+                        session=session,
+                        text=question_text,
+                        title=q_dict.get("title", "Untitled Question"),
+                        tags=merged_tags,
+                        keywords=merged_keywords,
+                        school=effective_school,
+                        course=effective_course,
+                        course_type=effective_course_type,
+                        source_pdf=storage_path,
+                        user_id=user_id,
+                        is_verified=False
+                    )
+                    inserted_count += 1
+                except Exception as e:
+                    print(f"Skipping bad generated question for {storage_path}: {e!r}")
+
+            if inserted_count == 0:
                 create_question(
                     session=session,
-                    text=q_dict["text"],
-                    title=q_dict.get("title", "Untitled Question"),  # Use provided title or default
-                    tags=q_dict["tags"],
-                    keywords=q_dict["keywords"],
-                    source_pdf=storage_path,  # Store the Supabase Storage path
+                    text=f"Fallback draft generated for {storage_path}.",
+                    title="Extracted Preview",
+                    tags="auto-generated,pdf-upload,fallback",
+                    keywords="pdf,upload,fallback",
+                    school=effective_school,
+                    user_school=user_school,
+                    course=effective_course,
+                    course_type=effective_course_type,
+                    source_pdf=storage_path,
                     user_id=user_id,
-                    is_verified=False  # applies pending status to new questions
+                    is_verified=False
                 )
-        
-        print(f"Successfully processed {storage_path}: created {len(question_dicts)} questions for user {user_id}")
+                inserted_count = 1
+
+        print(f"Successfully processed {storage_path}: created {inserted_count} questions for user {user_id}")
     except Exception as e:
-        print(f"Error processing PDF {storage_path}: {e}")
+        print(f"Error storing generated questions for {storage_path}: {e!r}")
 
 
 @app.post("/api/upload-pdf", response_model=UploadResponse)
@@ -121,6 +289,9 @@ async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     storage_path: str = Form(...),
+    school: str = Form(""),
+    course: str = Form(""),
+    course_type: str = Form(""),
     user_id: str = Depends(get_current_user)
 ):
     """
@@ -140,11 +311,20 @@ async def upload_pdf(
     file_content = await file.read()
     
     # Queue background processing with user_id and storage_path
-    background_tasks.add_task(process_pdf_background, storage_path, file_content, user_id)
+    background_tasks.add_task(
+        process_pdf_background,
+        storage_path,
+        file_content,
+        user_id,
+        school,
+        course,
+        course_type
+    )
     
     return UploadResponse(
         status="queued",
         filename=file.filename,
+        storage_path=storage_path,
         message="PDF upload successful. Processing in background."
     )
 
@@ -233,6 +413,7 @@ def create_new_question(
     tags: str = Form(""),
     keywords: str = Form(""),
     school: str = Form(""),
+    user_school: str = Form(""),
     course: str = Form(""),
     course_type: str = Form(""),
     question_type: str = Form(""),
@@ -262,6 +443,7 @@ def create_new_question(
         tags=tags,
         keywords=keywords,
         school=school,
+        user_school=user_school,
         course=course,
         course_type=course_type,
         question_type=question_type,
@@ -322,6 +504,17 @@ def delete_existing_question(
         raise HTTPException(status_code=404, detail="Question not found")
 
 
+@app.delete("/api/questions-by-source/unverified")
+def delete_unverified_by_source(
+    source_pdf: str,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Delete all unverified questions for the current user and a specific uploaded source_pdf."""
+    deleted_count = delete_unverified_questions_by_source(session, user_id=user_id, source_pdf=source_pdf)
+    return {"deleted_count": deleted_count}
+
+
 @app.get("/api/user")
 def get_user_info(
     user_id: str = Depends(get_current_user),
@@ -341,8 +534,10 @@ def get_user_info(
         "email": user.email,
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "school_name": user.school_name or "",
         "admin": user.admin,
         "teacher": user.teacher,
+        "pending": user.pending,
         "icon_shape": user.icon_shape,
         "icon_color": user.icon_color,
         "initials": user.initials,
@@ -362,7 +557,9 @@ def update_user_profile_endpoint(
         user_id=user_id,
         first_name=profile_data.first_name,
         last_name=profile_data.last_name,
-        teacher=None  # Don't allow changing teacher status after onboarding
+        school_name=profile_data.school_name,
+        teacher=None,  # Don't allow changing teacher status after onboarding
+        pending=None
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -394,7 +591,7 @@ def complete_user_onboarding(
     user_id: str = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    """Complete user onboarding with first name, last name, and teacher status. Only works if profile is incomplete."""
+    """Complete user onboarding with first/last name and optional instructor request."""
     user = get_user_by_user_id(session, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -412,7 +609,9 @@ def complete_user_onboarding(
         user_id=user_id,
         first_name=onboarding_data.first_name,
         last_name=onboarding_data.last_name,
-        teacher=onboarding_data.teacher
+        school_name=None,
+        teacher=False,
+        pending=onboarding_data.teacher
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -482,7 +681,8 @@ def update_user(
         session=session,
         user_id=user_id,
         admin=user_data.admin,
-        teacher=user_data.teacher
+        teacher=user_data.teacher,
+        pending=user_data.pending
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -526,11 +726,12 @@ def create_new_course(
     return CourseResponse(
         id=course.id,
         course_name=course.course_name,
+        course_code=course.course_code,
         school_name=course.school_name,
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+        assignments=[build_assignment_response(session, a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
@@ -577,16 +778,147 @@ def list_courses(
         course_responses.append(CourseResponse(
             id=course.id,
             course_name=course.course_name,
+            course_code=course.course_code,
             school_name=course.school_name,
             instructor_id=course.instructor_id,
             instructor_email=instructor.email if instructor else None,
             student_ids=student_ids,
-            assignments=[AssignmentResponse.model_validate(a) for a in assignments],
+            assignments=[build_assignment_response(session, a) for a in assignments],
             created_at=course.created_at,
             updated_at=course.updated_at
         ))
     
     return CourseListResponse(courses=course_responses, total=total)
+
+
+@app.get("/api/courses/all", response_model=CourseListResponse)
+def list_all_courses_admin(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Admin-only endpoint to list all courses in the system."""
+    user = get_user_by_user_id(session, user_id)
+    if not user or not user.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can view all courses"
+        )
+
+    courses = get_all_courses(session, skip=skip, limit=limit)
+    total = get_all_courses_count(session)
+
+    course_responses = []
+    for course in courses:
+        instructor = get_user_by_user_id(session, course.instructor_id)
+        student_ids = get_course_students(session, course.id)
+        assignments = get_course_assignments(session, course.id)
+
+        course_responses.append(CourseResponse(
+            id=course.id,
+            course_name=course.course_name,
+            course_code=course.course_code,
+            school_name=course.school_name,
+            instructor_id=course.instructor_id,
+            instructor_email=instructor.email if instructor else None,
+            student_ids=student_ids,
+            assignments=[build_assignment_response(session, a) for a in assignments],
+            created_at=course.created_at,
+            updated_at=course.updated_at
+        ))
+
+    return CourseListResponse(courses=course_responses, total=total)
+
+
+@app.get("/api/admin/courses-overview", response_model=AdminCourseOverviewResponse)
+def list_all_courses_admin_overview(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Admin-only compact all-courses endpoint optimized for dashboard cards."""
+    from .models import CourseStudent, Assignment
+
+    user = get_user_by_user_id(session, user_id)
+    if not user or not user.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can view all courses"
+        )
+
+    assignment_counts_subquery = (
+        select(
+            Assignment.course_id.label("course_id"),
+            func.count(Assignment.id).label("assignment_count")
+        )
+        .group_by(Assignment.course_id)
+        .subquery()
+    )
+
+    course_rows = list(session.exec(
+        select(
+            Course.id,
+            Course.course_name,
+            Course.course_code,
+            Course.school_name,
+            Course.instructor_id,
+            func.coalesce(assignment_counts_subquery.c.assignment_count, 0).label("assignment_count")
+        )
+        .outerjoin(assignment_counts_subquery, assignment_counts_subquery.c.course_id == Course.id)
+        .offset(skip)
+        .limit(limit)
+    ).all())
+
+    total = get_all_courses_count(session)
+    if not course_rows:
+        return AdminCourseOverviewResponse(courses=[], total=total)
+
+    course_ids = [row[0] for row in course_rows]
+    student_rows = list(session.exec(
+        select(
+            CourseStudent.course_id,
+            CourseStudent.student_id,
+            User.first_name,
+            User.last_name,
+            User.email
+        )
+        .join(User, User.user_id == CourseStudent.student_id)
+        .where(CourseStudent.course_id.in_(course_ids))
+    ).all())
+
+    students_by_course = {course_id: [] for course_id in course_ids}
+    student_name_by_course = {course_id: {} for course_id in course_ids}
+    for course_id, student_id, first_name, last_name, email in student_rows:
+        students_by_course[course_id].append(student_id)
+        full_name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip()
+        student_name_by_course[course_id][student_id] = full_name or email or student_id
+
+    courses = []
+    for course_id, course_name, course_code, school_name, instructor_id, assignment_count in course_rows:
+        courses.append(AdminCourseOverview(
+            id=course_id,
+            course_name=course_name,
+            course_code=course_code,
+            school_name=school_name,
+            instructor_id=instructor_id,
+            assignment_count=int(assignment_count or 0),
+            student_ids=students_by_course.get(course_id, []),
+            student_name_by_id=student_name_by_course.get(course_id, {})
+        ))
+
+    return AdminCourseOverviewResponse(courses=courses, total=total)
+
+
+@app.get("/api/courses/pins", response_model=CoursePinsResponse)
+def list_course_pins(
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Get pinned course IDs for the authenticated user."""
+    pinned_course_ids = get_user_pinned_course_ids(session, user_id)
+    return CoursePinsResponse(pinned_course_ids=pinned_course_ids)
 
 
 @app.get("/api/courses/{course_id}", response_model=CourseResponse)
@@ -606,11 +938,12 @@ def get_course_by_id(
     # Check access: must be instructor or enrolled student
     user = get_user_by_user_id(session, user_id)
     is_instructor = course.instructor_id == user_id
+    is_admin = bool(user and user.admin)
     
     student_ids = get_course_students(session, course_id)
     is_enrolled_student = user_id in student_ids
     
-    if not (is_instructor or is_enrolled_student):
+    if not (is_instructor or is_enrolled_student or is_admin):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this course"
@@ -623,11 +956,12 @@ def get_course_by_id(
     return CourseResponse(
         id=course.id,
         course_name=course.course_name,
+        course_code=course.course_code,
         school_name=course.school_name,
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.from_orm(a) for a in assignments],
+        assignments=[build_assignment_response(session, a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
@@ -663,11 +997,12 @@ def update_existing_course(
     return CourseResponse(
         id=course.id,
         course_name=course.course_name,
+        course_code=course.course_code,
         school_name=course.school_name,
         instructor_id=course.instructor_id,
         instructor_email=instructor.email if instructor else None,
         student_ids=student_ids,
-        assignments=[AssignmentResponse.from_orm(a) for a in assignments],
+        assignments=[build_assignment_response(session, a) for a in assignments],
         created_at=course.created_at,
         updated_at=course.updated_at
     )
@@ -685,6 +1020,74 @@ def delete_existing_course(
     success = delete_course(session, course_id, instructor_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Course not found or you don't have permission to delete it")
+
+
+@app.post("/api/courses/join", response_model=CourseResponse)
+def join_course_by_code(
+    join_data: CourseJoinRequest,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Enroll the authenticated student in a course by course code."""
+    user = get_user_by_user_id(session, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.teacher:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Instructors cannot join courses using student course codes"
+        )
+
+    code = join_data.course_code.strip().upper()
+    course = get_course_by_code(session, code)
+    if not course:
+        raise HTTPException(status_code=404, detail="Invalid course code")
+
+    enroll_student_in_course(session, course.id, user_id)
+
+    instructor = get_user_by_user_id(session, course.instructor_id)
+    student_ids = get_course_students(session, course.id)
+    assignments = get_course_assignments(session, course.id)
+    return CourseResponse(
+        id=course.id,
+        course_name=course.course_name,
+        course_code=course.course_code,
+        school_name=course.school_name,
+        instructor_id=course.instructor_id,
+        instructor_email=instructor.email if instructor else None,
+        student_ids=student_ids,
+        assignments=[build_assignment_response(session, a) for a in assignments],
+        created_at=course.created_at,
+        updated_at=course.updated_at
+    )
+
+
+@app.put("/api/courses/{course_id}/pin", response_model=CoursePinResponse)
+def update_course_pin(
+    course_id: int,
+    payload: CoursePinUpdate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Set or clear pin state for a course visible to the authenticated user."""
+    course = get_course(session, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    user = get_user_by_user_id(session, user_id)
+    is_instructor = course.instructor_id == user_id
+    is_admin = bool(user and user.admin)
+    student_ids = get_course_students(session, course_id)
+    is_enrolled_student = user_id in student_ids
+
+    if not (is_instructor or is_enrolled_student or is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this course",
+        )
+
+    pinned = set_user_course_pin(session, user_id=user_id, course_id=course_id, pinned=payload.pinned)
+    return CoursePinResponse(course_id=course_id, pinned=pinned)
 
 
 # Assignment endpoints
@@ -710,16 +1113,11 @@ def create_new_assignment(
             detail="Only the course instructor can create assignments"
         )
     
-    # Get user info for instructor email
-    user = get_user_by_user_id(session, user_id)
-    instructor_email = user.email if user else ""
-    
     # Create the assignment
     assignment = create_assignment(
         session=session,
         course_id=assignment_data.course_id,
         instructor_id=user_id,
-        instructor_email=instructor_email,
         title=assignment_data.title,
         type=assignment_data.type,
         description=assignment_data.description,
@@ -731,7 +1129,7 @@ def create_new_assignment(
         assignment_questions=assignment_data.assignment_questions
     )
     
-    return AssignmentResponse.from_orm(assignment)
+    return build_assignment_response(session, assignment)
 
 
 @app.get("/api/assignments/{assignment_id}", response_model=AssignmentResponse)
@@ -753,17 +1151,19 @@ def get_assignment_by_id(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
+    user = get_user_by_user_id(session, user_id)
     is_instructor = course.instructor_id == user_id
+    is_admin = bool(user and user.admin)
     student_ids = get_course_students(session, assignment.course_id)
     is_enrolled_student = user_id in student_ids
     
-    if not (is_instructor or is_enrolled_student):
+    if not (is_instructor or is_enrolled_student or is_admin):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this assignment"
         )
     
-    return AssignmentResponse.from_orm(assignment)
+    return build_assignment_response(session, assignment)
 
 
 @app.put("/api/assignments/{assignment_id}", response_model=AssignmentResponse)
@@ -794,7 +1194,27 @@ def update_existing_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to update it")
     
-    return AssignmentResponse.from_orm(assignment)
+    return build_assignment_response(session, assignment)
+
+
+@app.post("/api/assignments/{assignment_id}/release-now", response_model=AssignmentResponse)
+def release_assignment_now(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Release an assignment immediately by setting release_date to now (UTC)."""
+    assignment = update_assignment(
+        session=session,
+        assignment_id=assignment_id,
+        instructor_id=user_id,
+        release_date=datetime.now(timezone.utc)
+    )
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to release it")
+
+    return build_assignment_response(session, assignment)
 
 
 @app.delete("/api/assignments/{assignment_id}", status_code=204)
@@ -809,6 +1229,97 @@ def delete_existing_assignment(
     success = delete_assignment(session, assignment_id, instructor_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to delete it")
+
+
+@app.get("/api/assignments/{assignment_id}/progress", response_model=AssignmentProgressResponse)
+def get_student_assignment_progress(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Get progress for the authenticated student on a specific assignment."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course = get_course(session, assignment.course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    student_ids = get_course_students(session, assignment.course_id)
+    is_enrolled_student = user_id in student_ids
+    if not is_enrolled_student:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this assignment progress"
+        )
+
+    progress = get_assignment_progress(session, assignment_id, user_id)
+    if not progress:
+        progress = upsert_assignment_progress(
+            session=session,
+            assignment_id=assignment_id,
+            student_id=user_id,
+            answers={},
+            current_question_index=0,
+            submitted=False
+        )
+
+    import json
+    return AssignmentProgressResponse(
+        assignment_id=progress.assignment_id,
+        student_id=progress.student_id,
+        answers=json.loads(progress.answers) if progress.answers else {},
+        current_question_index=progress.current_question_index,
+        submitted=progress.submitted,
+        submitted_at=progress.submitted_at,
+        updated_at=progress.updated_at
+    )
+
+
+@app.put("/api/assignments/{assignment_id}/progress", response_model=AssignmentProgressResponse)
+def save_student_assignment_progress(
+    assignment_id: int,
+    progress_data: AssignmentProgressUpdate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Save progress for the authenticated student on a specific assignment."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course = get_course(session, assignment.course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    student_ids = get_course_students(session, assignment.course_id)
+    is_enrolled_student = user_id in student_ids
+    if not is_enrolled_student:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only enrolled students can save assignment progress"
+        )
+
+    progress = upsert_assignment_progress(
+        session=session,
+        assignment_id=assignment_id,
+        student_id=user_id,
+        answers=progress_data.answers,
+        current_question_index=progress_data.current_question_index,
+        submitted=progress_data.submitted
+    )
+
+    import json
+    return AssignmentProgressResponse(
+        assignment_id=progress.assignment_id,
+        student_id=progress.student_id,
+        answers=json.loads(progress.answers) if progress.answers else {},
+        current_question_index=progress.current_question_index,
+        submitted=progress.submitted,
+        submitted_at=progress.submitted_at,
+        updated_at=progress.updated_at
+    )
 
 
 @app.get("/")
@@ -838,6 +1349,9 @@ def root():
             "POST /api/assignments",
             "GET /api/assignments/{assignment_id}",
             "PUT /api/assignments/{assignment_id}",
-            "DELETE /api/assignments/{assignment_id}"
+            "POST /api/assignments/{assignment_id}/release-now",
+            "DELETE /api/assignments/{assignment_id}",
+            "GET /api/assignments/{assignment_id}/progress",
+            "PUT /api/assignments/{assignment_id}/progress"
         ]
     }

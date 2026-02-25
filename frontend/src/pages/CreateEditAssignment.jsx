@@ -1,6 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
+import QuestionTable from '../components/QuestionTable';
+import QuestionSearchBar from '../components/QuestionSearchBar';
+import { getUserById } from '../api';
 import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
+import { filterQuestionsBySearch } from '../utils/questionSearch';
+
+function parseAssignmentDate(dateStr) {
+  if (!dateStr) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
+  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+}
+
+function formatDateForDateTimeLocal(dateStr) {
+  const date = parseAssignmentDate(dateStr);
+  if (!date) return '';
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export default function CreateEditAssignment() {
   const { user } = useAuth();
@@ -9,7 +26,13 @@ export default function CreateEditAssignment() {
   const [error, setError] = useState('');
   const [allQuestions, setAllQuestions] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
-  
+  const [userInfoCache, setUserInfoCache] = useState({});
+  const [showQuestionPicker, setShowQuestionPicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFilter, setSearchFilter] = useState('all');
+
+
+
   const [formData, setFormData] = useState({
     title: '',
     type: 'Homework',
@@ -28,7 +51,7 @@ export default function CreateEditAssignment() {
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const isNew = hash.includes('/assignment/new');
     const isEdit = hash.includes('/edit');
-    
+
     return {
       courseId: courseMatch ? parseInt(courseMatch[1]) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null,
@@ -53,25 +76,38 @@ export default function CreateEditAssignment() {
         const questionsData = await getAllQuestions();
         setAllQuestions(questionsData.questions || []);
 
+        const qs = questionsData.questions || [];
+        const uniqueUserIds = [...new Set(qs.map(q => q.user_id).filter(Boolean))];
+
+        const userPromises = uniqueUserIds.map(async (uid) => {
+          try {
+            const info = await getUserById(uid);
+            return [uid, info];
+          } catch {
+            return [uid, null];
+          }
+        });
+
+        const entries = await Promise.all(userPromises);
+        const map = {};
+        for (const [uid, info] of entries) {
+          if (info) map[uid] = info;
+        }
+        setUserInfoCache(map);
+
+
         // If editing, load assignment data
         if (assignmentId && !isNew) {
           setIsEditMode(true);
           const assignmentData = await getAssignment(assignmentId);
-          
-          // Format dates for datetime-local input
-          const formatDateForInput = (dateStr) => {
-            if (!dateStr) return '';
-            const date = new Date(dateStr);
-            return date.toISOString().slice(0, 16);
-          };
 
           setFormData({
             title: assignmentData.title || '',
             type: assignmentData.type || 'Homework',
             description: assignmentData.description || '',
-            release_date: formatDateForInput(assignmentData.release_date),
-            due_date_soft: formatDateForInput(assignmentData.due_date_soft),
-            due_date_hard: formatDateForInput(assignmentData.due_date_hard),
+            release_date: formatDateForDateTimeLocal(assignmentData.release_date),
+            due_date_soft: formatDateForDateTimeLocal(assignmentData.due_date_soft),
+            due_date_hard: formatDateForDateTimeLocal(assignmentData.due_date_hard),
             late_policy_id: assignmentData.late_policy_id || '',
             assignment_questions: assignmentData.assignment_questions || []
           });
@@ -89,9 +125,33 @@ export default function CreateEditAssignment() {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.title.trim()) {
       setError('Title is required');
+      return;
+    }
+    if (!formData.release_date) {
+      setError('Release date is required');
+      return;
+    }
+    if (!formData.due_date_soft) {
+      setError('Due date is required');
+      return;
+    }
+    if (!formData.due_date_hard) {
+      setError('Due date (late) is required');
+      return;
+    }
+    if (!formData.late_policy_id) {
+      setError('Late policy percentage is required');
+      return;
+    }
+    if (!formData.assignment_questions || formData.assignment_questions.length < 1) {
+      setError('At least one question is required');
+      return;
+    }
+    if (new Date(formData.due_date_hard) < new Date(formData.due_date_soft)) {
+      setError('Due date (late) must be on or after due date');
       return;
     }
 
@@ -127,7 +187,7 @@ export default function CreateEditAssignment() {
       }
 
       setSaving(false);
-      
+
       // Navigate to assignment view page
       if (savedAssignmentId) {
         window.location.hash = `#course/${courseId}/assignment/${savedAssignmentId}/view`;
@@ -149,6 +209,8 @@ export default function CreateEditAssignment() {
         : [...prev.assignment_questions, questionId]
     }));
   };
+
+  const filteredQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
 
   const styles = {
     container: {
@@ -216,29 +278,6 @@ export default function CreateEditAssignment() {
       fontSize: '1rem',
       boxSizing: 'border-box'
     },
-    questionsList: {
-      maxHeight: '300px',
-      overflow: 'auto',
-      border: '1px solid #e5e7eb',
-      borderRadius: '8px',
-      marginTop: '0.5rem'
-    },
-    questionItem: {
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: '0.75rem',
-      padding: '0.75rem',
-      borderBottom: '1px solid #f3f4f6',
-      cursor: 'pointer',
-      transition: 'background 0.15s'
-    },
-    checkbox: {
-      width: '18px',
-      height: '18px',
-      cursor: 'pointer',
-      marginTop: '0.2rem',
-      flexShrink: 0
-    },
     buttonGroup: {
       display: 'flex',
       gap: '0.75rem',
@@ -298,7 +337,7 @@ export default function CreateEditAssignment() {
   return (
     <div style={styles.container}>
       <a href={`#course/${courseId}`} style={styles.backLink}>← Back to Course</a>
-      
+
       <h1 style={styles.title}>{isEditMode ? 'Edit Assignment' : 'Create Assignment'}</h1>
 
       {error && <div style={styles.error}>{error}</div>}
@@ -349,51 +388,74 @@ export default function CreateEditAssignment() {
 
         {/* Release Date */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Release Date</label>
+          <label style={styles.label}>
+            Release Date <span style={{ color: '#dc2626' }}>*</span>
+          </label>
           <input
             type="datetime-local"
             value={formData.release_date}
             onChange={(e) => setFormData({ ...formData, release_date: e.target.value })}
             style={styles.input}
+            required
           />
           <div style={styles.helpText}>When students can see this assignment</div>
         </div>
 
-        {/* Due Date (Soft) */}
+        {/* Due Date */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Due Date (Target)</label>
+          <label style={styles.label}>
+            Due Date <span style={{ color: '#dc2626' }}>*</span>
+          </label>
           <input
             type="datetime-local"
             value={formData.due_date_soft}
             onChange={(e) => setFormData({ ...formData, due_date_soft: e.target.value })}
             style={styles.input}
+            required
           />
           <div style={styles.helpText}>Target due date; no points deducted</div>
         </div>
 
-        {/* Due Date (Hard) */}
+        {/* Late Due Date */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Due Date (Final)</label>
+          <label style={styles.label}>
+            Late Due Date <span style={{ color: '#dc2626' }}>*</span>
+          </label>
           <input
             type="datetime-local"
             value={formData.due_date_hard}
             onChange={(e) => setFormData({ ...formData, due_date_hard: e.target.value })}
             style={styles.input}
+            required
           />
           <div style={styles.helpText}>Final cut-off for submission</div>
         </div>
 
         {/* Late Policy */}
         <div style={styles.formGroup}>
-          <label style={styles.label}>Late Policy</label>
-          <input
-            type="text"
+          <label style={styles.label}>
+            Late Policy (%) <span style={{ color: '#dc2626' }}>*</span>
+          </label>
+          <select
             value={formData.late_policy_id}
             onChange={(e) => setFormData({ ...formData, late_policy_id: e.target.value })}
-            style={styles.input}
-            placeholder="e.g., Linear_Decay_10_Percent"
-          />
-          <div style={styles.helpText}>Reference to a policy template (optional)</div>
+            style={styles.select}
+            required
+          >
+            <option value="">Select late penalty</option>
+            <option value="0">0%</option>
+            <option value="5">5%</option>
+            <option value="10">10%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+            <option value="25">25%</option>
+            <option value="30">30%</option>
+            <option value="40">40%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </select>
+          <div style={styles.helpText}>Percent deducted for late submissions</div>
         </div>
 
         {/* Questions */}
@@ -401,43 +463,27 @@ export default function CreateEditAssignment() {
           <label style={styles.label}>
             Questions ({formData.assignment_questions.length} selected)
           </label>
-          {allQuestions.length === 0 ? (
-            <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>
-              No questions available. Create questions first from the Question Bank.
-            </p>
-          ) : (
-            <div style={styles.questionsList}>
-              {allQuestions.map(q => (
-                <div
-                  key={q.id}
-                  style={{
-                    ...styles.questionItem,
-                    background: formData.assignment_questions.includes(q.id) ? '#eef2ff' : 'transparent'
-                  }}
-                  onClick={() => toggleQuestion(q.id)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={formData.assignment_questions.includes(q.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      toggleQuestion(q.id);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={styles.checkbox}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', fontSize: '0.875rem', color: '#111827' }}>
-                      {q.title || 'Untitled Question'}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                      {q.text.substring(0, 100)}{q.text.length > 100 ? '...' : ''}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+            {/* Select Questions Button */}
+            <button
+              type="button"
+              onClick={() => setShowQuestionPicker(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600'
+              }}
+            >
+              Add / Edit Questions
+            </button>
+          </div>
+
         </div>
 
         {/* Buttons */}
@@ -459,6 +505,116 @@ export default function CreateEditAssignment() {
           </button>
         </div>
       </form>
+
+      {showQuestionPicker && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 1000,
+            display: 'flex'
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              position: 'relative'
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                position: 'fixed',
+                top: '64px',
+                left: 0,
+                right: 0,
+                zIndex: 1001,
+                background: 'white',
+                borderBottom: '1px solid #e5e7eb'
+              }}
+            >
+              
+              {/*Select Questions title and show # selected*/}
+              <h2
+                style={{
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                Select Questions
+                {formData.assignment_questions.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: '0.9rem',
+                      fontWeight: 500,
+                      color: '#6b7280',
+                    }}
+                  >
+                    ({formData.assignment_questions.length} selected)
+                  </span>
+                )}
+              </h2>
+
+              <button
+                onClick={() => setShowQuestionPicker(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Save Selection & Return
+              </button>
+            </div>
+
+            {/* Table area */}
+            <div
+              style={{
+                flex: 1,
+                overflow: 'auto',
+                padding: '6rem 1rem 1rem'
+              }}
+            >
+              <QuestionSearchBar
+                searchQuery={searchQuery}
+                searchFilter={searchFilter}
+                onSearchQueryChange={setSearchQuery}
+                onSearchFilterChange={setSearchFilter}
+                onClearSearch={() => setSearchQuery('')}
+                compact
+              />
+
+              <QuestionTable
+                questions={filteredQuestions}
+                userInfoCache={userInfoCache}
+                user={user}
+
+                selectable
+                selectedQuestionIds={formData.assignment_questions}
+                onToggleQuestion={toggleQuestion}
+                showActions={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -3,9 +3,19 @@ import { useAuth } from '../AuthContext';
 import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById } from '../api';
 import QuestionCard from '../components/QuestionCard';
 import QuestionTable from '../components/QuestionTable';
+import StudentPreview from '../components/StudentPreview';
+
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+const PACIFIC_TIMEZONE = 'America/Los_Angeles';
+
+function parseAssignmentDate(dateStr) {
+  if (!dateStr) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
+  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+}
 
 const DateTimeline = ({ assignment }) => {
   const now = new Date();
@@ -170,6 +180,7 @@ export default function AssignmentView() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [userInfoCache, setUserInfoCache] = useState({});
+  const [showPreview, setShowPreview] = useState(false);
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'table'
 
   // Parse URL hash to get course ID and assignment ID
@@ -370,14 +381,17 @@ export default function AssignmentView() {
 
   // Format date for display
   const formatDate = (dateStr) => {
-    if (!dateStr) return 'Not set';
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    const parsedDate = parseAssignmentDate(dateStr);
+    if (!parsedDate) return 'Not set';
+    return parsedDate.toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: PACIFIC_TIMEZONE,
+      timeZoneName: 'short'
     });
   };
 
@@ -570,6 +584,7 @@ export default function AssignmentView() {
     );
   }
 
+  const canEditAssignment = assignment.instructor_id === user?.id;
   const typeBadgeColors = getTypeBadgeStyle(assignment.type);
 
   return (
@@ -597,59 +612,41 @@ export default function AssignmentView() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {/* View Toggle */}
-          <div style={{
-            display: 'flex',
-            background: '#f3f4f6',
-            borderRadius: '8px',
-            padding: '0.25rem',
-            gap: '0.25rem'
-          }}>
-            <button
-              onClick={() => setViewMode('card')}
-              style={{
-                padding: '0.5rem 1rem',
-                background: viewMode === 'card' ? 'white' : 'transparent',
-                color: viewMode === 'card' ? '#111827' : '#6b7280',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: viewMode === 'card' ? '600' : '500',
-                boxShadow: viewMode === 'card' ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Card View
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              style={{
-                padding: '0.5rem 1rem',
-                background: viewMode === 'table' ? 'white' : 'transparent',
-                color: viewMode === 'table' ? '#111827' : '#6b7280',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: viewMode === 'table' ? '600' : '500',
-                boxShadow: viewMode === 'table' ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Table View
-            </button>
-          </div>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
-            style={styles.editButton}
-            onClick={() => window.location.hash = `#course/${courseId}/assignment/${assignmentId}/edit`}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: '#10b981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              transition: 'background 0.15s'
+            }}
+            onClick={() => setShowPreview(true)}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
           >
-            ✏️ Edit Assignment
+            👁️ Student Preview
           </button>
+          {canEditAssignment && (
+            <button
+                style={styles.editButton}
+                onClick={() => window.location.hash = `#course/${courseId}/assignment/${assignmentId}/edit`}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
+              >
+                ✏️ Edit Assignment
+              </button>
+          )}
         </div>
       </div>
+    </div>
 
       {/* Assignment Details */}
       <div style={styles.section}>
@@ -667,10 +664,41 @@ export default function AssignmentView() {
 
       {/* Questions Section */}
       <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>
-          📝 Questions ({questions.length})
-          {actionLoading && <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>Saving...</span>}
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600', color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            📝 Questions ({questions.length})
+            {actionLoading && <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>Saving...</span>}
+          </h2>
+
+          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: '8px', padding: '0.25rem', gap: '0.25rem' }}>
+            <button
+              onClick={() => setViewMode('card')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: viewMode === 'card' ? 'white' : 'transparent',
+                color: viewMode === 'card' ? '#111827' : '#6b7280',
+                border: 'none', borderRadius: '6px', cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: viewMode === 'card' ? '600' : '500',
+                boxShadow: viewMode === 'card' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >Card View</button>
+            <button
+              onClick={() => setViewMode('table')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: viewMode === 'table' ? 'white' : 'transparent',
+                color: viewMode === 'table' ? '#111827' : '#6b7280',
+                border: 'none', borderRadius: '6px', cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: viewMode === 'table' ? '600' : '500',
+                boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >Table View</button>
+          </div>
+        </div>
 
         {questions.length > 0 ? (
           <DndContext
@@ -744,8 +772,8 @@ export default function AssignmentView() {
                 <QuestionTable
                   questions={questions}
                   userInfoCache={userInfoCache}
-                  showEditButton={true}
-                  showRemoveButton={true}
+                  showEditButton={canEditAssignment}
+                  showRemoveButton={canEditAssignment}
                   showDeleteButton={false}
                   onEdit={handleEditQuestion}
                   onRemove={handleRemoveQuestion}
@@ -762,11 +790,25 @@ export default function AssignmentView() {
           <div style={styles.emptyState}>
             <h3 style={styles.emptyTitle}>No Questions Added</h3>
             <p style={styles.emptyText}>
-              Edit this assignment to add questions from the question bank.
+              {canEditAssignment
+                ? 'Edit this assignment to add questions from the question bank.'
+                : 'No questions have been added to this assignment yet.'}
             </p>
           </div>
         )}
       </div>
+
+      {/* Student Preview Modal */}
+      {showPreview && (
+        <StudentPreview
+          questions={questions}
+          assignmentTitle={assignment.title}
+          assignmentType={assignment.type}
+          onClose={() => setShowPreview(false)}
+          isPreviewMode={true}
+          showCorrectAnswers={true}
+        />
+      )}
     </div>
   );
 }

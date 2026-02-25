@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
+import QuestionCard from './QuestionCard';
+import { getImageSignedUrl } from '../api';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -6,15 +8,19 @@ import { CSS } from '@dnd-kit/utilities';
 const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
 /**
- * Generate QID from question (use title slugified or ID)
+ * Generate display QID: slugified title + unique backend qid
  */
 const getQID = (question) => {
+  const suffix = (question.qid || `Q${question.id}`);
+  const qidSuffix = String(suffix);
   if (question.title) {
-    return question.title.toLowerCase()
+    const slug = question.title.toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || `question-${question.id}`;
+      .replace(/^-+|-+$/g, '');
+
+    if (slug) return `${slug}-${qidSuffix}`;
   }
-  return `question-${question.id}`;
+  return `question-${qidSuffix}`;
 };
 
 /**
@@ -84,9 +90,11 @@ const UserProfileIcon = ({ userInfo }) => {
  * Render a single value as a badge
  */
 const Badge = ({ value, color = '#e5e7eb' }) => {
-  if (!value || !value.trim()) {
+  const text = typeof value === 'string' ? value : (value == null ? '' : String(value));
+  if (!text.trim()) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.875rem' }}>-</span>;
   }
+
 
   return (
     <span
@@ -102,7 +110,7 @@ const Badge = ({ value, color = '#e5e7eb' }) => {
         display: 'inline-block'
       }}
     >
-      {value}
+      {text}
     </span>
   );
 };
@@ -111,13 +119,15 @@ const Badge = ({ value, color = '#e5e7eb' }) => {
  * Render tags as colored badges
  */
 const TagList = ({ tagsString }) => {
-  if (!tagsString || !tagsString.trim()) {
+  const text = typeof tagsString === 'string' ? tagsString : (tagsString == null ? '' : String(tagsString));
+  if (!text.trim()) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>-</span>;
   }
-  const tags = tagsString.split(',').map(t => t.trim()).filter(t => t);
+  const tags = text.split(',').map(t => t.trim()).filter(t => t);
   if (tags.length === 0) {
     return <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>-</span>;
   }
+
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
@@ -174,6 +184,11 @@ const TableRow = ({
   userInfo,
   canDelete,
   onDelete,
+  onPreview,
+
+  selectable = false,
+  selected = false,
+  onToggle,
   showQID,
   showCourseType,
   showEditButton,
@@ -198,6 +213,16 @@ const TableRow = ({
   // When not draggable, dragListeners is an empty object and the handle cell is omitted.
   const renderCells = () => (
     <>
+      {selectable && (
+        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggle(question.id)}
+            style={{ cursor: 'pointer' }}
+          />
+        </td>
+      )}
       {questionNumber && (
         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
           <span style={{
@@ -219,7 +244,10 @@ const TableRow = ({
         <td style={{ padding: '0.75rem 1rem' }}>
           <a
             href={`#question-${question.id}`}
-            onClick={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.preventDefault();
+              onPreview(question);
+            }}
             style={{
               color: '#0066cc',
               textDecoration: 'none',
@@ -272,13 +300,13 @@ const TableRow = ({
                 onClick={handleEdit}
                 disabled={actionLoading}
                 style={{
-                  padding: '0.375rem 0.75rem',
+                  padding: '0.3rem 0.6rem',
                   background: '#4f46e5',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
                   cursor: actionLoading ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
+                  fontSize: '0.75rem',
                   fontWeight: '500',
                   opacity: actionLoading ? 0.6 : 1,
                   transition: 'background-color 0.15s ease'
@@ -294,13 +322,13 @@ const TableRow = ({
                 onClick={() => onRemove(question.id)}
                 disabled={actionLoading}
                 style={{
-                  padding: '0.375rem 0.75rem',
+                  padding: '0.3rem 0.6rem',
                   background: '#dc3545',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
                   cursor: actionLoading ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
+                  fontSize: '0.75rem',
                   fontWeight: '500',
                   opacity: actionLoading ? 0.6 : 1,
                   transition: 'background-color 0.15s ease'
@@ -384,16 +412,40 @@ export default function QuestionTable({
   questions,
   userInfoCache,
   user,
+  onDelete,
+
   showQID = true,
   showCourseType = true,
   showEditButton = false,
   showRemoveButton = false,
-  onDelete,
   onEdit,
   onRemove,
   actionLoading = false,
   isDraggable = false,
+
+  selectable = false,
+  selectedQuestionIds = [],
+  onToggleQuestion = () => { },
+  showActions = true
 }) {
+  const [previewQuestion, setPreviewQuestion] = useState(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
+
+  const handlePreview = async (question) => {
+    setPreviewQuestion(question);
+    setPreviewImageUrl(null);
+
+    if (!question?.image_url) return;
+
+    const signedUrl = await getImageSignedUrl(question.image_url);
+    setPreviewImageUrl(signedUrl || null);
+  };
+
+  const closePreview = () => {
+    setPreviewQuestion(null);
+    setPreviewImageUrl(null);
+  };
+
   if (questions.length === 0) {
     return (
       <div style={{
@@ -408,7 +460,8 @@ export default function QuestionTable({
     );
   }
 
-  const hasDeletableQuestions = user &&
+  // Check if any question can be deleted (for showing Actions column)
+  const hasDeletableQuestions = showActions && user &&
     questions.some(q => q.user_id === user.id);
 
   const hasActions = showEditButton || showRemoveButton || hasDeletableQuestions;
@@ -446,6 +499,22 @@ export default function QuestionTable({
                 }}>
                 </th>
               )}
+
+              {selectable && (
+                <th style={{
+                  padding: '0.75rem 1rem',
+                  textAlign: 'center',
+                  fontWeight: '600',
+                  color: '#374151',
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em'
+                }}>
+                  Select
+                </th>
+              )}
+
+
               <th style={{
                 padding: '0.75rem 1rem',
                 textAlign: 'left',
@@ -555,7 +624,7 @@ export default function QuestionTable({
           </thead>
           <tbody>
             {questions.map((question, index) => {
-              const canDelete = user && question.user_id === user.id;
+              const canDelete = showActions && user && question.user_id === user.id;
               const userInfo = userInfoCache[question.user_id];
               return (
                 <TableRow
@@ -574,12 +643,69 @@ export default function QuestionTable({
                   actionLoading={actionLoading}
                   hasActions={hasActions}
                   isDraggable={isDraggable}
+                  onPreview={handlePreview}
+
+                  selectable={selectable}
+                  selected={selectedQuestionIds.includes(question.id)}
+                  onToggle={onToggleQuestion}
                 />
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {previewQuestion && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 1200,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            overflowY: 'auto',
+            padding: '1rem'
+          }}
+          onClick={closePreview}
+        >
+          <div
+            style={{
+              width: 'min(1000px, 100%)',
+              background: 'transparent'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={closePreview}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <QuestionCard
+              question={previewQuestion}
+              userInfo={userInfoCache[previewQuestion.user_id]}
+              imageUrl={previewImageUrl}
+              showDeleteButton={false}
+              showEditButton={false}
+              showRemoveButton={false}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

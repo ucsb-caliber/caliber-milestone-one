@@ -9,11 +9,13 @@ import { useAuth } from '../AuthContext';
 import QuestionCard from '../components/QuestionCard';
 import CollapsibleSection from '../components/CollapsibleSection';
 import QuestionTable from '../components/QuestionTable';
+import QuestionSearchBar from '../components/QuestionSearchBar';
+import { filterQuestionsBySearch } from '../utils/questionSearch';
 
 // User Icon Component
 const UserIcon = ({ userInfo, size = 40 }) => {
   if (!userInfo) return null;
-  
+
   const getInitials = () => {
     if (userInfo.initials) return userInfo.initials;
     if (userInfo.first_name && userInfo.last_name) {
@@ -24,17 +26,17 @@ const UserIcon = ({ userInfo, size = 40 }) => {
     }
     return 'U';
   };
-  
+
   const getName = () => {
     if (userInfo.first_name && userInfo.last_name) {
       return `${userInfo.first_name} ${userInfo.last_name}`;
     }
     return userInfo.email || userInfo.user_id;
   };
-  
+
   const shape = userInfo.icon_shape || 'circle';
   const color = userInfo.icon_color || '#4f46e5';
-  
+
   const getShapeStyles = () => {
     if (shape === 'circle') {
       return { borderRadius: '50%' };
@@ -42,13 +44,13 @@ const UserIcon = ({ userInfo, size = 40 }) => {
       return { borderRadius: '4px' };
     } else if (shape === 'hex') {
       // True hexagon using clip-path
-      return { 
+      return {
         clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
       };
     }
     return { borderRadius: '50%' };
   };
-  
+
   return (
     <div
       style={{
@@ -92,8 +94,14 @@ export default function QuestionBank() {
   const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
   const [userInfoCache, setUserInfoCache] = useState({}); // Cache for user info
   const [isTeacher, setIsTeacher] = useState(false); // Track if current user is a teacher
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFilter, setSearchFilter] = useState('all'); // 'all', 'keywords', 'tags', 'course', 'text'
 
   const itemsPerPage = 6;
+
+  // Filtered questions
+  const filteredMyQuestions = filterQuestionsBySearch(myQuestions, searchQuery, searchFilter);
+  const filteredAllQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
 
   // Fetch current user info to check if they are a teacher
   useEffect(() => {
@@ -128,17 +136,17 @@ export default function QuestionBank() {
       const verifiedAllQuestions = (allData.questions || [])
         .filter(q => q.is_verified === true)
         .sort(sortByNewest);
-      
+
       setMyQuestions(verifiedMyQuestions);
       setAllQuestions(verifiedAllQuestions);
-      
+
       // Generate signed URLs for all questions with images
       const allQuestionsWithImages = [...verifiedMyQuestions, ...verifiedAllQuestions].filter(q => q.image_url);
       const urlPromises = allQuestionsWithImages.map(async (q) => {
         const signedUrl = await getImageSignedUrl(q.image_url);
         return { id: q.id, url: signedUrl };
       });
-      
+
       const urls = await Promise.all(urlPromises);
       const urlMap = {};
       urls.forEach(({ id, url }) => {
@@ -147,7 +155,7 @@ export default function QuestionBank() {
         }
       });
       setImageUrls(urlMap);
-      
+
       // Fetch user info for all questions
       const uniqueUserIds = [...new Set([...verifiedMyQuestions, ...verifiedAllQuestions].map(q => q.user_id))];
       const userPromises = uniqueUserIds.map(async (userId) => {
@@ -159,7 +167,7 @@ export default function QuestionBank() {
           return { userId, userInfo: null };
         }
       });
-      
+
       const users = await Promise.all(userPromises);
       const userMap = {};
       users.forEach(({ userId, userInfo }) => {
@@ -196,6 +204,7 @@ export default function QuestionBank() {
         questions={questions}
         userInfoCache={userInfoCache}
         user={user}
+        showUniversity={true}
         onDelete={(id) => setDeleteConfirm(id)}
       />
     );
@@ -217,7 +226,7 @@ export default function QuestionBank() {
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h2 style={{ margin: 0 }}>Question Bank</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {/* View Toggle */}
@@ -304,6 +313,17 @@ export default function QuestionBank() {
         </div>
       </div>
 
+      <QuestionSearchBar
+        searchQuery={searchQuery}
+        searchFilter={searchFilter}
+        onSearchQueryChange={setSearchQuery}
+        onSearchFilterChange={setSearchFilter}
+        onClearSearch={() => setSearchQuery('')}
+        showResultCount={Boolean(searchQuery)}
+        resultCount={filteredMyQuestions.length + filteredAllQuestions.length}
+        containerStyle={{ marginBottom: '2rem' }}
+      />
+
       {loading && <p>Loading questions...</p>}
 
       {error && (
@@ -379,8 +399,8 @@ export default function QuestionBank() {
           {/* My Questions Section */}
           <div style={{ marginBottom: '4rem' }}>
             <CollapsibleSection
-              title="My Questions"
-              questions={myQuestions}
+              title={searchQuery ? `My Questions (${filteredMyQuestions.length} of ${myQuestions.length})` : "My Questions"}
+              questions={filteredMyQuestions}
               isCollapsed={myQuestionsCollapsed}
               onToggle={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
               borderColor="#007bff"
@@ -398,21 +418,27 @@ export default function QuestionBank() {
                   textAlign: 'center',
                   color: '#666'
                 }}>
-                  <p>You haven't created any questions yet.</p>
-                  <button
-                    onClick={() => window.location.hash = 'create-question'}
-                    style={{
-                      marginTop: '1rem',
-                      padding: '0.5rem 1rem',
-                      background: '#28a745',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Create Your First Question
-                  </button>
+                  {searchQuery ? (
+                    <p>No questions match your search in "My Questions".</p>
+                  ) : (
+                    <>
+                      <p>You haven't created any questions yet.</p>
+                      <button
+                        onClick={() => window.location.hash = 'create-question'}
+                        style={{
+                          marginTop: '1rem',
+                          padding: '0.5rem 1rem',
+                          background: '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Create Your First Question
+                      </button>
+                    </>
+                  )}
                 </div>
               }
             />
@@ -421,8 +447,8 @@ export default function QuestionBank() {
           {/* All Questions Section */}
           <div>
             <CollapsibleSection
-              title="All Questions"
-              questions={allQuestions}
+              title={searchQuery ? `All Questions (${filteredAllQuestions.length} of ${allQuestions.length})` : "All Questions"}
+              questions={filteredAllQuestions}
               isCollapsed={allQuestionsCollapsed}
               onToggle={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
               borderColor="#28a745"
@@ -440,7 +466,11 @@ export default function QuestionBank() {
                   textAlign: 'center',
                   color: '#666'
                 }}>
-                  <p>No questions found in the system.</p>
+                  {searchQuery ? (
+                    <p>No questions match your search in "All Questions".</p>
+                  ) : (
+                    <p>No questions found in the system.</p>
+                  )}
                 </div>
               }
             />

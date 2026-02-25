@@ -12,7 +12,7 @@ const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 // User Icon Component
 const UserIcon = ({ userInfo, size = 40 }) => {
   if (!userInfo) return null;
-  
+
   const getInitials = () => {
     if (userInfo.initials) return userInfo.initials;
     if (userInfo.first_name && userInfo.last_name) {
@@ -23,30 +23,30 @@ const UserIcon = ({ userInfo, size = 40 }) => {
     }
     return 'U';
   };
-  
+
   const getName = () => {
     if (userInfo.first_name && userInfo.last_name) {
       return `${userInfo.first_name} ${userInfo.last_name}`;
     }
     return userInfo.email || userInfo.user_id;
   };
-  
+
   const shape = userInfo.icon_shape || 'circle';
   const color = userInfo.icon_color || '#4f46e5';
-  
+
   const getShapeStyles = () => {
     if (shape === 'circle') {
       return { borderRadius: '50%' };
     } else if (shape === 'square') {
       return { borderRadius: '4px' };
     } else if (shape === 'hex') {
-      return { 
+      return {
         clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
       };
     }
     return { borderRadius: '50%' };
   };
-  
+
   return (
     <div
       style={{
@@ -89,12 +89,12 @@ const UserIcon = ({ userInfo, size = 40 }) => {
  * - questionNumber: Optional question number to display (e.g., "Q1")
  * - editButtonLabel: Custom label for edit button (default: "Edit")
  */
-export default function QuestionCard({ 
-  question, 
+export default function QuestionCard({
+  question,
   userInfo,
   imageUrl,
   dragHandleProps,
-  showDeleteButton = false, 
+  showDeleteButton = false,
   showEditButton = false,
   showRemoveButton = false,
   actionLoading = false,
@@ -117,10 +117,34 @@ export default function QuestionCard({
     answerChoices = [];
   }
 
+  const formatChoiceForDisplay = (choice) => {
+    if (choice === null || choice === undefined) return '';
+    if (typeof choice === 'string' || typeof choice === 'number' || typeof choice === 'boolean') {
+      return String(choice);
+    }
+    if (Array.isArray(choice)) {
+      return choice.map((item) => formatChoiceForDisplay(item)).filter(Boolean).join(', ');
+    }
+    if (typeof choice === 'object') {
+      if (choice.part_label || choice.rubric_levels) {
+        const part = choice.part_label ? `Part ${choice.part_label}` : 'Part';
+        const levelsCount = Array.isArray(choice.rubric_levels) ? choice.rubric_levels.length : 0;
+        return `${part} rubric (${levelsCount} levels)`;
+      }
+      try {
+        return JSON.stringify(choice);
+      } catch (e) {
+        return '[Object]';
+      }
+    }
+    return String(choice);
+  };
+
   const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
   const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
 
-  const handleEdit = () => {
+  const handleEdit = (e) => {
+    if (e) e.stopPropagation();
     if (onEdit) {
       onEdit(question);
     } else {
@@ -181,11 +205,11 @@ export default function QuestionCard({
 
       {/* Question number badge if provided */}
       {questionNumber && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '1rem', 
+        <div style={{
+          position: 'absolute',
+          top: '1rem',
           left: '1rem',
-          fontSize: '0.75rem', 
+          fontSize: '0.75rem',
           fontWeight: '600',
           color: '#6b7280',
           background: '#e5e7eb',
@@ -197,10 +221,10 @@ export default function QuestionCard({
       )}
 
       {/* Header with school, course, and metadata */}
-      <div style={{ 
-        marginBottom: compact ? '0.75rem' : '1rem', 
-        paddingBottom: '0.75rem', 
-        borderBottom: '1px solid #eee', 
+      <div style={{
+        marginBottom: compact ? '0.75rem' : '1rem',
+        paddingBottom: '0.75rem',
+        borderBottom: '1px solid #eee',
         paddingRight: showUserIcon ? '50px' : '0',
         paddingTop: questionNumber ? '1.5rem' : '0'
       }}>
@@ -266,7 +290,7 @@ export default function QuestionCard({
             </span>
           )}
         </div>
-        
+
         {question.title && (
           <div style={{ marginBottom: '0.9rem', marginTop: '0.35rem' }}>
             <h3 style={{
@@ -335,7 +359,7 @@ export default function QuestionCard({
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
                 components={{
-                  code({node, inline, className, children, ...props}) {
+                  code({ node, inline, className, children, ...props }) {
                     return inline ? (
                       <code style={{
                         background: '#e9ecef',
@@ -364,7 +388,7 @@ export default function QuestionCard({
                       </pre>
                     );
                   },
-                  p({children}) {
+                  p({ children }) {
                     return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
                   }
                 }}
@@ -382,59 +406,174 @@ export default function QuestionCard({
       {/* Image if present */}
       {(question.image_url && imageUrl) && (
         <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-          <img 
-            src={imageUrl} 
-            alt="Question illustration" 
-            style={{ 
-              maxWidth: '100%', 
+          <img
+            src={imageUrl}
+            alt="Question illustration"
+            style={{
+              maxWidth: '100%',
               height: 'auto',
               maxHeight: compact ? '200px' : '300px',
               border: '1px solid #ddd',
               borderRadius: '4px',
               objectFit: 'contain'
-            }} 
+            }}
           />
         </div>
       )}
 
-      {/* Answer choices */}
-      {answerChoices.length > 0 && (
-        <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-          <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
-            Answer Choices:
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {answerChoices.map((choice, index) => {
-              const isCorrect = choice === question.correct_answer;
-              return (
-                <div
-                  key={index}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: '4px',
-                    border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
-                    background: isCorrect ? '#d4edda' : '#f8f9fa',
-                    fontSize: '0.875rem',
-                    position: 'relative'
-                  }}
-                >
-                  {choice}
-                  {isCorrect && (
-                    <span style={{
-                      marginLeft: '0.5rem',
-                      color: '#28a745',
-                      fontWeight: 'bold',
-                      fontSize: '0.75rem'
-                    }}>
-                      ✓ Correct
-                    </span>
-                  )}
+      {/* Answer section - varies by question type */}
+      {(() => {
+        const questionType = question.question_type?.toLowerCase();
+        const isMCQ = questionType === 'mcq' || questionType === 'true_false';
+        const isFR = questionType === 'fr';
+        const isShortAnswer = questionType === 'short_answer';
+
+        // For MCQ/True-False: show answer choices
+        if (isMCQ && answerChoices.length > 0) {
+          return (
+            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
+                Answer Choices:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {answerChoices.map((choice, index) => {
+                  const choiceDisplay = formatChoiceForDisplay(choice);
+                  const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '4px',
+                        border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
+                        background: isCorrect ? '#d4edda' : '#f8f9fa',
+                        fontSize: '0.875rem',
+                        position: 'relative'
+                      }}
+                    >
+                      {choiceDisplay}
+                      {isCorrect && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          color: '#28a745',
+                          fontWeight: 'bold',
+                          fontSize: '0.75rem'
+                        }}>
+                          ✓ Correct
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        // For Free Response and Short Answer: show rubric parts
+        if ((isFR || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object') {
+          const getPartMaxPoints = (p) => {
+            const levels = p.rubric_levels || [];
+            if (levels.length > 0) return Math.max(...levels.map(l => parseInt(l.points) || 0));
+            return parseInt(p.points) || 0;
+          };
+          const totalPoints = answerChoices.reduce((sum, p) => sum + getPartMaxPoints(p), 0);
+          return (
+            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 'bold', color: '#333' }}>
+                  Parts & Rubric ({answerChoices.length} parts):
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: '600' }}>
+                  {totalPoints} pts total
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {answerChoices.map((part, index) => {
+                  const levels = part.rubric_levels || [];
+                  const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(part.points) || 0);
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '0.75rem',
+                        borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                        background: '#f7fafc',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                        <span style={{ fontWeight: '600', color: '#4a5568' }}>
+                          {part.part_label || `Part ${index + 1}`}
+                        </span>
+                        <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>
+                          {maxPts} pts max
+                        </span>
+                      </div>
+                      {levels.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          {levels.map((l, i) => (
+                            <div key={i} style={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.3 }}>
+                              <span style={{ fontWeight: '600', color: '#0369a1' }}>+{l.points || 0}:</span> {l.criteria || '—'}
+                            </div>
+                          ))}
+                        </div>
+                      ) : part.rubric_text && (
+                        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.8rem', lineHeight: 1.4 }}>{part.rubric_text}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        // Fallback for questions without specific type or old MCQ data
+        if (answerChoices.length > 0 && typeof answerChoices[0] === 'string') {
+          return (
+            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
+                Answer Choices:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {answerChoices.map((choice, index) => {
+                  const choiceDisplay = formatChoiceForDisplay(choice);
+                  const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '4px',
+                        border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
+                        background: isCorrect ? '#d4edda' : '#f8f9fa',
+                        fontSize: '0.875rem',
+                        position: 'relative'
+                      }}
+                    >
+                      {choiceDisplay}
+                      {isCorrect && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          color: '#28a745',
+                          fontWeight: 'bold',
+                          fontSize: '0.75rem'
+                        }}>
+                          ✓ Correct
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        return null;
+      })()}
 
       {/* Action buttons */}
       {(showDeleteButton || showEditButton || showRemoveButton) && (
@@ -466,7 +605,10 @@ export default function QuestionCard({
           )}
           {showRemoveButton && onRemove && (
               <button
-                onClick={() => onRemove(question.id)}
+                onClick={(e) => {
+                e.stopPropagation();
+                onRemove(question.id);
+              }}
                 disabled={actionLoading}
                 style={{
                   padding: '0.375rem 0.75rem',
@@ -488,7 +630,10 @@ export default function QuestionCard({
           )}
           {showDeleteButton && onDelete && (
             <button
-              onClick={() => onDelete(question.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(question.id);
+              }}
               style={{
                 padding: '0.5rem 1rem',
                 background: '#dc3545',
