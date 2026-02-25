@@ -387,45 +387,159 @@ export default function QuestionCard({
         </div>
       )}
 
-      {/* Answer choices */}
-      {answerChoices.length > 0 && (
-        <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-          <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
-            Answer Choices:
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {answerChoices.map((choice, index) => {
-              const choiceDisplay = formatChoiceForDisplay(choice);
-              const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
-              return (
-                <div
-                  key={index}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: '4px',
-                    border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
-                    background: isCorrect ? '#d4edda' : '#f8f9fa',
-                    fontSize: '0.875rem',
-                    position: 'relative'
-                  }}
-                >
-                  {choiceDisplay}
-                  {isCorrect && (
-                    <span style={{
-                      marginLeft: '0.5rem',
-                      color: '#28a745',
-                      fontWeight: 'bold',
-                      fontSize: '0.75rem'
-                    }}>
-                      ✓ Correct
-                    </span>
-                  )}
+      {/* Answer section - varies by question type */}
+      {(() => {
+        const questionType = question.question_type?.toLowerCase();
+        const isMCQ = questionType === 'mcq' || questionType === 'true_false';
+        const isFR = questionType === 'fr';
+        const isShortAnswer = questionType === 'short_answer';
+
+        // For MCQ/True-False: show answer choices
+        if (isMCQ && answerChoices.length > 0) {
+          return (
+            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
+                Answer Choices:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {answerChoices.map((choice, index) => {
+                  const choiceDisplay = formatChoiceForDisplay(choice);
+                  const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '4px',
+                        border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
+                        background: isCorrect ? '#d4edda' : '#f8f9fa',
+                        fontSize: '0.875rem',
+                        position: 'relative'
+                      }}
+                    >
+                      {choiceDisplay}
+                      {isCorrect && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          color: '#28a745',
+                          fontWeight: 'bold',
+                          fontSize: '0.75rem'
+                        }}>
+                          ✓ Correct
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        // For Free Response and Short Answer: show rubric parts
+        if ((isFR || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object') {
+          const getPartMaxPoints = (p) => {
+            const levels = p.rubric_levels || [];
+            if (levels.length > 0) return Math.max(...levels.map(l => parseInt(l.points) || 0));
+            return parseInt(p.points) || 0;
+          };
+          const totalPoints = answerChoices.reduce((sum, p) => sum + getPartMaxPoints(p), 0);
+          return (
+            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 'bold', color: '#333' }}>
+                  Parts & Rubric ({answerChoices.length} parts):
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: '600' }}>
+                  {totalPoints} pts total
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {answerChoices.map((part, index) => {
+                  const levels = part.rubric_levels || [];
+                  const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(part.points) || 0);
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '0.75rem',
+                        borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                        background: '#f7fafc',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                        <span style={{ fontWeight: '600', color: '#4a5568' }}>
+                          {part.part_label || `Part ${index + 1}`}
+                        </span>
+                        <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>
+                          {maxPts} pts max
+                        </span>
+                      </div>
+                      {levels.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          {levels.map((l, i) => (
+                            <div key={i} style={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.3 }}>
+                              <span style={{ fontWeight: '600', color: '#0369a1' }}>+{l.points || 0}:</span> {l.criteria || '—'}
+                            </div>
+                          ))}
+                        </div>
+                      ) : part.rubric_text && (
+                        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.8rem', lineHeight: 1.4 }}>{part.rubric_text}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        // Fallback for questions without specific type or old MCQ data
+        if (answerChoices.length > 0 && typeof answerChoices[0] === 'string') {
+          return (
+            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
+                Answer Choices:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {answerChoices.map((choice, index) => {
+                  const choiceDisplay = formatChoiceForDisplay(choice);
+                  const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '4px',
+                        border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
+                        background: isCorrect ? '#d4edda' : '#f8f9fa',
+                        fontSize: '0.875rem',
+                        position: 'relative'
+                      }}
+                    >
+                      {choiceDisplay}
+                      {isCorrect && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          color: '#28a745',
+                          fontWeight: 'bold',
+                          fontSize: '0.75rem'
+                        }}>
+                          ✓ Correct
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        return null;
+      })()}
 
       {/* Action buttons */}
       {(showDeleteButton || showEditButton || showRemoveButton) && (
