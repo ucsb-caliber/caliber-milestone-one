@@ -56,6 +56,19 @@ class CourseStudent(SQLModel, table=True):
     enrolled_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class CoursePin(SQLModel, table=True):
+    """Per-user pin state for course cards."""
+    __tablename__ = "course_pin"
+    __table_args__ = (
+        UniqueConstraint("course_id", "user_id", name="uq_course_pin_course_user"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    course_id: int = Field(foreign_key="course.id", index=True)
+    user_id: str = Field(foreign_key="user.user_id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Assignment(SQLModel, table=True):
     """Assignment model for course assignments."""
     id: Optional[int] = Field(default=None, primary_key=True)

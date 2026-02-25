@@ -311,6 +311,20 @@ class CourseJoinRequest(BaseModel):
     course_code: str = Field(..., min_length=3)
 
 
+class CoursePinUpdate(BaseModel):
+    """Set or clear pin state for a course for the current user."""
+    pinned: bool
+
+
+class CoursePinResponse(BaseModel):
+    course_id: int
+    pinned: bool
+
+
+class CoursePinsResponse(BaseModel):
+    pinned_course_ids: List[int]
+
+
 class AdminCourseOverview(BaseModel):
     """Compact course payload optimized for admin all-courses page."""
     id: int

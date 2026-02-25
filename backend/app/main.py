@@ -14,6 +14,7 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
                      UserListResponse,
                      CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, CourseJoinRequest,
+                     CoursePinUpdate, CoursePinResponse, CoursePinsResponse,
                      AdminCourseOverview, AdminCourseOverviewResponse,
                      AssignmentResponse, AssignmentCreate, AssignmentUpdate,
                      AssignmentProgressResponse, AssignmentProgressUpdate)
@@ -21,7 +22,7 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   get_questions_by_ids, update_question, delete_question, get_user_by_user_id, update_user_roles, 
                   get_or_create_user, update_user_profile, update_user_preferences, create_course, get_course, 
                   get_courses, get_courses_count, update_course, delete_course, get_course_students, get_course_by_code,
-                  enroll_student_in_course,
+                  enroll_student_in_course, get_user_pinned_course_ids, set_user_course_pin,
                   get_all_courses, get_all_courses_count,
                   get_course_assignments, create_assignment, get_assignment, get_assignments, update_assignment, 
                   delete_assignment, get_assignment_progress, upsert_assignment_progress,
@@ -910,6 +911,16 @@ def list_all_courses_admin_overview(
     return AdminCourseOverviewResponse(courses=courses, total=total)
 
 
+@app.get("/api/courses/pins", response_model=CoursePinsResponse)
+def list_course_pins(
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Get pinned course IDs for the authenticated user."""
+    pinned_course_ids = get_user_pinned_course_ids(session, user_id)
+    return CoursePinsResponse(pinned_course_ids=pinned_course_ids)
+
+
 @app.get("/api/courses/{course_id}", response_model=CourseResponse)
 def get_course_by_id(
     course_id: int,
@@ -1049,6 +1060,34 @@ def join_course_by_code(
         created_at=course.created_at,
         updated_at=course.updated_at
     )
+
+
+@app.put("/api/courses/{course_id}/pin", response_model=CoursePinResponse)
+def update_course_pin(
+    course_id: int,
+    payload: CoursePinUpdate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Set or clear pin state for a course visible to the authenticated user."""
+    course = get_course(session, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    user = get_user_by_user_id(session, user_id)
+    is_instructor = course.instructor_id == user_id
+    is_admin = bool(user and user.admin)
+    student_ids = get_course_students(session, course_id)
+    is_enrolled_student = user_id in student_ids
+
+    if not (is_instructor or is_enrolled_student or is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this course",
+        )
+
+    pinned = set_user_course_pin(session, user_id=user_id, course_id=course_id, pinned=payload.pinned)
+    return CoursePinResponse(course_id=course_id, pinned=pinned)
 
 
 # Assignment endpoints
