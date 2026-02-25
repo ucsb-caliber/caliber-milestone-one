@@ -70,7 +70,7 @@ export default function EditQuestion() {
           // Check if it's rubric parts (array of objects) or answer choices (array of strings)
           if (parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0].part_label !== undefined) {
             // Migrate old format (points, rubric_text) to new format (rubric_levels)
-            rubricParts = parsed.map(p => {
+            let parts = parsed.map(p => {
               if (p.rubric_levels && p.rubric_levels.length > 0) {
                 return p;
               }
@@ -79,6 +79,12 @@ export default function EditQuestion() {
                 rubric_levels: [{ points: p.points ?? 10, criteria: p.rubric_text || '' }]
               };
             });
+            // Short answer: only 1 part allowed
+            if (question.question_type === 'short_answer' && parts.length > 1) {
+              rubricParts = [parts[0]];
+            } else {
+              rubricParts = parts;
+            }
             answerChoices = ['', '', '', ''];
           } else if (question.question_type === 'short_answer' && question.correct_answer && question.correct_answer !== 'rubric') {
             rubricParts = [{
@@ -154,6 +160,11 @@ export default function EditQuestion() {
       if (name === 'question_type' && value === 'true_false') {
         next.answer_choices = ['True', 'False'];
         next.correct_answer = '';
+      }
+      // When switching to Short Answer, collapse to single part (no multiple parts for short answer)
+      if (name === 'question_type' && value === 'short_answer') {
+        const firstPart = next.rubric_parts?.[0] || { part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] };
+        next.rubric_parts = [firstPart];
       }
       return next;
     });
@@ -914,6 +925,7 @@ export default function EditQuestion() {
         {/* Parts & Rubric - for Free Response and Short Answer */}
         {needsRubric() && (
           <div>
+            {isFreeResponse() && (
             <div style={{ 
               padding: '0.75rem 1rem', 
               background: '#eff6ff', 
@@ -928,9 +940,17 @@ export default function EditQuestion() {
                 <strong>Parts</strong> = Sub-questions (Part A, Part B). <strong>Rubric</strong> = Grading levels for each part (+6, +3, +0).
               </div>
             </div>
+            )}
+
+            {isShortAnswer() && (
+            <div style={{ padding: '0.75rem 1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#166534' }}>Short Answer — Grading Rubric</div>
+              <div style={{ fontSize: '0.8rem', color: '#166534' }}>One response. Define grading levels (+6, +3, +0).</div>
+            </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <label style={{ fontWeight: 'bold' }}>Question Parts</label>
+              <label style={{ fontWeight: 'bold' }}>{isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}</label>
               <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
                 Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points
               </span>
@@ -947,14 +967,18 @@ export default function EditQuestion() {
                   marginBottom: '1rem' 
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <input
-                      type="text"
-                      value={part.part_label}
-                      onChange={(e) => updatePartLabel(partIndex, e.target.value)}
-                      style={{ width: '120px', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', fontWeight: '600' }}
-                      placeholder="Part A"
-                    />
-                    {formData.rubric_parts.length > 1 && (
+                    {isFreeResponse() ? (
+                      <input
+                        type="text"
+                        value={part.part_label}
+                        onChange={(e) => updatePartLabel(partIndex, e.target.value)}
+                        style={{ width: '120px', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', fontWeight: '600' }}
+                        placeholder="Part A"
+                      />
+                    ) : (
+                      <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
+                    )}
+                    {isFreeResponse() && formData.rubric_parts.length > 1 && (
                       <button type="button" onClick={() => removePart(partIndex)} style={{ padding: '0.5rem 0.75rem', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.875rem' }}>
                         Remove Part
                       </button>
@@ -962,7 +986,7 @@ export default function EditQuestion() {
                   </div>
                   <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
                     <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem' }}>
-                      Rubric for {part.part_label || `Part ${partIndex + 1}`}:
+                      {isFreeResponse() ? `Rubric for ${part.part_label || `Part ${partIndex + 1}`}:` : 'Define point values and criteria:'}
                     </div>
                     {levels.map((level, levelIndex) => (
                       <div key={levelIndex} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -983,9 +1007,11 @@ export default function EditQuestion() {
               );
             })}
             
+            {isFreeResponse() && (
             <button type="button" onClick={addPart} style={{ padding: '0.5rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.875rem', marginTop: '0.5rem' }}>
               + Add Another Part
             </button>
+            )}
           </div>
         )}
 

@@ -157,6 +157,11 @@ export default function CreateQuestion() {
         next.answer_choices = ['True', 'False'];
         next.correct_answer = '';
       }
+      // When switching to Short Answer, collapse to single part (no multiple parts for short answer)
+      if (name === 'question_type' && value === 'short_answer') {
+        const firstPart = next.rubric_parts?.[0] || { part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] };
+        next.rubric_parts = [firstPart];
+      }
       return next;
     });
   };
@@ -627,6 +632,7 @@ export default function CreateQuestion() {
             {/* Parts & Rubric Builder - for both Free Response and Short Answer */}
             {needsRubric() && (
               <div style={styles.card}>
+                {isFreeResponse() && (
                 <div style={{ 
                   padding: '12px 16px', 
                   background: '#eff6ff', 
@@ -642,9 +648,29 @@ export default function CreateQuestion() {
                     <li><strong>Rubric</strong> = Grading criteria for each part. Define how many points for each level (e.g., +6 full credit, +3 partial, +0 no credit).</li>
                   </ul>
                 </div>
+                )}
+
+                {isShortAnswer() && (
+                <div style={{ 
+                  padding: '12px 16px', 
+                  background: '#f0fdf4', 
+                  border: '1px solid #bbf7d0', 
+                  borderRadius: '8px', 
+                  marginBottom: '20px' 
+                }}>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#166534', marginBottom: '4px' }}>
+                    Short Answer — Grading Rubric
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#166534', lineHeight: 1.5 }}>
+                    Short answer has one response. Define grading levels (e.g., +6 full credit, +3 partial, +0 no credit).
+                  </p>
+                </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <label style={{ ...styles.label, marginBottom: 0 }}>Question Parts</label>
+                  <label style={{ ...styles.label, marginBottom: 0 }}>
+                    {isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}
+                  </label>
                   <span style={{ fontSize: '14px', color: '#6b7280' }}>
                     Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points
                   </span>
@@ -660,22 +686,26 @@ export default function CreateQuestion() {
                       padding: '16px', 
                       marginBottom: '16px' 
                     }}>
-                      {/* Part header */}
+                      {/* Part header - only for FR (Short Answer has no parts) */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <input
-                          type="text"
-                          value={part.part_label}
-                          onChange={(e) => updatePartLabel(partIndex, e.target.value)}
-                          style={{ 
-                            ...styles.input, 
-                            width: '140px', 
-                            fontWeight: '600',
-                            padding: '8px 12px',
-                            background: 'white'
-                          }}
-                          placeholder="Part A"
-                        />
-                        {formData.rubric_parts.length > 1 && (
+                        {isFreeResponse() ? (
+                          <input
+                            type="text"
+                            value={part.part_label}
+                            onChange={(e) => updatePartLabel(partIndex, e.target.value)}
+                            style={{ 
+                              ...styles.input, 
+                              width: '140px', 
+                              fontWeight: '600',
+                              padding: '8px 12px',
+                              background: 'white'
+                            }}
+                            placeholder="Part A"
+                          />
+                        ) : (
+                          <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
+                        )}
+                        {isFreeResponse() && formData.rubric_parts.length > 1 && (
                           <button 
                             type="button" 
                             style={{ 
@@ -698,7 +728,7 @@ export default function CreateQuestion() {
                       {/* Rubric for this part */}
                       <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
                         <div style={{ fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '10px' }}>
-                          Rubric for {part.part_label || `Part ${partIndex + 1}`} — grading levels:
+                          {isFreeResponse() ? `Rubric for ${part.part_label || `Part ${partIndex + 1}`} — grading levels:` : 'Define point values and criteria:'}
                         </div>
                         {levels.map((level, levelIndex) => (
                           <div key={levelIndex} style={{ 
@@ -773,6 +803,7 @@ export default function CreateQuestion() {
                   );
                 })}
                 
+                {isFreeResponse() && (
                 <button 
                   type="button" 
                   style={{ 
@@ -789,6 +820,7 @@ export default function CreateQuestion() {
                 >
                   <span style={{ fontSize: '18px' }}>+</span> Add Another Part
                 </button>
+                )}
               </div>
             )}
 
