@@ -878,6 +878,72 @@ export async function joinCourseByCode(courseCode) {
   }
 }
 
+/**
+ * Get pinned course IDs for current user
+ */
+export async function getPinnedCourseIds() {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE}/api/courses/pins`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      let message = 'Failed to fetch pinned courses';
+      try {
+        const error = await response.json();
+        message = error.detail || message;
+      } catch {
+        // Non-JSON backend error; keep default message.
+      }
+      throw new Error(message);
+    }
+
+    const data = await response.json();
+    return data.pinned_course_ids || [];
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Set pin status for a course
+ */
+export async function setCoursePinned(courseId, pinned) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/courses/${courseId}/pin`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ pinned: Boolean(pinned) }),
+    });
+
+    if (!response.ok) {
+      let message = 'Failed to update course pin';
+      try {
+        const error = await response.json();
+        message = error.detail || message;
+      } catch {
+        // Non-JSON backend error; keep default message.
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
 // ============= Assignment API Functions =============
 
 /**

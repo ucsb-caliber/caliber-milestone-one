@@ -111,6 +111,29 @@ export default function QuestionCard({
     answerChoices = [];
   }
 
+  const formatChoiceForDisplay = (choice) => {
+    if (choice === null || choice === undefined) return '';
+    if (typeof choice === 'string' || typeof choice === 'number' || typeof choice === 'boolean') {
+      return String(choice);
+    }
+    if (Array.isArray(choice)) {
+      return choice.map((item) => formatChoiceForDisplay(item)).filter(Boolean).join(', ');
+    }
+    if (typeof choice === 'object') {
+      if (choice.part_label || choice.rubric_levels) {
+        const part = choice.part_label ? `Part ${choice.part_label}` : 'Part';
+        const levelsCount = Array.isArray(choice.rubric_levels) ? choice.rubric_levels.length : 0;
+        return `${part} rubric (${levelsCount} levels)`;
+      }
+      try {
+        return JSON.stringify(choice);
+      } catch (e) {
+        return '[Object]';
+      }
+    }
+    return String(choice);
+  };
+
   const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
   const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
 
@@ -380,7 +403,8 @@ export default function QuestionCard({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {answerChoices.map((choice, index) => {
-                  const isCorrect = choice === question.correct_answer;
+                  const choiceDisplay = formatChoiceForDisplay(choice);
+                  const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
                   return (
                     <div
                       key={index}
@@ -393,7 +417,7 @@ export default function QuestionCard({
                         position: 'relative'
                       }}
                     >
-                      {choice}
+                      {choiceDisplay}
                       {isCorrect && (
                         <span style={{
                           marginLeft: '0.5rem',
@@ -481,7 +505,8 @@ export default function QuestionCard({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {answerChoices.map((choice, index) => {
-                  const isCorrect = choice === question.correct_answer;
+                  const choiceDisplay = formatChoiceForDisplay(choice);
+                  const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
                   return (
                     <div
                       key={index}
@@ -494,7 +519,7 @@ export default function QuestionCard({
                         position: 'relative'
                       }}
                     >
-                      {choice}
+                      {choiceDisplay}
                       {isCorrect && (
                         <span style={{
                           marginLeft: '0.5rem',

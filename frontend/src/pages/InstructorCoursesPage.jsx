@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getCourses, createCourse, updateCourse, deleteCourse, getAllUsers, getUserInfo } from '../api';
+import { getCourses, createCourse, updateCourse, deleteCourse, getAllUsers, getUserInfo, getPinnedCourseIds, setCoursePinned } from '../api';
 import CourseCard from '../components/CourseCard';
 import { useAuth } from '../AuthContext';
 
@@ -36,19 +36,7 @@ export default function InstructorCoursesPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
 
-  const [pinnedIds, setPinnedIds] = useState(() => {
-    try {
-      const saved = localStorage.getItem('pinned_courses');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error("Failed to parse pinned courses:", e);
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('pinned_courses', JSON.stringify(pinnedIds));
-  }, [pinnedIds]);
+  const [pinnedIds, setPinnedIds] = useState([]);
   
   const [formData, setFormData] = useState({
     course_name: '',
@@ -57,6 +45,19 @@ export default function InstructorCoursesPage() {
   });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
+
+  const getErrorMessage = (err, fallback) => {
+    if (!err) return fallback;
+    if (typeof err === 'string') return err;
+    if (typeof err.message === 'string') return err.message;
+    if (typeof err.detail === 'string') return err.detail;
+    if (typeof err.error === 'string') return err.error;
+    if (typeof err.message === 'object') {
+      if (typeof err.message.detail === 'string') return err.message.detail;
+      if (typeof err.message.error === 'string') return err.message.error;
+    }
+    return fallback;
+  };
 
   useEffect(() => {
     async function fetchUserInfo() {
@@ -76,20 +77,37 @@ export default function InstructorCoursesPage() {
     try {
       const [coursesData, usersData] = await Promise.all([
         getCourses(),
-        getAllUsers()
+        getAllUsers(),
       ]);
-      setCourses(coursesData?.courses || []);
+      const normalizedCourses = (coursesData?.courses || []).map((course) => ({
+        ...course,
+        id: Number(course.id)
+      }));
+      setCourses(normalizedCourses);
       setAllUsers(usersData?.users || []);
+
+      try {
+        const pinnedCourseIds = await getPinnedCourseIds();
+        const normalizedPinned = Array.isArray(pinnedCourseIds)
+          ? pinnedCourseIds.map((id) => Number(id))
+          : [];
+        setPinnedIds(normalizedPinned);
+      } catch (pinErr) {
+        setPinnedIds([]);
+        setError(getErrorMessage(pinErr, 'Failed to load pinned courses'));
+      }
     } catch (err) {
-      setError(err.message || 'Failed to load data. Please check your connection.');
+      setError(getErrorMessage(err, 'Failed to load data. Please check your connection.'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user?.id) {
+      loadData();
+    }
+  }, [user?.id]);
 
   const processedCourses = useMemo(() => {
     if (!Array.isArray(courses)) return [];
@@ -111,10 +129,27 @@ export default function InstructorCoursesPage() {
   const pinnedCourses = processedCourses.filter(c => pinnedIds.includes(c.id));
   const otherCourses = processedCourses.filter(c => !pinnedIds.includes(c.id));
 
-  const togglePin = (id) => {
-    setPinnedIds(prev => 
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+  const togglePin = async (id) => {
+    const normalizedCourseId = Number(id);
+    const isCurrentlyPinned = pinnedIds.includes(normalizedCourseId);
+    const nextPinned = !isCurrentlyPinned;
+
+    setPinnedIds(prev =>
+      nextPinned
+        ? Array.from(new Set([...prev, normalizedCourseId]))
+        : prev.filter((p) => p !== normalizedCourseId)
     );
+
+    try {
+      await setCoursePinned(normalizedCourseId, nextPinned);
+    } catch (err) {
+      setPinnedIds(prev =>
+        isCurrentlyPinned
+          ? Array.from(new Set([...prev, normalizedCourseId]))
+          : prev.filter((p) => p !== normalizedCourseId)
+      );
+      setError(getErrorMessage(err, 'Failed to update course pin'));
+    }
   };
 
   const resetForm = () => {
@@ -149,7 +184,7 @@ export default function InstructorCoursesPage() {
       setShowCreateModal(false);
       resetForm();
       await loadData();
-    } catch (err) { setFormError(err.message || 'Error creating course.'); }
+    } catch (err) { setFormError(getErrorMessage(err, 'Error creating course.')); }
     finally { setFormLoading(false); }
   };
 
@@ -163,7 +198,7 @@ export default function InstructorCoursesPage() {
       setShowEditModal(false);
       resetForm();
       await loadData();
-    } catch (err) { setFormError(err.message || 'Error updating course.'); }
+    } catch (err) { setFormError(getErrorMessage(err, 'Error updating course.')); }
     finally { setFormLoading(false); }
   };
 
@@ -175,7 +210,7 @@ export default function InstructorCoursesPage() {
       setShowDeleteModal(false);
       setSelectedCourse(null);
       await loadData();
-    } catch (err) { setError(err.message || 'Failed to delete course.'); }
+    } catch (err) { setError(getErrorMessage(err, 'Failed to delete course.')); }
     finally { setFormLoading(false); }
   };
 
