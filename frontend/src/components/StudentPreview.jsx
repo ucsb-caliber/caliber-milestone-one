@@ -507,7 +507,13 @@ export default function StudentPreview({
   }
 
   const answerChoices = getAnswerChoices(currentQuestion);
-  const isMCQ = currentQuestion.question_type?.toLowerCase() === 'mcq' || answerChoices.length > 0;
+  const questionType = currentQuestion.question_type?.toLowerCase();
+  const isMCQ = questionType === 'mcq' || questionType === 'true_false' || 
+    (answerChoices.length > 0 && typeof answerChoices[0] === 'string');
+  const isFreeResponse = questionType === 'fr';
+  const isShortAnswer = questionType === 'short_answer';
+  const rubricParts = (isFreeResponse || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object' 
+    ? answerChoices : [];
   const selectedAnswer = answers[currentQuestion.id];
   const isLastQuestion = currentIndex === totalQuestions - 1;
 
@@ -672,78 +678,214 @@ export default function StudentPreview({
 
           {/* Answer Section */}
           <div style={styles.answerSection}>
-            <div style={styles.answerLabel}>
-              {isMCQ ? 'Select your answer:' : 'Your answer:'}
-            </div>
-
-            {isMCQ ? (
-              // Multiple Choice
-              <div>
-                {answerChoices.map((choice, idx) => {
-                  const isSelected = selectedAnswer === choice;
-                  const isCorrect = choice === currentQuestion.correct_answer;
-                  const showResult = !isPreviewMode && (submitted || showCorrectAnswers) && isSelected;
-                  
-                  let buttonStyle = { ...styles.choiceButton };
-                  let indicatorStyle = { ...styles.choiceIndicator };
-                  
-                  if (isSelected) {
-                    buttonStyle = { ...buttonStyle, ...styles.choiceButtonSelected };
-                    indicatorStyle = { ...indicatorStyle, ...styles.choiceIndicatorSelected };
-                  }
-                  
-                  if (showResult && showCorrectAnswers) {
-                    if (isCorrect) {
-                      buttonStyle = { ...buttonStyle, ...styles.choiceButtonCorrect };
-                    } else {
-                      buttonStyle = { ...buttonStyle, ...styles.choiceButtonIncorrect };
+            {isMCQ && (
+              <>
+                <div style={styles.answerLabel}>Select your answer:</div>
+                <div>
+                  {answerChoices.map((choice, idx) => {
+                    const isSelected = selectedAnswer === choice;
+                    const isCorrect = choice === currentQuestion.correct_answer;
+                    const showResult = !isPreviewMode && (submitted || showCorrectAnswers) && isSelected;
+                    
+                    let buttonStyle = { ...styles.choiceButton };
+                    let indicatorStyle = { ...styles.choiceIndicator };
+                    
+                    if (isSelected) {
+                      buttonStyle = { ...buttonStyle, ...styles.choiceButtonSelected };
+                      indicatorStyle = { ...indicatorStyle, ...styles.choiceIndicatorSelected };
                     }
-                  }
+                    
+                    if (showResult && showCorrectAnswers) {
+                      if (isCorrect) {
+                        buttonStyle = { ...buttonStyle, ...styles.choiceButtonCorrect };
+                      } else {
+                        buttonStyle = { ...buttonStyle, ...styles.choiceButtonIncorrect };
+                      }
+                    }
 
+                    return (
+                      <button
+                        key={idx}
+                        style={buttonStyle}
+                        onClick={() => handleAnswerSelect(currentQuestion.id, choice)}
+                        disabled={submitted}
+                        onMouseEnter={(e) => {
+                          if (!submitted && !isSelected) {
+                            e.currentTarget.style.borderColor = '#a5b4fc';
+                            e.currentTarget.style.background = '#f5f3ff';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!submitted && !isSelected) {
+                            e.currentTarget.style.borderColor = '#e5e7eb';
+                            e.currentTarget.style.background = 'white';
+                          }
+                        }}
+                      >
+                        <span style={indicatorStyle}>
+                          {String.fromCharCode(65 + idx)}
+                        </span>
+                        <span>{choice}</span>
+                        {showResult && showCorrectAnswers && isCorrect && (
+                          <span style={{ marginLeft: 'auto', color: '#10b981' }}>✓</span>
+                        )}
+                        {showResult && showCorrectAnswers && !isCorrect && isSelected && (
+                          <span style={{ marginLeft: 'auto', color: '#ef4444' }}>✗</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {isShortAnswer && rubricParts.length > 0 && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <div style={styles.answerLabel}>Your answer:</div>
+                  {isPreviewMode && (
+                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      {rubricParts.reduce((sum, p) => {
+                        const levels = p.rubric_levels || [];
+                        const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(p.points) || 0);
+                        return sum + maxPts;
+                      }, 0)} points total
+                    </span>
+                  )}
+                </div>
+                {isPreviewMode && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      Grading rubric (visible to instructors only):
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                      {rubricParts.flatMap((part, partIdx) => {
+                        const levels = part.rubric_levels || [];
+                        if (levels.length > 0) {
+                          return levels.map((l, i) => (
+                            <div key={`${partIdx}-${i}`} style={{ fontSize: '0.8rem', color: '#4b5563', padding: '0.5rem', background: '#f9fafb', borderRadius: '4px' }}>
+                              <span style={{ fontWeight: '600' }}>+{l.points || 0} pts:</span> {l.criteria || '—'}
+                            </div>
+                          ));
+                        }
+                        return (
+                          <div key={partIdx} style={{ fontSize: '0.8rem', color: '#4b5563', padding: '0.5rem', background: '#f9fafb', borderRadius: '4px' }}>
+                            <span style={{ fontWeight: '600' }}>+{part.points || 0} pts:</span> {part.rubric_text || '—'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <textarea
+                  style={styles.textArea}
+                  placeholder="Enter your short answer..."
+                  value={selectedAnswer || ''}
+                  onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                  disabled={submitted}
+                  onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
+                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                />
+              </>
+            )}
+
+            {isFreeResponse && rubricParts.length > 0 && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <div style={styles.answerLabel}>Your response:</div>
+                  {isPreviewMode && (
+                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      {rubricParts.reduce((sum, p) => {
+                        const levels = p.rubric_levels || [];
+                        const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(p.points) || 0);
+                        return sum + maxPts;
+                      }, 0)} points total
+                    </span>
+                  )}
+                </div>
+                {rubricParts.map((part, idx) => {
+                  const partAnswer = typeof selectedAnswer === 'object' ? selectedAnswer?.[idx] : '';
+                  const levels = part.rubric_levels || [];
+                  const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(part.points) || 0);
                   return (
-                    <button
-                      key={idx}
-                      style={buttonStyle}
-                      onClick={() => handleAnswerSelect(currentQuestion.id, choice)}
-                      disabled={submitted}
-                      onMouseEnter={(e) => {
-                        if (!submitted && !isSelected) {
-                          e.currentTarget.style.borderColor = '#a5b4fc';
-                          e.currentTarget.style.background = '#f5f3ff';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!submitted && !isSelected) {
-                          e.currentTarget.style.borderColor = '#e5e7eb';
-                          e.currentTarget.style.background = 'white';
-                        }
-                      }}
-                    >
-                      <span style={indicatorStyle}>
-                        {String.fromCharCode(65 + idx)}
-                      </span>
-                      <span>{choice}</span>
-                      {showResult && showCorrectAnswers && isCorrect && (
-                        <span style={{ marginLeft: 'auto', color: '#10b981' }}>✓</span>
+                    <div key={idx} style={{ marginBottom: '1.5rem' }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginBottom: '0.5rem'
+                      }}>
+                        <span style={{ fontWeight: '600', color: '#374151' }}>
+                          {part.part_label || `Part ${String.fromCharCode(65 + idx)}`}
+                        </span>
+                        {isPreviewMode && (
+                          <span style={{ 
+                            background: '#e0f2fe', 
+                            color: '#0369a1', 
+                            padding: '4px 10px', 
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600'
+                          }}>
+                            {maxPts} pts max
+                          </span>
+                        )}
+                      </div>
+                      {isPreviewMode && levels.length > 0 && (
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                          Rubric (instructors only):
+                          {levels.map((l, i) => (
+                            <div key={i} style={{ marginBottom: '0.2rem' }}><span style={{ fontWeight: '600' }}>+{l.points}:</span> {l.criteria || '—'}</div>
+                          ))}
+                        </div>
                       )}
-                      {showResult && showCorrectAnswers && !isCorrect && isSelected && (
-                        <span style={{ marginLeft: 'auto', color: '#ef4444' }}>✗</span>
-                      )}
-                    </button>
+                      <textarea
+                        style={{ ...styles.textArea, minHeight: '100px' }}
+                        placeholder={`Enter your response for ${part.part_label || `Part ${String.fromCharCode(65 + idx)}`}...`}
+                        value={partAnswer || ''}
+                        onChange={(e) => {
+                          const newParts = typeof selectedAnswer === 'object' ? { ...selectedAnswer } : {};
+                          newParts[idx] = e.target.value;
+                          handleTextAnswer(currentQuestion.id, newParts);
+                        }}
+                        disabled={submitted}
+                        onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
+                        onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                      />
+                    </div>
                   );
                 })}
-              </div>
-            ) : (
-              // Free Response
-              <textarea
-                style={styles.textArea}
-                placeholder="Type your answer here..."
-                value={selectedAnswer || ''}
-                onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
-                disabled={submitted}
-                onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
-                onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-              />
+              </>
+            )}
+
+            {(isFreeResponse || isShortAnswer) && rubricParts.length === 0 && (
+              <>
+                <div style={styles.answerLabel}>Your response:</div>
+                <textarea
+                  style={styles.textArea}
+                  placeholder="Type your answer here..."
+                  value={selectedAnswer || ''}
+                  onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                  disabled={submitted}
+                  onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
+                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                />
+              </>
+            )}
+
+            {!isMCQ && !isFreeResponse && !isShortAnswer && (
+              <>
+                <div style={styles.answerLabel}>Your answer:</div>
+                <textarea
+                  style={styles.textArea}
+                  placeholder="Type your answer here..."
+                  value={selectedAnswer || ''}
+                  onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                  disabled={submitted}
+                  onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
+                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                />
+              </>
             )}
           </div>
         </div>

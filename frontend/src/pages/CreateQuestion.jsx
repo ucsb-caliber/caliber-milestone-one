@@ -22,6 +22,8 @@ export default function CreateQuestion() {
     answer_choices: ['', '', '', ''],
     correct_answer: '',
     is_verified: true,
+    rubric_parts: [{ part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] }],
+    short_answer_expected: '',
   });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -148,7 +150,15 @@ export default function CreateQuestion() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: value };
+      // When switching to True/False, lock answer choices to True and False only
+      if (name === 'question_type' && value === 'true_false') {
+        next.answer_choices = ['True', 'False'];
+        next.correct_answer = '';
+      }
+      return next;
+    });
   };
 
   const handleTextareaKeyDown = (e) => {
@@ -197,6 +207,87 @@ export default function CreateQuestion() {
       ...prev,
       answer_choices: newAnswers
     }));
+  };
+
+  // Part = sub-question/section. Rubric = grading levels for that part.
+  const addPart = () => {
+    const nextLabel = `Part ${String.fromCharCode(65 + formData.rubric_parts.length)}`;
+    setFormData(prev => ({
+      ...prev,
+      rubric_parts: [...prev.rubric_parts, { 
+        part_label: nextLabel, 
+        rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] 
+      }]
+    }));
+  };
+
+  const removePart = (index) => {
+    if (formData.rubric_parts.length <= 1) {
+      setError('Must have at least 1 part');
+      return;
+    }
+    const newParts = formData.rubric_parts.filter((_, i) => i !== index);
+    setFormData(prev => ({ ...prev, rubric_parts: newParts }));
+  };
+
+  const updatePartLabel = (partIndex, value) => {
+    const newParts = [...formData.rubric_parts];
+    newParts[partIndex] = { ...newParts[partIndex], part_label: value };
+    setFormData(prev => ({ ...prev, rubric_parts: newParts }));
+  };
+
+  const addRubricLevel = (partIndex) => {
+    const newParts = [...formData.rubric_parts];
+    const part = newParts[partIndex];
+    const levels = part.rubric_levels || [];
+    newParts[partIndex] = { ...part, rubric_levels: [...levels, { points: 0, criteria: '' }] };
+    setFormData(prev => ({ ...prev, rubric_parts: newParts }));
+  };
+
+  const removeRubricLevel = (partIndex, levelIndex) => {
+    const newParts = [...formData.rubric_parts];
+    const levels = (newParts[partIndex].rubric_levels || []).filter((_, i) => i !== levelIndex);
+    if (levels.length < 1) return;
+    newParts[partIndex] = { ...newParts[partIndex], rubric_levels: levels };
+    setFormData(prev => ({ ...prev, rubric_parts: newParts }));
+  };
+
+  const updateRubricLevel = (partIndex, levelIndex, field, value) => {
+    const newParts = [...formData.rubric_parts];
+    const levels = [...(newParts[partIndex].rubric_levels || [])];
+    levels[levelIndex] = { ...levels[levelIndex], [field]: field === 'points' ? (parseInt(value) || 0) : value };
+    newParts[partIndex] = { ...newParts[partIndex], rubric_levels: levels };
+    setFormData(prev => ({ ...prev, rubric_parts: newParts }));
+  };
+
+  const getPartTotalPoints = (part) => {
+    const levels = part.rubric_levels || [];
+    return levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : 0;
+  };
+
+  // Check if question type needs answer choices
+  const needsAnswerChoices = () => {
+    return ['mcq', 'true_false'].includes(formData.question_type);
+  };
+
+  // Check if question type is True/False (locked to exactly True/False)
+  const isTrueFalse = () => {
+    return formData.question_type === 'true_false';
+  };
+
+  // Check if question type is free response
+  const isFreeResponse = () => {
+    return formData.question_type === 'fr';
+  };
+
+  // Check if question type is short answer
+  const isShortAnswer = () => {
+    return formData.question_type === 'short_answer';
+  };
+
+  // Check if question type needs rubric (both FR and Short Answer)
+  const needsRubric = () => {
+    return formData.question_type === 'fr' || formData.question_type === 'short_answer';
   };
 
   const handleImageChange = (e) => {
@@ -258,23 +349,38 @@ export default function CreateQuestion() {
       return;
     }
 
-    const validAnswers = formData.answer_choices.filter(a => a.trim());
-    if (validAnswers.length < 2) {
-      setError('Must have at least 2 answer choices');
-      setLoading(false);
-      return;
+    // Type-specific validation
+    if (needsAnswerChoices()) {
+      const validAnswers = formData.answer_choices.filter(a => a.trim());
+      if (validAnswers.length < 2) {
+        setError('Must have at least 2 answer choices');
+        setLoading(false);
+        return;
+      }
+
+      if (!formData.correct_answer.trim()) {
+        setError('Correct answer is required');
+        setLoading(false);
+        return;
+      }
+
+      if (!formData.answer_choices.some(choice => choice.trim() === formData.correct_answer)) {
+        setError('Correct answer must be one of the answer choices');
+        setLoading(false);
+        return;
+      }
     }
 
-    if (!formData.correct_answer.trim()) {
-      setError('Correct answer is required');
-      setLoading(false);
-      return;
-    }
-
-    if (!formData.answer_choices.some(choice => choice.trim() === formData.correct_answer)) {
-      setError('Correct answer must be one of the answer choices');
-      setLoading(false);
-      return;
+    if (needsRubric()) {
+      const validParts = formData.rubric_parts.filter(p => {
+        const levels = p.rubric_levels || [];
+        return levels.some(l => (l.criteria && l.criteria.trim()) || (parseInt(l.points) || 0) > 0);
+      });
+      if (validParts.length === 0) {
+        setError('Each part needs at least one rubric level with points or criteria');
+        setLoading(false);
+        return;
+      }
     }
 
     try {
@@ -291,6 +397,20 @@ export default function CreateQuestion() {
         }
       }
       
+      // Prepare answer choices based on question type
+      let answerChoicesData = '[]';
+      let correctAnswerData = '';
+      
+      if (needsAnswerChoices()) {
+        const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
+        answerChoicesData = JSON.stringify(validAnswers);
+        correctAnswerData = formData.correct_answer;
+      } else if (needsRubric()) {
+        // Store rubric parts for both free response and short answer
+        answerChoicesData = JSON.stringify(formData.rubric_parts);
+        correctAnswerData = 'rubric';
+      }
+
       await createQuestion({
         title: formData.title,
         text: formData.text,
@@ -302,8 +422,8 @@ export default function CreateQuestion() {
         blooms_taxonomy: formData.blooms_taxonomy,
         keywords: formData.keywords,
         tags: formData.tags,
-        answer_choices: JSON.stringify(validAnswers),
-        correct_answer: formData.correct_answer,
+        answer_choices: answerChoicesData,
+        correct_answer: correctAnswerData,
         image_url: imageUrl,
         is_verified: true
       });
@@ -316,12 +436,14 @@ export default function CreateQuestion() {
         school: resolvedUserSchool || '',
         course: '',
         course_type: '',
-        question_type: '',
+        question_type: 'mcq',
         blooms_taxonomy: '',
         keywords: '',
         tags: '',
         answer_choices: ['', '', '', ''],
-        correct_answer: ''
+        correct_answer: '',
+        rubric_parts: [{ part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] }],
+        short_answer_expected: ''
       });
       setImageFile(null);
       setImagePreview(null);
@@ -446,36 +568,230 @@ export default function CreateQuestion() {
               )}
             </div>
 
-            {/* Answer Choices Card */}
-            <div style={styles.card}>
-              <label style={styles.label}>Answer Choices (Select the correct one)</label>
-              {formData.answer_choices.map((choice, index) => (
-                <div key={index} style={styles.choiceRow}>
-                  <input 
-                    type="radio" 
-                    name="correct-choice" 
-                    style={styles.radio}
-                    checked={formData.correct_answer === choice && choice !== ''}
-                    onChange={() => setCorrectAnswer(choice)}
-                  />
-                  <input
-                    type="text"
-                    value={choice}
-                    placeholder={`Option ${index + 1}`}
-                    style={styles.input}
-                    onChange={(e) => handleAnswerChange(index, e.target.value)}
-                  />
-                  {formData.answer_choices.length > 2 && (
-                    <button type="button" style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer' }} onClick={() => {removeAnswerChoice(index)}}>
-                      ✕
+            {/* Answer Section - Conditional based on question type */}
+            {needsAnswerChoices() && (
+              <div style={styles.card}>
+                <label style={styles.label}>
+                  {isTrueFalse() ? 'Select the correct answer' : 'Answer Choices (Select the correct one)'}
+                </label>
+                {isTrueFalse() ? (
+                  /* True/False: locked to exactly True and False, no add/remove */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {['True', 'False'].map((choice) => (
+                      <div key={choice} style={styles.choiceRow}>
+                        <input 
+                          type="radio" 
+                          name="correct-choice" 
+                          style={styles.radio}
+                          checked={formData.correct_answer === choice}
+                          onChange={() => setCorrectAnswer(choice)}
+                        />
+                        <span style={{ flex: 1, padding: '12px', fontSize: '16px', color: '#1a202c' }}>{choice}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  /* MCQ: editable choices with add/remove */
+                  <>
+                    {formData.answer_choices.map((choice, index) => (
+                      <div key={index} style={styles.choiceRow}>
+                        <input 
+                          type="radio" 
+                          name="correct-choice" 
+                          style={styles.radio}
+                          checked={formData.correct_answer === choice && choice !== ''}
+                          onChange={() => setCorrectAnswer(choice)}
+                        />
+                        <input
+                          type="text"
+                          value={choice}
+                          placeholder={`Option ${index + 1}`}
+                          style={styles.input}
+                          onChange={(e) => handleAnswerChange(index, e.target.value)}
+                        />
+                        {formData.answer_choices.length > 2 && (
+                          <button type="button" style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer' }} onClick={() => {removeAnswerChoice(index)}}>
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button type="button" style={{ ...styles.secondaryBtn, width: '100%', marginTop: '12px', borderStyle: 'dashed' }} onClick={() => {addAnswerChoice()}}>
+                      + Add Another Option
                     </button>
-                  )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Parts & Rubric Builder - for both Free Response and Short Answer */}
+            {needsRubric() && (
+              <div style={styles.card}>
+                <div style={{ 
+                  padding: '12px 16px', 
+                  background: '#eff6ff', 
+                  border: '1px solid #bfdbfe', 
+                  borderRadius: '8px', 
+                  marginBottom: '20px' 
+                }}>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e40af', marginBottom: '6px' }}>
+                    📋 Parts vs Rubric — What's the difference?
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#1e3a8a', lineHeight: 1.6 }}>
+                    <li><strong>Parts</strong> = Sub-questions or sections. Each part gets its own answer area for students (e.g., Part A, Part B).</li>
+                    <li><strong>Rubric</strong> = Grading criteria for each part. Define how many points for each level (e.g., +6 full credit, +3 partial, +0 no credit).</li>
+                  </ul>
                 </div>
-              ))}
-              <button type="button" style={{ ...styles.secondaryBtn, width: '100%', marginTop: '12px', borderStyle: 'dashed' }} onClick={() => {addAnswerChoice()}}>
-                + Add Another Option
-              </button>
-            </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <label style={{ ...styles.label, marginBottom: 0 }}>Question Parts</label>
+                  <span style={{ fontSize: '14px', color: '#6b7280' }}>
+                    Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points
+                  </span>
+                </div>
+                
+                {formData.rubric_parts.map((part, partIndex) => {
+                  const levels = part.rubric_levels || [];
+                  return (
+                    <div key={partIndex} style={{ 
+                      background: '#f8fafc', 
+                      border: '1px solid #e2e8f0', 
+                      borderRadius: '8px', 
+                      padding: '16px', 
+                      marginBottom: '16px' 
+                    }}>
+                      {/* Part header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <input
+                          type="text"
+                          value={part.part_label}
+                          onChange={(e) => updatePartLabel(partIndex, e.target.value)}
+                          style={{ 
+                            ...styles.input, 
+                            width: '140px', 
+                            fontWeight: '600',
+                            padding: '8px 12px',
+                            background: 'white'
+                          }}
+                          placeholder="Part A"
+                        />
+                        {formData.rubric_parts.length > 1 && (
+                          <button 
+                            type="button" 
+                            style={{ 
+                              border: 'none', 
+                              background: '#fee2e2', 
+                              color: '#dc2626', 
+                              cursor: 'pointer',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontWeight: '500'
+                            }} 
+                            onClick={() => removePart(partIndex)}
+                          >
+                            Remove Part
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Rubric for this part */}
+                      <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '10px' }}>
+                          Rubric for {part.part_label || `Part ${partIndex + 1}`} — grading levels:
+                        </div>
+                        {levels.map((level, levelIndex) => (
+                          <div key={levelIndex} style={{ 
+                            display: 'flex', 
+                            alignItems: 'flex-start', 
+                            gap: '12px', 
+                            marginBottom: '10px',
+                            background: 'white',
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid #e2e8f0'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>+</span>
+                              <input
+                                type="number"
+                                value={level.points}
+                                onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'points', e.target.value)}
+                                style={{ 
+                                  ...styles.input, 
+                                  width: '56px',
+                                  padding: '6px 8px',
+                                  textAlign: 'center'
+                                }}
+                                min="0"
+                              />
+                              <span style={{ fontSize: '13px', color: '#64748b' }}>pts</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={level.criteria || ''}
+                              onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)}
+                              placeholder="e.g., correct answer with valid explanation"
+                              style={{ 
+                                ...styles.input, 
+                                flex: 1,
+                                padding: '8px 12px'
+                              }}
+                            />
+                            {levels.length > 1 && (
+                              <button 
+                                type="button" 
+                                style={{ 
+                                  border: 'none', 
+                                  background: 'none', 
+                                  color: '#94a3b8', 
+                                  cursor: 'pointer',
+                                  padding: '4px 8px',
+                                  fontSize: '12px'
+                                }} 
+                                onClick={() => removeRubricLevel(partIndex, levelIndex)}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button 
+                          type="button" 
+                          style={{ 
+                            ...styles.secondaryBtn, 
+                            padding: '8px 14px', 
+                            fontSize: '13px',
+                            borderStyle: 'dashed'
+                          }} 
+                          onClick={() => addRubricLevel(partIndex)}
+                        >
+                          + Add rubric level
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                <button 
+                  type="button" 
+                  style={{ 
+                    ...styles.secondaryBtn, 
+                    width: '100%', 
+                    marginTop: '8px', 
+                    borderStyle: 'dashed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }} 
+                  onClick={addPart}
+                >
+                  <span style={{ fontSize: '18px' }}>+</span> Add Another Part
+                </button>
+              </div>
+            )}
+
           </div>
 
           {/* Sidebar Column */}
