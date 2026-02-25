@@ -455,6 +455,37 @@ def enroll_student_in_course(session: Session, course_id: int, student_id: str) 
     return True
 
 
+def get_user_pinned_course_ids(session: Session, user_id: str) -> List[int]:
+    """Get pinned course IDs for a user."""
+    from .models import CoursePin
+
+    statement = select(CoursePin.course_id).where(CoursePin.user_id == user_id)
+    return list(session.exec(statement).all())
+
+
+def set_user_course_pin(session: Session, user_id: str, course_id: int, pinned: bool) -> bool:
+    """Set or clear a course pin for a user."""
+    from .models import CoursePin
+
+    existing = session.exec(
+        select(CoursePin).where(
+            CoursePin.user_id == user_id,
+            CoursePin.course_id == course_id,
+        )
+    ).first()
+
+    if pinned:
+        if not existing:
+            session.add(CoursePin(user_id=user_id, course_id=course_id))
+            session.commit()
+        return True
+
+    if existing:
+        session.delete(existing)
+        session.commit()
+    return False
+
+
 def create_assignment_progress_rows(session: Session, assignment_id: int, student_ids: List[str]) -> None:
     """Ensure assignment progress rows exist for the provided students."""
     from .models import AssignmentProgress
