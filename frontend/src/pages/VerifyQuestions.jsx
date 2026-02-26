@@ -13,6 +13,7 @@ const VerifyQuestions = () => {
   const skipCleanupRef = useRef(false);
   const cleanupStartedRef = useRef(false);
   const latestQuestionsRef = useRef([]);
+  const hasInitializedSelectionRef = useRef(false);
 
   // Parse source file metadata from hash manually since you aren't using react-router-dom
   const hash = window.location.hash;
@@ -46,7 +47,9 @@ const VerifyQuestions = () => {
   }, [questions]);
 
   const cleanupUnverifiedQuestions = async (questionsToCheck, options = {}) => {
-    if (sourcePath) {
+    // Global source cleanup path (used on cancel/abandon).
+    // When a specific list is provided (confirm flow), delete only those IDs.
+    if (sourcePath && (!questionsToCheck || questionsToCheck.length === 0)) {
       await api.deleteUnverifiedQuestionsBySource(sourcePath, options).catch(() => ({ deleted_count: 0 }));
       return;
     }
@@ -80,6 +83,8 @@ const VerifyQuestions = () => {
   };
 
   useEffect(() => {
+    hasInitializedSelectionRef.current = false;
+
     // Handle missing file parameter
     if (!sourcePath) {
       setError("No source file specified. Please upload a PDF to generate questions.");
@@ -106,10 +111,15 @@ const VerifyQuestions = () => {
         setQuestions(pendingQuestions);
         setSelectedQuestionIds((prev) => {
           const incomingIds = pendingQuestions.map((q) => q.id);
-          if (prev.length === 0) return incomingIds;
-          const prevSet = new Set(prev);
-          for (const id of incomingIds) prevSet.add(id);
-          return Array.from(prevSet);
+          // Auto-select only on first successful load.
+          // After user interaction (e.g., clear selection), preserve intent.
+          if (!hasInitializedSelectionRef.current) {
+            hasInitializedSelectionRef.current = true;
+            return incomingIds;
+          }
+          if (prev.length === 0) return [];
+          const incomingSet = new Set(incomingIds);
+          return prev.filter((id) => incomingSet.has(id));
         });
         setError(null);
 
@@ -163,31 +173,7 @@ const VerifyQuestions = () => {
 
     setIsVerifying(true);
     try {
-      // Limit concurrent HTTP requests by processing questions in batches
-      const BATCH_SIZE = 10;
-      const latestData = await api.getQuestions({
-        verified_only: false,
-        source_pdf: sourcePath,
-      });
-      const existingById = new Map((latestData.questions || []).map((q) => [q.id, q]));
-      const selectedQuestions = selectedQuestionIds
-        .map((id) => existingById.get(id))
-        .filter(Boolean);
-
-      if (selectedQuestions.length === 0) {
-        throw new Error('No selected draft questions were found. They may have been deleted or already verified.');
-      }
-
-      for (let i = 0; i < selectedQuestions.length; i += BATCH_SIZE) {
-        const batch = selectedQuestions.slice(i, i + BATCH_SIZE);
-        const batchPromises = batch.map((q) =>
-          api.updateQuestion(q.id, { is_verified: true }).catch(() => null)
-        );
-        await Promise.all(batchPromises);
-      }
-
-      const unselectedQuestions = (latestData.questions || []).filter((q) => !selectedQuestionIds.includes(q.id));
-      await cleanupUnverifiedQuestions(unselectedQuestions);
+      await api.verifyQuestionsBySource(sourcePath, selectedQuestionIds);
       
       // Use hash navigation to return to the Question Bank
       skipCleanupRef.current = true;
