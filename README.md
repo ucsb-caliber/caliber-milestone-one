@@ -82,6 +82,11 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 - **Auth/Storage/DB infra**: Supabase
 - **Background work**: FastAPI background tasks for PDF parsing
 
+## Additional Docs
+
+- `docs/FEATURES_AND_API.md` for current feature scope, routes, and endpoint map
+- `docs/SETUP_OPERATIONS_AND_TESTING.md` for setup, migrations, storage policy setup, and smoke testing
+
 ## Quick Start
 
 ### Backend Setup
@@ -130,7 +135,7 @@ alembic upgrade head
 ```
 If you hit install/runtime errors, make sure your backend venv uses Python 3.10 or 3.11.
 
-See `backend/MIGRATIONS.md` for more details on how to use alembic.
+See `docs/SETUP_OPERATIONS_AND_TESTING.md` for Alembic workflow details and troubleshooting.
 
 **Start the backend server:**
 ```bash
