@@ -1,6 +1,8 @@
 import os
+import threading
+import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +18,8 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      CourseResponse, CourseListResponse, CourseCreate, CourseUpdate, CourseJoinRequest,
                      CoursePinUpdate, CoursePinResponse, CoursePinsResponse,
                      AdminCourseOverview, AdminCourseOverviewResponse,
-                     AssignmentResponse, AssignmentCreate, AssignmentUpdate,
+                     AssignmentResponse, AssignmentCreate, AssignmentUpdate, UploadStatusResponse,
+                     VerifyBySourceRequest, VerifyBySourceResponse,
                      AssignmentProgressResponse, AssignmentProgressUpdate)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
                   get_questions_by_ids, update_question, delete_question, get_user_by_user_id, update_user_roles, 
@@ -27,7 +30,8 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   get_course_assignments, create_assignment, get_assignment, get_assignments, update_assignment, 
                   delete_assignment, get_assignment_progress, upsert_assignment_progress,
                   delete_unverified_questions_by_source)
-from .utils import extract_text_from_pdf, send_to_agent_pipeline
+from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
+from .m2_pipeline import extract_questions_with_m2
 from .auth import get_current_user
 
 load_dotenv()
@@ -77,6 +81,41 @@ Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
 # Ensure data directory exists for SQLite
 Path("data").mkdir(parents=True, exist_ok=True)
+
+# In-memory upload status for progress UI.
+_UPLOAD_JOBS: Dict[str, Dict[str, Any]] = {}
+_UPLOAD_JOBS_LOCK = threading.Lock()
+
+
+def _create_upload_job(job_id: str, filename: str, storage_path: str, user_id: str):
+    with _UPLOAD_JOBS_LOCK:
+        _UPLOAD_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "progress_percent": 5,
+            "message": "Queued for processing",
+            "expected_questions": None,
+            "created_questions": 0,
+            "storage_path": storage_path,
+            "filename": filename,
+            "user_id": user_id,
+        }
+
+
+def _update_upload_job(job_id: Optional[str], **updates):
+    if not job_id:
+        return
+    with _UPLOAD_JOBS_LOCK:
+        job = _UPLOAD_JOBS.get(job_id)
+        if not job:
+            return
+        job.update(updates)
+
+
+def _get_upload_job(job_id: str) -> Optional[Dict[str, Any]]:
+    with _UPLOAD_JOBS_LOCK:
+        job = _UPLOAD_JOBS.get(job_id)
+        return dict(job) if job else None
 
 
 @app.on_event("startup")
@@ -135,6 +174,7 @@ def process_pdf_background(
     storage_path: str,
     file_content: bytes,
     user_id: str,
+    job_id: Optional[str] = None,
     school: str = "",
     user_school: str = "",
     course: str = "",
@@ -154,15 +194,53 @@ def process_pdf_background(
     text = ""
     question_dicts = []
 
+    def m2_progress(current: int, total: int, message: str):
+        # Reserve 10%-70% for parse + formatting to show smooth progress during LLM cleanup.
+        if total <= 0:
+            pct = 20
+        else:
+            pct = 10 + int((current / total) * 60)
+        _update_upload_job(
+            job_id,
+            status="running",
+            progress_percent=max(10, min(70, pct)),
+            message=message,
+            expected_questions=total if total > 0 else None,
+            created_questions=current if current > 0 else 0,
+        )
+
+    # Primary path: run the copied Milestone 2 layout parser from this repo.
+    _update_upload_job(job_id, status="running", progress_percent=10, message="Parsing PDF layout")
     try:
-        text = extract_text_from_pdf(file_content)
+        question_dicts = extract_questions_with_m2(
+            file_content=file_content,
+            source_name=storage_path,
+            output_dir=Path(UPLOAD_DIR) / "layout_debug",
+            progress_callback=m2_progress,
+        )
     except Exception as e:
-        print(f"Error extracting text from {storage_path}: {e!r}")
+        print(f"Error running copied M2 parser for {storage_path}: {e!r}")
 
     try:
-        question_dicts = send_to_agent_pipeline(text, storage_path)
+        # Secondary path: in-repo text + OCR extractor.
+        if not question_dicts:
+            _update_upload_job(job_id, status="running", progress_percent=25, message="Using fallback extractor")
+            question_dicts = extract_questions_from_pdf_bytes(file_content, storage_path)
     except Exception as e:
-        print(f"Error in agent pipeline for {storage_path}: {e!r}")
+        print(f"Error extracting structured questions from {storage_path}: {e!r}")
+
+    # Compatibility fallback for edge-cases where the structured extractor fails.
+    if not question_dicts:
+        try:
+            text = extract_text_from_pdf(file_content)
+        except Exception as e:
+            print(f"Error extracting text from {storage_path}: {e!r}")
+
+        try:
+            _update_upload_job(job_id, status="running", progress_percent=35, message="Using compatibility parser")
+            question_dicts = send_to_agent_pipeline(text, storage_path)
+        except Exception as e:
+            print(f"Error in fallback agent pipeline for {storage_path}: {e!r}")
 
     if not question_dicts:
         fallback_text = (text or "").strip()[:300]
@@ -172,6 +250,15 @@ def process_pdf_background(
             "tags": "auto-generated,pdf-upload",
             "keywords": "pdf,upload,fallback"
         }]
+
+    _update_upload_job(
+        job_id,
+        status="running",
+        progress_percent=75,
+        message="Preparing question records",
+        expected_questions=len(question_dicts),
+        created_questions=max(0, len(question_dicts)),
+    )
 
     try:
         with Session(engine) as session:
@@ -207,6 +294,7 @@ def process_pdf_background(
                 print(f"Warning: failed profile enrichment for {user_id}: {e!r}")
 
             effective_school = selected_school or profile_school
+            effective_user_school = (user_school or effective_school).strip()
             effective_course = selected_course or profile_course_name
             effective_course_type = selected_course_type or profile_course_type
 
@@ -221,37 +309,21 @@ def process_pdf_background(
                     if not question_text:
                         continue
 
-                    base_tags = (q_dict.get("tags", "") or "").strip()
-                    base_keywords = (q_dict.get("keywords", "") or "").strip()
-
-                    extra_tags = []
-                    if profile_name:
-                        extra_tags.append(f"uploader:{profile_name}")
-                    if effective_school:
-                        extra_tags.append(effective_school)
-
-                    extra_keywords = []
-                    if profile_name:
-                        extra_keywords.extend(profile_name.split())
-                    if profile_email:
-                        extra_keywords.append(profile_email)
-                    if effective_school:
-                        extra_keywords.append(effective_school)
-                    if effective_course:
-                        extra_keywords.append(effective_course)
-                    if effective_course_type:
-                        extra_keywords.append(effective_course_type)
-
-                    merged_tags = ",".join(filter(None, [base_tags, *extra_tags]))
-                    merged_keywords = ",".join(filter(None, [base_keywords, *extra_keywords]))
+                    llm_called = bool(q_dict.get("llm_called", False))
+                    merged_tags = ",".join([
+                        "pdf-upload",
+                        "ai-generated",
+                        "llm-called" if llm_called else "llm-not-called",
+                    ])
 
                     create_question(
                         session=session,
                         text=question_text,
                         title=q_dict.get("title", "Untitled Question"),
                         tags=merged_tags,
-                        keywords=merged_keywords,
+                        keywords="",
                         school=effective_school,
+                        user_school=effective_user_school,
                         course=effective_course,
                         course_type=effective_course_type,
                         source_pdf=storage_path,
@@ -259,6 +331,16 @@ def process_pdf_background(
                         is_verified=False
                     )
                     inserted_count += 1
+                    expected_count = len(question_dicts) if question_dicts else 1
+                    progress = min(95, 75 + int((inserted_count / expected_count) * 20))
+                    _update_upload_job(
+                        job_id,
+                        status="running",
+                        progress_percent=progress,
+                        message="Saving generated questions",
+                        expected_questions=expected_count,
+                        created_questions=inserted_count,
+                    )
                 except Exception as e:
                     print(f"Skipping bad generated question for {storage_path}: {e!r}")
 
@@ -267,10 +349,10 @@ def process_pdf_background(
                     session=session,
                     text=f"Fallback draft generated for {storage_path}.",
                     title="Extracted Preview",
-                    tags="auto-generated,pdf-upload,fallback",
-                    keywords="pdf,upload,fallback",
+                    tags="pdf-upload,ai-generated,llm-not-called",
+                    keywords="",
                     school=effective_school,
-                    user_school=user_school,
+                    user_school=effective_user_school,
                     course=effective_course,
                     course_type=effective_course_type,
                     source_pdf=storage_path,
@@ -278,10 +360,33 @@ def process_pdf_background(
                     is_verified=False
                 )
                 inserted_count = 1
+                _update_upload_job(
+                    job_id,
+                    status="running",
+                    progress_percent=95,
+                    message="Saving generated questions",
+                    expected_questions=max(1, len(question_dicts)),
+                    created_questions=inserted_count,
+                )
 
         print(f"Successfully processed {storage_path}: created {inserted_count} questions for user {user_id}")
+        _update_upload_job(
+            job_id,
+            status="completed",
+            progress_percent=100,
+            message=f"Created {inserted_count} questions",
+            created_questions=inserted_count,
+            expected_questions=max(inserted_count, len(question_dicts) if question_dicts else inserted_count),
+        )
     except Exception as e:
         print(f"Error storing generated questions for {storage_path}: {e!r}")
+        _update_upload_job(
+            job_id,
+            status="failed",
+            progress_percent=100,
+            message=f"Failed to process upload: {e}",
+            created_questions=inserted_count,
+        )
 
 
 @app.post("/api/upload-pdf", response_model=UploadResponse)
@@ -299,8 +404,8 @@ async def upload_pdf(
     
     The PDF is already uploaded to Supabase Storage, and storage_path is provided.
     A background task is queued to:
-    1. Extract text from the PDF
-    2. Send to agent pipeline (stubbed)
+    1. Extract and segment questions from the PDF
+    2. Use OCR fallback for scanned/image PDFs when available
     3. Store questions in the database associated with the user
        with the storage_path as source_pdf
     """
@@ -309,6 +414,8 @@ async def upload_pdf(
     
     # Read file content for processing
     file_content = await file.read()
+    job_id = uuid.uuid4().hex
+    _create_upload_job(job_id=job_id, filename=file.filename, storage_path=storage_path, user_id=user_id)
     
     # Queue background processing with user_id and storage_path
     background_tasks.add_task(
@@ -316,17 +423,36 @@ async def upload_pdf(
         storage_path,
         file_content,
         user_id,
-        school,
-        course,
-        course_type
+        job_id=job_id,
+        school=school,
+        course=course,
+        course_type=course_type,
     )
     
     return UploadResponse(
         status="queued",
         filename=file.filename,
         storage_path=storage_path,
+        job_id=job_id,
+        progress_percent=5,
         message="PDF upload successful. Processing in background."
     )
+
+
+@app.get("/api/upload-status/{job_id}", response_model=UploadStatusResponse)
+def get_upload_status(
+    job_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Get progress for a queued PDF upload job."""
+    job = _get_upload_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Upload job not found")
+    if job.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    public_job = {k: v for k, v in job.items() if k != "user_id"}
+    return UploadStatusResponse(**public_job)
 
 
 @app.get("/api/questions", response_model=QuestionListResponse)
@@ -513,6 +639,61 @@ def delete_unverified_by_source(
     """Delete all unverified questions for the current user and a specific uploaded source_pdf."""
     deleted_count = delete_unverified_questions_by_source(session, user_id=user_id, source_pdf=source_pdf)
     return {"deleted_count": deleted_count}
+
+
+@app.post("/api/questions/verify-by-source", response_model=VerifyBySourceResponse)
+def verify_questions_by_source(
+    payload: VerifyBySourceRequest,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Atomically verify selected draft questions and delete remaining drafts
+    for the same source_pdf and current user.
+    """
+    source_pdf = (payload.source_pdf or "").strip()
+    if not source_pdf:
+        raise HTTPException(status_code=400, detail="source_pdf is required")
+
+    selected_ids = {int(qid) for qid in (payload.selected_question_ids or []) if isinstance(qid, int) or str(qid).isdigit()}
+    if not selected_ids:
+        raise HTTPException(status_code=400, detail="At least one selected question id is required")
+
+    drafts = list(session.exec(
+        select(Question).where(
+            Question.user_id == user_id,
+            Question.source_pdf == source_pdf,
+            Question.is_verified == False,  # noqa: E712
+        )
+    ).all())
+
+    if not drafts:
+        raise HTTPException(status_code=404, detail="No draft questions found for this source")
+
+    draft_ids = {q.id for q in drafts if q.id is not None}
+    verify_ids = selected_ids.intersection(draft_ids)
+    if not verify_ids:
+        raise HTTPException(status_code=400, detail="Selected questions are not valid drafts for this source")
+
+    verified_count = 0
+    deleted_count = 0
+
+    for q in drafts:
+        if q.id in verify_ids:
+            q.is_verified = True
+            session.add(q)
+            verified_count += 1
+        else:
+            session.delete(q)
+            deleted_count += 1
+
+    session.commit()
+
+    return VerifyBySourceResponse(
+        verified_count=verified_count,
+        deleted_count=deleted_count,
+        total_drafts=len(drafts),
+    )
 
 
 @app.get("/api/user")

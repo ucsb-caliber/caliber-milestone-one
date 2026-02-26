@@ -131,7 +131,34 @@ class UploadResponse(BaseModel):
     status: str
     filename: str
     storage_path: Optional[str] = None
+    job_id: Optional[str] = None
+    progress_percent: Optional[int] = None
     message: str
+
+
+class UploadStatusResponse(BaseModel):
+    """Schema for upload processing status."""
+    job_id: str
+    status: str
+    progress_percent: int = 0
+    message: str = ""
+    expected_questions: Optional[int] = None
+    created_questions: int = 0
+    storage_path: Optional[str] = None
+    filename: Optional[str] = None
+
+
+class VerifyBySourceRequest(BaseModel):
+    """Request payload for atomically verifying selected draft questions from a source PDF."""
+    source_pdf: str = Field(..., min_length=1)
+    selected_question_ids: List[int] = []
+
+
+class VerifyBySourceResponse(BaseModel):
+    """Response payload for verify-by-source operation."""
+    verified_count: int
+    deleted_count: int
+    total_drafts: int
 
 
 class QuestionListResponse(BaseModel):
