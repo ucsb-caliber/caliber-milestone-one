@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { uploadPDF, uploadPDFToStorage } from '../api';
+import { uploadPDF, uploadPDFToStorage, getUploadStatus } from '../api';
 
 export default function Home() {
   const [file, setFile] = useState(null);
@@ -8,12 +8,30 @@ export default function Home() {
   const [error, setError] = useState('');
   const [showInstructions, setInstructions] = useState(false);
   const [showMetadataModal, setShowMetadataModal] = useState(false);
+  const [processing, setProcessing] = useState(null);
   const [metadata, setMetadata] = useState({
     school: '',
     course: '',
     course_type: ''
   });
   const fileInputRef = useRef(null);
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const monitorUploadJob = async (jobId) => {
+    while (true) {
+      const status = await getUploadStatus(jobId);
+      setProcessing(status);
+
+      if (status.status === 'completed') {
+        return status;
+      }
+      if (status.status === 'failed') {
+        throw new Error(status.message || 'Upload processing failed');
+      }
+      await wait(1500);
+    }
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -42,18 +60,31 @@ export default function Home() {
       
       // Then upload to backend for processing with selected metadata
       const result = await uploadPDF(file, storagePath, metadata);
-      if (result.status === "queued") {
-        // Use storage path for verify filtering because backend stores source_pdf as storage path.
+      if (result.status === "queued" && result.job_id) {
+        setProcessing({
+          status: "queued",
+          progress_percent: result.progress_percent || 5,
+          message: "Queued for processing",
+          expected_questions: null,
+          created_questions: 0
+        });
+
+        const finalStatus = await monitorUploadJob(result.job_id);
+        const sourcePath = result.storage_path || storagePath;
+        const fileName = result.filename || file.name;
+        setMessage(`Success! Created ${finalStatus.created_questions || 0} questions.`);
+        window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
+      } else if (result.status === "queued") {
         const sourcePath = result.storage_path || storagePath;
         const fileName = result.filename || file.name;
         window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
       }
-      setMessage(`Success! ${result.message}`);
       setFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (err) {
+      setProcessing(null);
       setError(err.message || 'Upload failed');
     } finally {
       setUploading(false);
@@ -86,6 +117,41 @@ export default function Home() {
         Upload a PDF file to extract questions. The file will be processed in the background
         and questions will appear in the Question Bank.
       </p>
+
+      {uploading && processing && (
+        <div
+          style={{
+            marginTop: '1rem',
+            marginBottom: '1rem',
+            padding: '1rem',
+            borderRadius: '10px',
+            border: '1px solid #dbeafe',
+            background: '#f8fbff'
+          }}
+        >
+          <div style={{ fontSize: '0.95rem', color: '#1e3a8a', marginBottom: '0.35rem', fontWeight: 600 }}>
+            {processing.message || 'Processing upload'}
+          </div>
+          <div style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '0.75rem' }}>
+            Questions to create: {processing.expected_questions == null ? 'Estimating...' : processing.expected_questions}
+            {' • '}
+            Created so far: {processing.created_questions || 0}
+          </div>
+          <div style={{ width: '100%', height: '10px', borderRadius: '999px', background: '#e2e8f0', overflow: 'hidden' }}>
+            <div
+              style={{
+                width: `${Math.max(0, Math.min(100, processing.progress_percent || 0))}%`,
+                height: '100%',
+                background: '#2563eb',
+                transition: 'width 0.35s ease'
+              }}
+            />
+          </div>
+          <div style={{ marginTop: '0.45rem', textAlign: 'right', fontSize: '0.8rem', color: '#334155' }}>
+            {Math.max(0, Math.min(100, processing.progress_percent || 0))}%
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} style={{ marginTop: '2rem' }}>
         <div 

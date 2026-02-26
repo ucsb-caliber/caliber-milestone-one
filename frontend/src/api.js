@@ -111,6 +111,37 @@ export async function uploadPDF(file, storagePath, metadata = {}) {
 }
 
 /**
+ * Fetch progress for a queued PDF upload job.
+ * @param {string} jobId - Upload job identifier returned by /api/upload-pdf
+ * @returns {Promise<Object>} - Status payload
+ */
+export async function getUploadStatus(jobId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}`, { headers });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let message = 'Failed to fetch upload status';
+      try {
+        const err = JSON.parse(errorText);
+        message = err.detail || message;
+      } catch (e) {
+        message = errorText || message;
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Upload an image file to Supabase Storage
  * @param {File} file - The image file to upload
  * @returns {Promise<string>} - The storage path of the uploaded image
@@ -224,6 +255,8 @@ export async function getQuestions(filters = {}) {
     const params = new URLSearchParams();
     if (filters.verified_only !== undefined) params.append('verified_only', filters.verified_only);
     if (filters.source_pdf) params.append('source_pdf', filters.source_pdf);
+    if (filters.skip !== undefined) params.append('skip', String(filters.skip));
+    if (filters.limit !== undefined) params.append('limit', String(filters.limit));
     
     const url = `${API_BASE}/api/questions${params.toString() ? `?${params.toString()}` : ''}`;
     
@@ -255,11 +288,16 @@ export async function getQuestions(filters = {}) {
 /**
  * Fetch all questions from all users
  */
-export async function getAllQuestions() {
+export async function getAllQuestions(filters = {}) {
   try {
     const headers = await getAuthHeaders();
-    
-    const response = await fetch(`${API_BASE}/api/questions/all`, {
+
+    const params = new URLSearchParams();
+    if (filters.skip !== undefined) params.append('skip', String(filters.skip));
+    if (filters.limit !== undefined) params.append('limit', String(filters.limit));
+    const url = `${API_BASE}/api/questions/all${params.toString() ? `?${params.toString()}` : ''}`;
+
+    const response = await fetch(url, {
       headers,
     });
 
@@ -468,6 +506,45 @@ export async function updateQuestion(id, updateData) {
     return response.json();
   } catch (error) {
     console.error("Update error:", error);
+    throw error;
+  }
+}
+
+/**
+ * Atomically verify selected draft questions from one source PDF,
+ * and delete remaining unselected drafts.
+ */
+export async function verifyQuestionsBySource(sourcePdf, selectedQuestionIds) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await fetch(`${API_BASE}/api/questions/verify-by-source`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        source_pdf: sourcePdf,
+        selected_question_ids: selectedQuestionIds || [],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to verify selected questions';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
     throw error;
   }
 }

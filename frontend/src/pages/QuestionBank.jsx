@@ -124,8 +124,8 @@ export default function QuestionBank() {
     setError('');
     try {
       const [myData, allData] = await Promise.all([
-        getQuestions(),
-        getAllQuestions()
+        getQuestions({ limit: 1000 }),
+        getAllQuestions({ limit: 1000 })
       ]);
 
       // Filter for verified questions only and sort by newest first
