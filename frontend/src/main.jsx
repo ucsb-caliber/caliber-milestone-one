@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import Home from './pages/Home.jsx'
+import UploadPDF from './pages/UploadPDF.jsx'
 import QuestionBank from './pages/QuestionBank.jsx'
 import CreateQuestion from './pages/CreateQuestion.jsx'
 import EditQuestion from './pages/EditQuestion.jsx'
@@ -61,7 +61,7 @@ function App() {
 
   const getPageFromHash = () => {
   const hash = window.location.hash.slice(1);
-  return hash.split('?')[0] || 'home';
+  return hash.split('?')[0] || 'courses';
   };
 
   const [page, setPage] = React.useState(getPageFromHash());
@@ -171,7 +171,7 @@ function App() {
     try {
       await signOut();
       showToast('Signed out successfully', 'success');
-      window.location.hash = 'home';
+      window.location.hash = 'courses';
     } catch (error) {
       console.error('Error signing out:', error);
       showToast(`Sign out failed: ${error?.message || 'Unknown error'}`, 'error', 5000);
@@ -181,8 +181,8 @@ function App() {
   };
 
   const handleLogoClick = () => {
-    // Students land on courses; instructors/admins land on home
-    window.location.hash = isInstructorOrAdmin ? 'home' : 'student-courses';
+    // Students land on courses; instructors/admins land on course dashboard
+    window.location.hash = isInstructorOrAdmin ? 'courses' : 'student-courses';
     window.location.reload();
   };
 
@@ -238,7 +238,7 @@ function App() {
       }}>
         <h1 style={{ margin: 0 }}>
           <a
-            href="#home"
+            href="#courses"
             onClick={handleLogoClick}
             style={{ fontSize: '1.5rem', cursor: 'pointer', color: 'inherit', textDecoration: 'none' }}
           >
@@ -266,10 +266,18 @@ function App() {
           {user && (
             <>
               {isInstructorOrAdmin && (
-                <NavLink href="#home" active={page === 'home'}>Home</NavLink>
+                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
               )}
               {isInstructorOrAdmin && (
                 <NavLink href="#questions" active={page === 'questions'}>Question Bank</NavLink>
+              )}
+              {isInstructorOrAdmin && (
+                <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
+              )}
+              {isInstructorOrAdmin && (
+                <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
+                  {isInstructorOrAdmin ? 'Student View' : 'Courses'}
+                </NavLink>
               )}
               {isAdmin && (
                 <div
@@ -344,15 +352,6 @@ function App() {
                   )}
                 </div>
               )}
-              {isInstructorOrAdmin && (
-                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
-              )}
-              {isInstructorOrAdmin && (
-                <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
-              )}
-              <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
-                {isInstructorOrAdmin ? 'Student View' : 'Courses'}
-              </NavLink>
               <a
                 href="#profile"
                 style={{
@@ -439,9 +438,9 @@ function App() {
           <Onboarding onComplete={handleOnboardingComplete} />
         ) : (
           <>
-            {isInstructorOrAdmin && page === 'home' && (
+            {isInstructorOrAdmin && page === 'upload-pdf' && (
               <ProtectedRoute>
-                <Home />
+                <UploadPDF />
               </ProtectedRoute>
             )}
             {isInstructorOrAdmin && page === 'questions' && (

@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { uploadPDF, uploadPDFToStorage, getUploadStatus } from '../api';
 
-export default function Home() {
+export default function UploadPDF() {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
@@ -112,7 +112,7 @@ export default function Home() {
 
   return (
     <div style={{ maxWidth: '450px', margin: '0 auto', paddingTop: '6rem' }}>
-      <h2>Upload PDF for Processing</h2>
+      <h1 style={{ fontSize: '1.25rem', fontWeight: 500, marginBottom: '0.5rem' }}>Upload PDF for Processing</h1>
       <p style={{ color: '#666' }}>
         Upload a PDF file to extract questions. The file will be processed in the background
         and questions will appear in the Question Bank.
