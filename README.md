@@ -157,7 +157,8 @@ Edit your frontend `.env` file and replace the placeholders:
 - Replace `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for storage access
 - Set `VITE_API_BASE` to your backend URL (default: `http://localhost:8000`)
 - Use `VITE_BASE_PATH=/` for local dev
-- Set `VITE_PORTAL_BASE_URL` only if login/logout should redirect to a separate portal origin
+- Set `VITE_OIDC_ISSUER` + `VITE_OIDC_CLIENT_ID` for direct local Keycloak login (recommended for `npm run dev`)
+- Set `VITE_PORTAL_BASE_URL` only if you want legacy portal `/login` + cookie flow
 
 ```bash
 npm run dev
@@ -174,21 +175,28 @@ This bypasses SSO and is useful for frontend/backend iteration.
 2. Open `http://localhost:5173/?test-mode=true`.
 
 ### B) Local frontend + backend with real SSO
-Run your portal/keycloak stack separately and point frontend auth redirects to it.
+Use direct Keycloak PKCE login from the frontend (works with `npm run dev` + `uvicorn`).
 
 `frontend/.env`:
 ```env
 VITE_API_BASE=http://localhost:8000
 VITE_BASE_PATH=/
-VITE_PORTAL_BASE_URL=http://localhost
+VITE_OIDC_ISSUER=https://app.caliber.cs.ucsb.edu/auth/realms/platform
+VITE_OIDC_CLIENT_ID=portal
+VITE_OIDC_SCOPES=openid profile email
 ```
 
 `backend/.env`:
 ```env
-OIDC_ISSUER=http://localhost/auth/realms/platform
-OIDC_JWKS_URL=http://localhost/auth/realms/platform/protocol/openid-connect/certs
+OIDC_ISSUER=https://app.caliber.cs.ucsb.edu/auth/realms/platform
+OIDC_JWKS_URL=https://app.caliber.cs.ucsb.edu/auth/realms/platform/protocol/openid-connect/certs
 OIDC_AUDIENCE=portal
 ```
+
+If your Keycloak client does not already allow local redirects, add:
+1. Valid redirect URI: `http://localhost:5173/*`
+2. Web origin: `http://localhost:5173`
+3. Post logout redirect URI: `http://localhost:5173/?logged_out=1`
 
 ### C) Build Docker image locally and serve on localhost
 Yes, your teammates can compile and host the frontend image locally while testing.

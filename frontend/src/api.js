@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { getValidAccessToken } from './oidcTokens';
 
 // API base URL - can be overridden with VITE_API_BASE environment variable
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -34,8 +35,23 @@ async function getAuthHeaders() {
       'Authorization': 'Bearer test-token-1',
     };
   }
+
+  const accessToken = await getValidAccessToken();
+  if (accessToken) {
+    return {
+      Authorization: `Bearer ${accessToken}`,
+    };
+  }
+
   // Keycloak auth is propagated via access_token cookie on same-origin requests.
   return {};
+}
+
+async function apiFetch(url, options = {}) {
+  return fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
 }
 
 /**
@@ -92,7 +108,7 @@ export async function uploadPDF(file, storagePath, metadata = {}) {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/upload-pdf`, {
+    const response = await apiFetch(`${API_BASE}/api/upload-pdf`, {
       method: 'POST',
       headers,
       body: formData,
@@ -121,7 +137,7 @@ export async function uploadPDF(file, storagePath, metadata = {}) {
 export async function getUploadStatus(jobId) {
   try {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}`, { headers });
+    const response = await apiFetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}`, { headers });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -256,7 +272,7 @@ export async function getQuestions(filters = {}) {
     
     const url = `${API_BASE}/api/questions${params.toString() ? `?${params.toString()}` : ''}`;
     
-    const response = await fetch(url, { headers });
+    const response = await apiFetch(url, { headers });
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -293,7 +309,7 @@ export async function getAllQuestions(filters = {}) {
     if (filters.limit !== undefined) params.append('limit', String(filters.limit));
     const url = `${API_BASE}/api/questions/all${params.toString() ? `?${params.toString()}` : ''}`;
 
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       headers,
     });
 
@@ -324,7 +340,7 @@ export async function getAllQuestions(filters = {}) {
 export async function getQuestion(id) {
   const headers = await getAuthHeaders();
   
-  const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+  const response = await apiFetch(`${API_BASE}/api/questions/${id}`, {
     headers,
   });
 
@@ -345,7 +361,7 @@ export async function getQuestionsBatch(questionIds) {
   
   const headers = await getAuthHeaders();
   
-  const response = await fetch(`${API_BASE}/api/questions/batch`, {
+  const response = await apiFetch(`${API_BASE}/api/questions/batch`, {
     method: 'POST',
     headers: {
       ...headers,
@@ -389,7 +405,7 @@ export async function createQuestion(questionData) {
       formData.append('image_url', questionData.image_url);
     }
 
-    const response = await fetch(`${API_BASE}/api/questions`, {
+    const response = await apiFetch(`${API_BASE}/api/questions`, {
       method: 'POST',
       headers,
       body: formData,
@@ -416,7 +432,7 @@ export async function deleteQuestion(id, options = {}) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+    const response = await apiFetch(`${API_BASE}/api/questions/${id}`, {
       method: 'DELETE',
       headers,
       keepalive: Boolean(options.keepalive),
@@ -453,7 +469,7 @@ export async function deleteUnverifiedQuestionsBySource(sourcePdf, options = {})
     const headers = await getAuthHeaders();
     const query = new URLSearchParams({ source_pdf: sourcePdf }).toString();
 
-    const response = await fetch(`${API_BASE}/api/questions-by-source/unverified?${query}`, {
+    const response = await apiFetch(`${API_BASE}/api/questions-by-source/unverified?${query}`, {
       method: 'DELETE',
       headers,
       keepalive: Boolean(options.keepalive),
@@ -488,7 +504,7 @@ export async function updateQuestion(id, updateData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+    const response = await apiFetch(`${API_BASE}/api/questions/${id}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(updateData), // This sends { is_verified: true }
@@ -515,7 +531,7 @@ export async function verifyQuestionsBySource(sourcePdf, selectedQuestionIds) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/questions/verify-by-source`, {
+    const response = await apiFetch(`${API_BASE}/api/questions/verify-by-source`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -552,7 +568,7 @@ export async function getUserInfo() {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/user`, {
+    const response = await apiFetch(`${API_BASE}/api/user`, {
       headers,
     });
 
@@ -578,7 +594,7 @@ export async function updateUserProfile(profileData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/user/profile`, {
+    const response = await apiFetch(`${API_BASE}/api/user/profile`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(profileData),
@@ -606,7 +622,7 @@ export async function completeOnboarding(onboardingData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/user/onboarding`, {
+    const response = await apiFetch(`${API_BASE}/api/user/onboarding`, {
       method: 'POST',
       headers,
       body: JSON.stringify(onboardingData),
@@ -634,7 +650,7 @@ export async function updateUserPreferences(preferencesData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/user/preferences`, {
+    const response = await apiFetch(`${API_BASE}/api/user/preferences`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(preferencesData),
@@ -665,7 +681,7 @@ export async function updateUserRoles(userId, roles) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/users/${userId}`, {
+    const response = await apiFetch(`${API_BASE}/api/users/${userId}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(roles),
@@ -692,7 +708,7 @@ export async function getUserById(userId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/users/${userId}`, {
+    const response = await apiFetch(`${API_BASE}/api/users/${userId}`, {
       headers,
     });
 
@@ -719,7 +735,7 @@ export async function getCourses() {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses`, {
+    const response = await apiFetch(`${API_BASE}/api/courses`, {
       headers,
     });
 
@@ -744,7 +760,7 @@ export async function getAllCourses() {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/courses/all`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/all`, {
       headers,
     });
 
@@ -769,7 +785,7 @@ export async function getAdminCoursesOverview() {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/admin/courses-overview`, {
+    const response = await apiFetch(`${API_BASE}/api/admin/courses-overview`, {
       headers,
     });
 
@@ -794,7 +810,7 @@ export async function getCourse(courseId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}`, {
       headers,
     });
 
@@ -819,7 +835,7 @@ export async function createCourse(courseData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses`, {
+    const response = await apiFetch(`${API_BASE}/api/courses`, {
       method: 'POST',
       headers: {
         ...headers,
@@ -849,7 +865,7 @@ export async function updateCourse(courseId, courseData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}`, {
       method: 'PUT',
       headers: {
         ...headers,
@@ -879,7 +895,7 @@ export async function deleteCourse(courseId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}`, {
       method: 'DELETE',
       headers,
     });
@@ -905,7 +921,7 @@ export async function getAllUsers() {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/users`, {
+    const response = await apiFetch(`${API_BASE}/api/users`, {
       headers,
     });
 
@@ -931,7 +947,7 @@ export async function joinCourseByCode(courseCode) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/courses/join`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/join`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ course_code: courseCode }),
@@ -958,7 +974,7 @@ export async function getPinnedCourseIds() {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/courses/pins`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/pins`, {
       headers,
     });
 
@@ -991,7 +1007,7 @@ export async function setCoursePinned(courseId, pinned) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}/pin`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}/pin`, {
       method: 'PUT',
       headers,
       body: JSON.stringify({ pinned: Boolean(pinned) }),
@@ -1026,7 +1042,7 @@ export async function createAssignment(assignmentData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments`, {
       method: 'POST',
       headers: {
         ...headers,
@@ -1056,7 +1072,7 @@ export async function getAssignment(assignmentId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}`, {
       headers,
     });
 
@@ -1081,7 +1097,7 @@ export async function getAssignmentProgress(assignmentId) {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
       headers,
     });
 
@@ -1107,7 +1123,7 @@ export async function saveAssignmentProgress(assignmentId, progressData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(progressData),
@@ -1134,7 +1150,7 @@ export async function updateAssignment(assignmentId, assignmentData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}`, {
       method: 'PUT',
       headers: {
         ...headers,
@@ -1164,7 +1180,7 @@ export async function releaseAssignmentNow(assignmentId) {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/release-now`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/release-now`, {
       method: 'POST',
       headers,
     });
@@ -1190,7 +1206,7 @@ export async function deleteAssignment(assignmentId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}`, {
       method: 'DELETE',
       headers,
     });
