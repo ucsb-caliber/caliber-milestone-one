@@ -1,11 +1,10 @@
-from sqlmodel import Session, select, func
-from typing import List, Optional
 from datetime import datetime
-import re
-import secrets
-import string
 import json
-from .models import Question, User
+from typing import List, Optional
+
+from sqlmodel import Session, func, select
+
+from .models import Question
 
 
 def generate_unique_question_qid(session: Session) -> str:
@@ -202,290 +201,6 @@ def delete_unverified_questions_by_source(session: Session, user_id: str, source
     return len(questions)
 
 
-# User CRUD operations
-
-def get_or_create_user(session: Session, user_id: str, email: Optional[str] = None) -> User:
-    """Get a user by user_id or create if it doesn't exist. Updates email if provided."""
-    statement = select(User).where(User.user_id == user_id)
-    user = session.exec(statement).first()
-    
-    if not user:
-        user = User(user_id=user_id, email=email, admin=False, teacher=False, pending=False)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-    else:
-        # Update email if provided and different
-        if email and user.email != email:
-            user.email = email
-            user.updated_at = datetime.utcnow()
-            session.add(user)
-            session.commit()
-            session.refresh(user)
-    
-    return user
-
-
-def get_user_by_user_id(session: Session, user_id: str) -> Optional[User]:
-    """Get a user by their Supabase user_id."""
-    statement = select(User).where(User.user_id == user_id)
-    return session.exec(statement).first()
-
-
-def update_user_roles(session: Session, user_id: str, admin: Optional[bool] = None,
-                      teacher: Optional[bool] = None, pending: Optional[bool] = None) -> Optional[User]:
-    """Update user admin/teacher/pending status."""
-    user = get_user_by_user_id(session, user_id)
-    if not user:
-        return None
-    
-    if admin is not None:
-        user.admin = admin
-    if teacher is not None:
-        user.teacher = teacher
-    if pending is not None:
-        user.pending = pending
-    if teacher is True:
-        user.pending = False
-    if pending is True:
-        user.teacher = False
-    
-    user.updated_at = datetime.utcnow()
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
-
-
-def update_user_profile(session: Session, user_id: str, first_name: Optional[str] = None,
-                       last_name: Optional[str] = None, school_name: Optional[str] = None,
-                       teacher: Optional[bool] = None,
-                       pending: Optional[bool] = None) -> Optional[User]:
-    """Update user profile information (first/last name, teacher status, pending status)."""
-    user = get_user_by_user_id(session, user_id)
-    if not user:
-        return None
-    
-    if first_name is not None:
-        # Strip whitespace and validate
-        first_name = first_name.strip()
-        if first_name:  # Only update if not empty after stripping
-            user.first_name = first_name
-    if last_name is not None:
-        # Strip whitespace and validate
-        last_name = last_name.strip()
-        if last_name:  # Only update if not empty after stripping
-            user.last_name = last_name
-    if school_name is not None:
-        school_name = school_name.strip()
-        if school_name:  # Only update if not empty after stripping
-            user.school_name = school_name
-    if teacher is not None:
-        user.teacher = teacher
-    if pending is not None:
-        user.pending = pending
-    if teacher is True:
-        user.pending = False
-    if pending is True:
-        user.teacher = False
-    
-    user.updated_at = datetime.utcnow()
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
-
-
-def update_user_preferences(session: Session, user_id: str, icon_shape: Optional[str] = None,
-                           icon_color: Optional[str] = None, initials: Optional[str] = None) -> Optional[User]:
-    """Update user profile preferences (icon shape, color, and initials)."""
-    user = get_user_by_user_id(session, user_id)
-    if not user:
-        return None
-    
-    if icon_shape is not None:
-        user.icon_shape = icon_shape
-    if icon_color is not None:
-        user.icon_color = icon_color
-    if initials is not None:
-        # Allow empty string to reset initials
-        user.initials = initials.strip() if initials else None
-    
-    user.updated_at = datetime.utcnow()
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
-
-
-# Course CRUD operations
-
-def _build_course_code_base(course_name: str) -> str:
-    base = re.sub(r"\s+", "", (course_name or "").strip())
-    base = re.sub(r"[^A-Za-z0-9]", "", base)
-    return (base[:16] or "COURSE").upper()
-
-
-def _generate_course_code(base: str) -> str:
-    suffix = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-    return f"{base}_{suffix}"
-
-
-def generate_unique_course_code(session: Session, course_name: str) -> str:
-    """Generate a unique course code: CourseNameWithoutSpaces_RANDOM6."""
-    from .models import Course
-
-    base = _build_course_code_base(course_name)
-    while True:
-        candidate = _generate_course_code(base)
-        existing = session.exec(select(Course).where(Course.course_code == candidate)).first()
-        if not existing:
-            return candidate
-
-def create_course(session: Session, course_name: str, instructor_id: str, 
-                 school_name: str = "", student_ids: Optional[List[str]] = None) -> 'Course':
-    """Create a new course with optional students."""
-    from .models import Course, CourseStudent
-    
-    if student_ids is None:
-        student_ids = []
-    
-    course = Course(
-        course_name=course_name,
-        course_code=generate_unique_course_code(session, course_name),
-        school_name=school_name,
-        instructor_id=instructor_id
-    )
-    session.add(course)
-    session.commit()
-    session.refresh(course)
-    
-    # Add students to the course
-    for student_id in student_ids:
-        course_student = CourseStudent(course_id=course.id, student_id=student_id)
-        session.add(course_student)
-    
-    session.commit()
-    session.refresh(course)
-    return course
-
-
-def get_course(session: Session, course_id: int, instructor_id: Optional[str] = None) -> Optional['Course']:
-    """Get a course by ID. Optionally filter by instructor_id."""
-    from .models import Course
-    
-    course = session.get(Course, course_id)
-    if course and instructor_id and course.instructor_id != instructor_id:
-        return None
-    return course
-
-
-def get_course_by_code(session: Session, course_code: str) -> Optional['Course']:
-    """Get a course by its course code."""
-    from .models import Course
-
-    normalized = (course_code or "").strip().upper()
-    statement = select(Course).where(Course.course_code == normalized)
-    return session.exec(statement).first()
-
-
-def get_courses(session: Session, instructor_id: Optional[str] = None, 
-               skip: int = 0, limit: int = 100) -> List['Course']:
-    """Get list of courses. Optionally filter by instructor_id."""
-    from .models import Course
-    
-    statement = select(Course)
-    if instructor_id:
-        statement = statement.where(Course.instructor_id == instructor_id)
-    statement = statement.offset(skip).limit(limit)
-    return list(session.exec(statement).all())
-
-
-def get_courses_count(session: Session, instructor_id: Optional[str] = None) -> int:
-    """Get total count of courses with optional filters."""
-    from .models import Course
-    
-    statement = select(func.count(Course.id))
-    if instructor_id:
-        statement = statement.where(Course.instructor_id == instructor_id)
-    return session.exec(statement).one()
-
-
-def get_all_courses(session: Session, skip: int = 0, limit: int = 100) -> List['Course']:
-    """Get all courses in the system."""
-    from .models import Course
-
-    statement = select(Course).offset(skip).limit(limit)
-    return list(session.exec(statement).all())
-
-
-def get_all_courses_count(session: Session) -> int:
-    """Get total count of all courses."""
-    from .models import Course
-
-    statement = select(func.count(Course.id))
-    return session.exec(statement).one()
-
-
-def get_course_students(session: Session, course_id: int) -> List[str]:
-    """Get list of student IDs enrolled in a course."""
-    from .models import CourseStudent
-    
-    statement = select(CourseStudent.student_id).where(CourseStudent.course_id == course_id)
-    return list(session.exec(statement).all())
-
-
-def enroll_student_in_course(session: Session, course_id: int, student_id: str) -> bool:
-    """Enroll a student into a course. Returns True if added, False if already enrolled."""
-    from .models import CourseStudent
-
-    existing = session.exec(
-        select(CourseStudent).where(
-            CourseStudent.course_id == course_id,
-            CourseStudent.student_id == student_id
-        )
-    ).first()
-    if existing:
-        return False
-
-    enrollment = CourseStudent(course_id=course_id, student_id=student_id)
-    session.add(enrollment)
-    session.commit()
-    create_assignment_progress_for_student_in_course(session, course_id, student_id)
-    return True
-
-
-def get_user_pinned_course_ids(session: Session, user_id: str) -> List[int]:
-    """Get pinned course IDs for a user."""
-    from .models import CoursePin
-
-    statement = select(CoursePin.course_id).where(CoursePin.user_id == user_id)
-    return list(session.exec(statement).all())
-
-
-def set_user_course_pin(session: Session, user_id: str, course_id: int, pinned: bool) -> bool:
-    """Set or clear a course pin for a user."""
-    from .models import CoursePin
-
-    existing = session.exec(
-        select(CoursePin).where(
-            CoursePin.user_id == user_id,
-            CoursePin.course_id == course_id,
-        )
-    ).first()
-
-    if pinned:
-        if not existing:
-            session.add(CoursePin(user_id=user_id, course_id=course_id))
-            session.commit()
-        return True
-
-    if existing:
-        session.delete(existing)
-        session.commit()
-    return False
-
-
 def create_assignment_progress_rows(session: Session, assignment_id: int, student_ids: List[str]) -> None:
     """Ensure assignment progress rows exist for the provided students."""
     from .models import AssignmentProgress
@@ -507,17 +222,6 @@ def create_assignment_progress_rows(session: Session, assignment_id: int, studen
             submitted=False
         ))
     session.commit()
-
-
-def create_assignment_progress_for_student_in_course(session: Session, course_id: int, student_id: str) -> None:
-    """Ensure a student has progress rows for all assignments in a course."""
-    from .models import Assignment
-
-    assignments = list(session.exec(select(Assignment.id).where(Assignment.course_id == course_id)).all())
-    if not assignments:
-        return
-    for assignment_id in assignments:
-        create_assignment_progress_rows(session, assignment_id, [student_id])
 
 
 def get_assignment_progress(session: Session, assignment_id: int, student_id: str):
@@ -579,105 +283,28 @@ def get_course_assignments(session: Session, course_id: int) -> List['Assignment
     return list(session.exec(statement).all())
 
 
-def update_course(session: Session, course_id: int, instructor_id: str,
-                 course_name: Optional[str] = None, school_name: Optional[str] = None,
-                 student_ids: Optional[List[str]] = None) -> Optional['Course']:
-    """Update an existing course. Only the instructor can update."""
-    from .models import Course, CourseStudent
-    
-    course = session.get(Course, course_id)
-    if not course or course.instructor_id != instructor_id:
-        return None
-    
-    if course_name is not None:
-        trimmed_course_name = course_name.strip()
-        if trimmed_course_name:
-            course.course_name = trimmed_course_name
-    if school_name is not None:
-        course.school_name = school_name
-    
-    # Update students if provided
-    if student_ids is not None:
-        existing_statement = select(CourseStudent.student_id).where(CourseStudent.course_id == course_id)
-        existing_student_ids = set(session.exec(existing_statement).all())
-
-        # Remove existing students
-        statement = select(CourseStudent).where(CourseStudent.course_id == course_id)
-        existing_enrollments = session.exec(statement).all()
-        for enrollment in existing_enrollments:
-            session.delete(enrollment)
-        
-        # Add new students
-        enrolled_student_ids = set()
-        for student_id in student_ids:
-            # Validate that the user exists and is not a teacher before creating association
-            user = get_user_by_user_id(session, student_id)
-            if not user:
-                continue
-            if user.teacher:
-                continue
-            course_student = CourseStudent(course_id=course_id, student_id=student_id)
-            session.add(course_student)
-            enrolled_student_ids.add(student_id)
-
-        added_students = enrolled_student_ids - existing_student_ids
-        for student_id in added_students:
-            create_assignment_progress_for_student_in_course(session, course_id, student_id)
-    
-    course.updated_at = datetime.utcnow()
-    session.add(course)
-    session.commit()
-    session.refresh(course)
-    return course
-
-
-def delete_course(session: Session, course_id: int, instructor_id: str) -> bool:
-    """Delete a course. Only the instructor can delete."""
-    from .models import Course, CourseStudent, Assignment
-    
-    course = session.get(Course, course_id)
-    if not course or course.instructor_id != instructor_id:
-        return False
-    
-    # Delete associated students
-    statement = select(CourseStudent).where(CourseStudent.course_id == course_id)
-    enrollments = session.exec(statement).all()
-    for enrollment in enrollments:
-        session.delete(enrollment)
-    
-    # Delete associated assignments
-    statement = select(Assignment).where(Assignment.course_id == course_id)
-    assignments = session.exec(statement).all()
-    for assignment in assignments:
-        session.delete(assignment)
-    
-    # Delete the course
-    session.delete(course)
-    session.commit()
-    return True
-
-
 # Assignment CRUD operations
 
 def create_assignment(session: Session, course_id: int, instructor_id: str,
                      title: str, type: str = "Other", description: str = "",
                      node_id: Optional[str] = None, release_date: Optional[datetime] = None,
                      due_date_soft: Optional[datetime] = None, due_date_hard: Optional[datetime] = None,
-                     late_policy_id: Optional[str] = None, assignment_questions: Optional[List[int]] = None) -> 'Assignment':
+                     late_policy_id: Optional[str] = None, assignment_questions: Optional[List[int]] = None,
+                     course_name: Optional[str] = None,
+                     student_ids: Optional[List[str]] = None) -> 'Assignment':
     """Create a new assignment for a course."""
     from .models import Assignment
     
     if assignment_questions is None:
         assignment_questions = []
     
-    # Get course name for the 'course' field
-    course = get_course(session, course_id)
-    course_name = course.course_name if course else ""
+    # Course metadata always comes from roster payload in roster-managed mode.
+    resolved_course_name = (course_name or "").strip()
     
     assignment = Assignment(
         course_id=course_id,
         instructor_id=instructor_id,
-        course=course_name,
+        course=resolved_course_name or "",
         title=title,
         type=type,
         description=description,
@@ -692,8 +319,7 @@ def create_assignment(session: Session, course_id: int, instructor_id: str,
     session.commit()
     session.refresh(assignment)
 
-    # Initialize progress rows for currently enrolled students
-    student_ids = get_course_students(session, course_id)
+    # Initialize progress rows for currently enrolled students.
     if student_ids:
         create_assignment_progress_rows(session, assignment.id, student_ids)
 

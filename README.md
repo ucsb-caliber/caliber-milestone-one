@@ -4,7 +4,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 ## What This Build Covers
 
-- Authentication and onboarding via Supabase
+- Authentication via Keycloak/OIDC (portal session or Bearer token)
 - Role-aware product experience:
   - Students: `Courses` + profile access
   - Instructors/Admins: full platform access + student-view preview
@@ -38,7 +38,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 ## Main Product Areas
 
 ### Authentication + Roles
-- Supabase JWT auth across frontend/backend
+- Keycloak/OIDC JWT auth across frontend/backend
 - Onboarding collects profile data
 - Instructor requests are captured as `pending`
 - Admin approval toggles users into instructor access
@@ -79,7 +79,9 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 - **Frontend**: React + Vite
 - **Backend**: FastAPI + SQLModel + Alembic
-- **Auth/Storage/DB infra**: Supabase
+- **Auth**: Keycloak/OIDC
+- **DB**: PostgreSQL (or SQLite for local testing)
+- **Storage**: Supabase buckets for uploaded PDFs/images
 - **Background work**: FastAPI background tasks for PDF parsing
 
 ## Additional Docs
@@ -123,11 +125,10 @@ LLM_CLEANUP_BASE_URL=http://127.0.0.1:11434
 LLM_CLEANUP_MODEL=llama3.1:8b
 ```
 
-Edit your `.env` file and replace the placeholders:
-- Replace `your-project-id` in `DATABASE_URL` with your actual Supabase project details
-- Replace `your-password` in `DATABASE_URL` with your Supabase database password
-- Replace `your-project-id.supabase.co` in `SUPABASE_URL` with your actual Supabase URL
-- Replace `your-anon-key-here` in `SUPABASE_ANON_KEY` with your Supabase anon key from step 2 above
+Edit your `backend/.env` file and replace placeholders:
+- `DATABASE_URL` with your local/dev Postgres URL (or use SQLite line from `.env.example`)
+- `OIDC_ISSUER` and/or `OIDC_JWKS_URL` for your Keycloak realm
+- `OIDC_AUDIENCE` if your tokens enforce audience checks
 
 **Run database migrations** (first time setup):
 ```bash
@@ -153,14 +154,52 @@ cp .env.example .env
 ```
 
 Edit your frontend `.env` file and replace the placeholders:
-- Replace `your-project-id.supabase.co` with your actual Supabase URL
-- Replace `your-anon-key-here` with your Supabase anon key
+- Replace `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for storage access
+- Set `VITE_API_BASE` to your backend URL (default: `http://localhost:8000`)
+- Use `VITE_BASE_PATH=/` for local dev
+- Set `VITE_PORTAL_BASE_URL` only if login/logout should redirect to a separate portal origin
 
 ```bash
 npm run dev
 ```
 
 The frontend will be available at http://localhost:5173
+
+## Team Local Run Modes
+
+### A) Fastest local iteration (no local Keycloak): test mode
+This bypasses SSO and is useful for frontend/backend iteration.
+
+1. Start backend and frontend normally.
+2. Open `http://localhost:5173/?test-mode=true`.
+
+### B) Local frontend + backend with real SSO
+Run your portal/keycloak stack separately and point frontend auth redirects to it.
+
+`frontend/.env`:
+```env
+VITE_API_BASE=http://localhost:8000
+VITE_BASE_PATH=/
+VITE_PORTAL_BASE_URL=http://localhost
+```
+
+`backend/.env`:
+```env
+OIDC_ISSUER=http://localhost/auth/realms/platform
+OIDC_JWKS_URL=http://localhost/auth/realms/platform/protocol/openid-connect/certs
+OIDC_AUDIENCE=portal
+```
+
+### C) Build Docker image locally and serve on localhost
+Yes, your teammates can compile and host the frontend image locally while testing.
+
+```bash
+cd caliber-milestone-one
+docker build -t caliber-frontend:dev .
+docker run --rm -p 8003:8003 caliber-frontend:dev
+```
+
+Then open `http://localhost:8003` (or through your reverse proxy path).
 
 ## Key API Groups
 
