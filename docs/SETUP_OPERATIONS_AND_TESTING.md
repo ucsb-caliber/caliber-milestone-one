@@ -23,12 +23,13 @@ uvicorn app.main:app --reload --port 8000
 
 Required backend env values (`backend/.env`):
 - `DATABASE_URL`
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
+- `OIDC_ISSUER` and/or `OIDC_JWKS_URL`
 
 Optional backend env values:
-- `UPLOAD_DIR` (default: `uploads`)
+- `OIDC_AUDIENCE` (set only if your token audience must be enforced)
 - `LLM_CLEANUP_ENABLED`, `LLM_CLEANUP_BASE_URL`, `LLM_CLEANUP_MODEL`, `LLM_CLEANUP_TIMEOUT_SEC`
+- `ROSTER_MANAGEMENT_ENABLED`, `ROSTER_BASE_URL`, `ROSTER_INTERNAL_SECRET`, `ROSTER_TIMEOUT_SEC`
+- `UPLOAD_DIR` (defaults to `uploads` if unset)
 
 ### Frontend
 ```bash
@@ -42,13 +43,18 @@ Required frontend env values (`frontend/.env`):
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_API_BASE` (defaults to `http://localhost:8000`)
+- `VITE_BASE_PATH` (use `/` for local dev)
+
+Optional frontend auth env values:
+- `VITE_OIDC_ISSUER`, `VITE_OIDC_CLIENT_ID`, `VITE_OIDC_SCOPES`
+- `VITE_PORTAL_BASE_URL` (only needed when using portal-origin redirects)
 
 ## 2) Supabase Configuration
 
 ### Auth
 - Enable email/password auth in Supabase.
-- Use project URL + anon key in both backend and frontend env files.
-- Backend validates access tokens per request.
+- Use project URL + anon key in frontend env for storage uploads/signing flows.
+- Backend validates access tokens per request using `OIDC_ISSUER` / `OIDC_JWKS_URL`.
 
 ### Storage buckets (private)
 Create both buckets as private:
@@ -127,8 +133,8 @@ alembic upgrade head
 - Restart Vite after env changes.
 
 ### Backend auth failures (401/invalid token)
-- Verify backend `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-- Verify frontend and backend point to the same Supabase project.
+- Verify backend `OIDC_ISSUER`, `OIDC_JWKS_URL`, and `OIDC_AUDIENCE`.
+- If using direct frontend OIDC login, verify `VITE_OIDC_ISSUER` and `VITE_OIDC_CLIENT_ID`.
 - Sign out/in to refresh token.
 
 ### Database connection issues
