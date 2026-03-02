@@ -1,11 +1,78 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
 const AuthContext = createContext({});
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const PORTAL_BASE_URL = (import.meta.env.VITE_PORTAL_BASE_URL || '').replace(/\/$/, '');
+const AUTH_USER_STORAGE_KEY = 'caliber-auth-user';
+
+function portalUrl(path) {
+  return PORTAL_BASE_URL ? `${PORTAL_BASE_URL}${path}` : path;
+}
 
 // Helper function to check if test mode is enabled
 function isTestModeEnabled() {
   return localStorage.getItem('test-mode') === 'true';
+}
+
+function getTestUser() {
+  return {
+    id: 'test-user-1',
+    user_id: 'test-user-1',
+    email: 'test-user-1@example.com',
+    authenticated: true,
+    auth_provider: 'test-mode',
+  };
+}
+
+function storeAuthUser(user) {
+  if (!user) {
+    localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+}
+
+function loadStoredUser() {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchKeycloakUser() {
+  const headers = {};
+  if (isTestModeEnabled()) {
+    headers.Authorization = 'Bearer test-token-1';
+  }
+
+  const response = await fetch(`${API_BASE}/api/user`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'Unable to fetch authenticated user');
+  }
+
+  const payload = await response.json();
+  return {
+    id: payload.user_id,
+    user_id: payload.user_id,
+    email: payload.email || '',
+    first_name: payload.first_name || '',
+    last_name: payload.last_name || '',
+    authenticated: true,
+    auth_provider: 'keycloak',
+  };
 }
 
 export const useAuth = () => {
@@ -18,125 +85,111 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Helper function to set access token as a cookie
-  const setAccessTokenCookie = (accessToken, expiresAt) => {
-    if (accessToken) {
-      // Set cookie to expire at the same time as the token (or 1 hour if no expiry provided)
-      let expiryDate;
-      if (expiresAt) {
-        expiryDate = new Date(expiresAt * 1000); // Convert Unix timestamp to Date
-      } else {
-        // Default to 1 hour from now (typical Supabase token lifetime)
-        expiryDate = new Date();
-        expiryDate.setHours(expiryDate.getHours() + 1);
-      }
-      document.cookie = `access_token=${accessToken}; path=/; expires=${expiryDate.toUTCString()}; SameSite=Lax`;
-    } else {
-      // Clear the cookie
-      document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-    }
-  };
 
   // Check if test mode should be enabled (check for URL param or localStorage)
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('test-mode') === 'true') {
-      localStorage.setItem('test-mode', 'true');
-      // Initialize with test user 1
-      const testUser = {
-        id: 'test-user-1',
-        email: 'test-user-1@example.com'
-      };
-      setUser(testUser);
-      setAccessTokenCookie('test-token-1');
-      setLoading(false);
-      return;
-    }
+    let cancelled = false;
 
-    if (isTestModeEnabled()) {
-      // Restore test session
-      const testUser = {
-        id: 'test-user-1',
-        email: 'test-user-1@example.com'
-      };
-      setUser(testUser);
-      setAccessTokenCookie('test-token-1');
-      setLoading(false);
-      return;
-    }
+    const initialize = async () => {
+      const storedUser = loadStoredUser();
+      if (storedUser) {
+        setUser(storedUser);
+      }
 
-    // Normal Supabase authentication
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setAccessTokenCookie(session?.access_token, session?.expires_at);
-      setLoading(false);
-    });
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('test-mode') === 'true') {
+        localStorage.setItem('test-mode', 'true');
+        const testUser = getTestUser();
+        if (!cancelled) {
+          setUser(testUser);
+          storeAuthUser(testUser);
+          setLoading(false);
+        }
+        return;
+      }
 
-    // Listen for changes on auth state (sign in, sign out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setAccessTokenCookie(session?.access_token, session?.expires_at);
-      setLoading(false);
-    });
+      if (isTestModeEnabled()) {
+        const testUser = getTestUser();
+        if (!cancelled) {
+          setUser(testUser);
+          storeAuthUser(testUser);
+          setLoading(false);
+        }
+        return;
+      }
 
-    return () => subscription?.unsubscribe?.();
+      try {
+        const nextUser = await fetchKeycloakUser();
+        if (!cancelled) {
+          setUser(nextUser);
+          storeAuthUser(nextUser);
+        }
+      } catch (err) {
+        console.error('Failed to load Keycloak session:', err);
+        if (!cancelled) {
+          setUser(null);
+          storeAuthUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    initialize();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const signUp = async (email, password, schoolName) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          school_name: schoolName, // This stores it in the user's metadata
-        },
-      },
-    });
-    if (error) throw error;
-    // Cookie will be set by onAuthStateChange listener
-    return data;
+  const refreshUser = async () => {
+    if (isTestModeEnabled()) {
+      const testUser = getTestUser();
+      setUser(testUser);
+      storeAuthUser(testUser);
+      setLoading(false);
+      return testUser;
+    }
+
+    setLoading(true);
+    try {
+      const nextUser = await fetchKeycloakUser();
+      setUser(nextUser);
+      storeAuthUser(nextUser);
+      return nextUser;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const signIn = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) throw error;
-    // Cookie will be set by onAuthStateChange listener
-    return data;
+  const signUp = async () => {
+    window.location.assign(portalUrl('/login?next=%2Fcaliber%2F%23student-courses'));
+  };
+
+  const signIn = async () => {
+    window.location.assign(portalUrl('/login?next=%2Fcaliber%2F%23student-courses'));
   };
 
   const signOut = async () => {
     if (isTestModeEnabled()) {
       localStorage.removeItem('test-mode');
-      setSession(null);
       setUser(null);
-      setAccessTokenCookie(null);
+      storeAuthUser(null);
       return;
     }
-    
-    const { error } = await supabase.auth.signOut();
-    const message = (error?.message || '').toLowerCase();
-    const isMissingSession = message.includes('auth session missing');
-    if (error && !isMissingSession) throw error;
 
-    // Ensure local auth state is cleared even when the server session is already gone.
-    setSession(null);
     setUser(null);
-    setAccessTokenCookie(null);
+    storeAuthUser(null);
+    window.location.assign(portalUrl('/logout?next=%2Fcaliber%2F%3Flogged_out%3D1'));
   };
 
   const value = {
     user,
-    session,
     loading,
+    refreshUser,
     signUp,
     signIn,
     signOut,

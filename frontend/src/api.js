@@ -2,6 +2,24 @@ import { supabase } from './supabaseClient';
 
 // API base URL - can be overridden with VITE_API_BASE environment variable
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const AUTH_USER_STORAGE_KEY = 'caliber-auth-user';
+
+function getStoredAuthUser() {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function getCurrentAuthUserId() {
+  const authUser = getStoredAuthUser();
+  if (authUser?.id) return authUser.id;
+  if (authUser?.user_id) return authUser.user_id;
+  return 'unknown-user';
+}
 
 /**
  * Get authentication headers with the current user's token
@@ -16,16 +34,8 @@ async function getAuthHeaders() {
       'Authorization': 'Bearer test-token-1',
     };
   }
-
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  if (!session?.access_token) {
-    throw new Error('Not authenticated');
-  }
-  
-  return {
-    'Authorization': `Bearer ${session.access_token}`,
-  };
+  // Keycloak auth is propagated via access_token cookie on same-origin requests.
+  return {};
 }
 
 /**
@@ -35,13 +45,6 @@ async function getAuthHeaders() {
  */
 export async function uploadPDFToStorage(file) {
   try {
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
     // Create a unique filename with user ID and timestamp
     const fileExt = file.name.split('.').pop();
     
@@ -50,7 +53,7 @@ export async function uploadPDFToStorage(file) {
       throw new Error('Invalid file extension');
     }
     
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    const fileName = `${getCurrentAuthUserId()}/${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
@@ -148,13 +151,6 @@ export async function getUploadStatus(jobId) {
  */
 export async function uploadImage(file) {
   try {
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
     // Create a unique filename with user ID and timestamp
     const fileExt = file.name.split('.').pop();
     
@@ -163,7 +159,7 @@ export async function uploadImage(file) {
       throw new Error('Invalid file extension');
     }
     
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    const fileName = `${getCurrentAuthUserId()}/${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
