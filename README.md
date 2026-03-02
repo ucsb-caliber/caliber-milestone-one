@@ -126,9 +126,10 @@ LLM_CLEANUP_MODEL=llama3.1:8b
 ```
 
 Edit your `backend/.env` file and replace placeholders:
-- `DATABASE_URL` with your local/dev Postgres URL (or use SQLite line from `.env.example`)
+- `DATABASE_URL` with your local/dev Postgres URL
 - `OIDC_ISSUER` and/or `OIDC_JWKS_URL` for your Keycloak realm
 - `OIDC_AUDIENCE` if your tokens enforce audience checks
+- Optional: configure `LLM_CLEANUP_*` and `ROSTER_*` values only if you plan to use those integrations locally
 
 **Run database migrations** (first time setup):
 ```bash
