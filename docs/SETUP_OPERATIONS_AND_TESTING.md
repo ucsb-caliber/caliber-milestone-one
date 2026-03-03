@@ -50,6 +50,11 @@ Required frontend env values (`frontend/.env`):
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_API_BASE` (defaults to `http://localhost:8000`)
+- `VITE_BASE_PATH` (use `/` for local dev)
+
+Optional frontend auth env values:
+- `VITE_OIDC_ISSUER`, `VITE_OIDC_CLIENT_ID`, `VITE_OIDC_SCOPES`
+- `VITE_PORTAL_BASE_URL` (only needed when using portal-origin redirects)
 
 ## 2) Supabase Configuration
 

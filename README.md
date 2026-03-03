@@ -137,12 +137,13 @@ Prompt style instructions are read from `backend/app/prompts/llm_cleanup_style.m
 You can override that by setting `LLM_CLEANUP_STYLE_GUIDE_PATH=/absolute/path/to/your-style-guide.md`.
 
 Edit your `backend/.env` file and replace placeholders:
-- `DATABASE_URL` with your local/dev Postgres URL (or use SQLite line from `.env.example`)
+- `DATABASE_URL` with your local/dev Postgres URL
 - `OIDC_ISSUER` and/or `OIDC_JWKS_URL` for your Keycloak realm
 - `OIDC_AUDIENCE` if your tokens enforce audience checks
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` so `/api/upload-pdf` can store files in `question-pdfs`
 - Optional: `M2_TESSERACT_TIMEOUT_SEC` to cap per-page OCR time (default `45`)
 - Optional: `M2_RENDER_DPI` to control PDF rasterization cost (default `170`)
+- Optional: configure `LLM_CLEANUP_*` and `ROSTER_*` values only if you plan to use those integrations locally
 
 **Run database migrations** (first time setup):
 ```bash
