@@ -29,7 +29,7 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   delete_unverified_questions_by_source)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
-from .auth import get_current_user
+from .auth import get_current_user, get_current_user_email, get_current_user_name
 from .storage_client import build_pdf_storage_path, upload_pdf_to_storage
 from .roster_integration import (
     call_roster,
@@ -201,10 +201,14 @@ def _roster_call_for_user(
     params: Optional[dict[str, Any]] = None,
     json_body: Optional[dict[str, Any]] = None,
 ):
+    user_email = get_current_user_email()
+    user_name = get_current_user_name()
     return call_roster(
         method,
         path,
         user_id=user_id,
+        user_email=user_email,
+        user_name=user_name,
         params=params,
         json_body=json_body,
     )

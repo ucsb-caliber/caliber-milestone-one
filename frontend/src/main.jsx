@@ -15,11 +15,9 @@ import StudentCoursesPage from './pages/StudentCoursesPage.jsx'
 import StudentCourseDashboard from './pages/StudentCourseDashboard.jsx'
 import StudentAssignmentPage from './pages/StudentAssignmentPage.jsx'
 import LoggedOut from './pages/LoggedOut.jsx'
-import AdminCoursesPage from './pages/AdminCoursesPage.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
-import Users from './pages/Users.jsx'
 import Analytics from './pages/Analytics.jsx'
 import "./index.css";
 
@@ -70,13 +68,8 @@ function App() {
   };
 
   const [page, setPage] = React.useState(getPageFromHash());
-  const [showAdminMenu, setShowAdminMenu] = React.useState(false);
-  const adminMenuRef = React.useRef(null);
   const [userInfo, setUserInfo] = React.useState(null);
   const [checkingProfile, setCheckingProfile] = React.useState(true);
-  const [signingOut, setSigningOut] = React.useState(false);
-  const [toast, setToast] = React.useState(null);
-  const toastTimerRef = React.useRef(null);
   const [profilePrefs, setProfilePrefs] = React.useState({
     iconShape: 'circle',
     color: '#4f46e5',
@@ -84,9 +77,8 @@ function App() {
   });
 
 
-  const { user, signOut, loading } = useAuth();
+  const { user, loading } = useAuth();
   const isInstructorOrAdmin = Boolean(userInfo?.teacher || userInfo?.admin);
-  const isAdmin = Boolean(userInfo?.admin);
 
   // Check if user profile is complete and load preferences
   React.useEffect(() => {
@@ -137,20 +129,9 @@ function App() {
   React.useEffect(() => {
     const handleHashChange = () => {
       setPage(getPageFromHash());
-      setShowAdminMenu(false);
     };
      window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  React.useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target)) {
-        setShowAdminMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   React.useEffect(() => {
@@ -160,38 +141,6 @@ function App() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     window.location.hash = 'student-courses';
   }, [user, page]);
-
-  React.useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
-      }
-    };
-  }, []);
-
-  const showToast = React.useCallback((message, kind = 'info', ms = 2800) => {
-    setToast({ message, kind });
-    if (toastTimerRef.current) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-    toastTimerRef.current = window.setTimeout(() => setToast(null), ms);
-  }, []);
-
-  const handleSignOut = async () => {
-    if (signingOut) return;
-    setSigningOut(true);
-    showToast('Signing out...', 'info', 1500);
-    try {
-      await signOut();
-      showToast('Signed out successfully', 'success');
-      window.location.hash = 'courses';
-    } catch (error) {
-      console.error('Error signing out:', error);
-      showToast(`Sign out failed: ${error?.message || 'Unknown error'}`, 'error', 5000);
-    } finally {
-      setSigningOut(false);
-    }
-  };
 
   const handleLogoClick = () => {
     // Students land on courses; instructors/admins land on course dashboard
@@ -287,84 +236,9 @@ function App() {
               {isInstructorOrAdmin && (
                 <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
               )}
-              {isInstructorOrAdmin && (
-                <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
-                  {isInstructorOrAdmin ? 'Student View' : 'Courses'}
-                </NavLink>
-              )}
-              {isAdmin && (
-                <div
-                  ref={adminMenuRef}
-                  style={{ position: 'relative' }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setShowAdminMenu((prev) => !prev)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      padding: 0,
-                      margin: 0,
-                      color: page.startsWith('admin/') ? '#fff' : '#aaa',
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      cursor: 'pointer',
-                      fontSize: '1rem'
-                    }}
-                  >
-                    <span style={{ position: 'relative', display: 'inline-block' }}>
-                      <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">Admin ▾</span>
-                      <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page.startsWith('admin/') ? 'bold' : 'normal' }}>Admin ▾</span>
-                    </span>
-                  </button>
-                  {showAdminMenu && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '100%',
-                        right: 0,
-                        marginTop: '0.4rem',
-                        background: '#111827',
-                        border: '1px solid #374151',
-                        borderRadius: '8px',
-                        minWidth: '160px',
-                        boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
-                        zIndex: 1000
-                      }}
-                    >
-                      <a
-                        href="#admin/users"
-                        onClick={() => setShowAdminMenu(false)}
-                        style={{
-                          display: 'block',
-                          padding: '0.6rem 0.75rem',
-                          color: '#e5e7eb',
-                          textDecoration: 'none',
-                          fontSize: '0.9rem',
-                          borderBottom: '1px solid #374151'
-                        }}
-                      >
-                        Users
-                      </a>
-                      <a
-                        href="#admin/courses"
-                        onClick={() => setShowAdminMenu(false)}
-                        style={{
-                          display: 'block',
-                          padding: '0.6rem 0.75rem',
-                          color: '#e5e7eb',
-                          textDecoration: 'none',
-                          fontSize: '0.9rem'
-                        }}
-                      >
-                        All Courses
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
+              <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
+                {isInstructorOrAdmin ? 'Student View' : 'Courses'}
+              </NavLink>
               <a
                 href="#profile"
                 style={{
@@ -402,48 +276,10 @@ function App() {
                   <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page === 'profile' ? 'bold' : 'normal' }}>{user.email}</span>
                 </span>
               </a>
-              <button
-                onClick={handleSignOut}
-                disabled={signingOut}
-                style={{
-                  background: '#555',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '4px',
-                  cursor: signingOut ? 'not-allowed' : 'pointer',
-                  fontSize: '0.9rem',
-                  position: 'relative',
-                  zIndex: 2,
-                  pointerEvents: 'auto',
-                  opacity: signingOut ? 0.75 : 1
-                }}
-              >
-                {signingOut ? 'Signing Out...' : 'Sign Out'}
-              </button>
             </>
           )}
         </div>
       </nav>
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '84px',
-            right: '16px',
-            zIndex: 11000,
-            maxWidth: '360px',
-            background: toast.kind === 'error' ? '#7f1d1d' : toast.kind === 'success' ? '#14532d' : '#1f2937',
-            color: 'white',
-            borderRadius: '8px',
-            padding: '0.7rem 0.85rem',
-            boxShadow: '0 12px 24px rgba(0,0,0,0.25)',
-            fontSize: '0.9rem'
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
       <main style={{ padding: '2rem' }}>
         {!user && !loading ? (
           page === 'logged-out' ? <LoggedOut /> : <Auth />
@@ -479,15 +315,6 @@ function App() {
             {isInstructorOrAdmin && page === 'verify' && (
               <ProtectedRoute>
                 <VerifyQuestions />
-              </ProtectedRoute>
-            )}
-            {isAdmin && page === 'admin/users' && (
-            <ProtectedRoute>
-              <Users currentUser={userInfo} />
-              </ProtectedRoute>)}
-            {isAdmin && page === 'admin/courses' && (
-              <ProtectedRoute>
-                <AdminCoursesPage />
               </ProtectedRoute>
             )}
             {isInstructorOrAdmin && page === 'courses' && (

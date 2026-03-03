@@ -76,6 +76,7 @@ export default function Profile() {
   if (!user) return null;
 
   const status = getAccountStatus(user);
+  const loggedInEmail = user?.email || userInfo?.email || 'Unknown email';
 
   const getDefaultInitials = (info) => {
     if (info?.first_name && info?.last_name) {
@@ -154,10 +155,10 @@ export default function Profile() {
         <div>
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-              Email
+              Signed In As
             </div>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
-              {user.email}
+              {loggedInEmail}
             </div>
           </div>
 
