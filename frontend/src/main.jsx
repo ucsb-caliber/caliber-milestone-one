@@ -14,6 +14,7 @@ import AssignmentView from './pages/AssignmentView.jsx'
 import StudentCoursesPage from './pages/StudentCoursesPage.jsx'
 import StudentCourseDashboard from './pages/StudentCourseDashboard.jsx'
 import StudentAssignmentPage from './pages/StudentAssignmentPage.jsx'
+import LoggedOut from './pages/LoggedOut.jsx'
 import AdminCoursesPage from './pages/AdminCoursesPage.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
@@ -60,6 +61,10 @@ function ProtectedRoute({ children }) {
 function App() {
 
   const getPageFromHash = () => {
+  const qs = new URLSearchParams(window.location.search);
+  if (qs.get('logged_out') === '1') {
+    return 'logged-out';
+  }
   const hash = window.location.hash.slice(1);
   return hash.split('?')[0] || 'courses';
   };
@@ -147,6 +152,14 @@ function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  React.useEffect(() => {
+    if (!user || page !== 'logged-out') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('logged_out');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    window.location.hash = 'student-courses';
+  }, [user, page]);
 
   React.useEffect(() => {
     return () => {
@@ -433,7 +446,7 @@ function App() {
       )}
       <main style={{ padding: '2rem' }}>
         {!user && !loading ? (
-          <Auth />
+          page === 'logged-out' ? <LoggedOut /> : <Auth />
         ) : needsOnboarding ? (
           <Onboarding onComplete={handleOnboardingComplete} />
         ) : (

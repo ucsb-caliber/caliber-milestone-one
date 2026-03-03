@@ -17,8 +17,17 @@ else:
 
 
 def create_db_and_tables():
-    """Create all tables in the database."""
-    SQLModel.metadata.create_all(engine)
+    """Create core Caliber persistence tables."""
+    from .models import Question, Assignment, AssignmentProgress
+
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[
+            Question.__table__,
+            Assignment.__table__,
+            AssignmentProgress.__table__,
+        ],
+    )
 
 
 def get_session():

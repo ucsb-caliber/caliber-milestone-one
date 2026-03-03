@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { uploadPDF, uploadPDFToStorage, getUploadStatus } from '../api';
+import { uploadPDF, getUploadStatus, cancelUploadJob } from '../api';
 
 export default function UploadPDF() {
   const [file, setFile] = useState(null);
@@ -9,12 +9,15 @@ export default function UploadPDF() {
   const [showInstructions, setInstructions] = useState(false);
   const [showMetadataModal, setShowMetadataModal] = useState(false);
   const [processing, setProcessing] = useState(null);
+  const [activeJob, setActiveJob] = useState(null);
+  const [cancelingJob, setCancelingJob] = useState(false);
   const [metadata, setMetadata] = useState({
     school: '',
     course: '',
     course_type: ''
   });
   const fileInputRef = useRef(null);
+  const currentJobId = processing?.job_id || activeJob?.jobId || null;
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -26,10 +29,28 @@ export default function UploadPDF() {
       if (status.status === 'completed') {
         return status;
       }
+      if (status.status === 'canceled') {
+        return status;
+      }
       if (status.status === 'failed') {
         throw new Error(status.message || 'Upload processing failed');
       }
       await wait(1500);
+    }
+  };
+
+  const handleCancelJob = async () => {
+    if (!currentJobId || cancelingJob) return;
+
+    setCancelingJob(true);
+    setError('');
+    try {
+      const status = await cancelUploadJob(currentJobId);
+      setProcessing(status);
+    } catch (err) {
+      setError(err.message || 'Failed to request cancellation');
+    } finally {
+      setCancelingJob(false);
     }
   };
 
@@ -53,15 +74,27 @@ export default function UploadPDF() {
     setUploading(true);
     setMessage('');
     setError('');
+    setProcessing(null);
+    setActiveJob(null);
+    setCancelingJob(false);
 
     try {
-      // First upload PDF to Supabase Storage
-      const storagePath = await uploadPDFToStorage(file);
-      
-      // Then upload to backend for processing with selected metadata
-      const result = await uploadPDF(file, storagePath, metadata);
+      // Upload to backend; backend stores file in Supabase Storage, then parses.
+      const result = await uploadPDF(file, undefined, metadata);
       if (result.status === "queued" && result.job_id) {
+        const sourcePath = result.storage_path;
+        if (!sourcePath) {
+          throw new Error('Backend did not return a storage path');
+        }
+        const fileName = result.filename || file.name;
+        setActiveJob({
+          jobId: result.job_id,
+          sourcePath,
+          fileName
+        });
+
         setProcessing({
+          job_id: result.job_id,
           status: "queued",
           progress_percent: result.progress_percent || 5,
           message: "Queued for processing",
@@ -70,12 +103,23 @@ export default function UploadPDF() {
         });
 
         const finalStatus = await monitorUploadJob(result.job_id);
-        const sourcePath = result.storage_path || storagePath;
-        const fileName = result.filename || file.name;
-        setMessage(`Success! Created ${finalStatus.created_questions || 0} questions.`);
-        window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
+        const savedCount = Number(finalStatus.created_questions || 0);
+        if (finalStatus.status === 'canceled') {
+          if (savedCount > 0) {
+            setMessage(`Canceled. Saved ${savedCount} unverified questions.`);
+            window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
+          } else {
+            setMessage('Canceled before any questions were saved.');
+          }
+        } else {
+          setMessage(`Success! Created ${finalStatus.created_questions || 0} questions.`);
+          window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
+        }
       } else if (result.status === "queued") {
-        const sourcePath = result.storage_path || storagePath;
+        const sourcePath = result.storage_path;
+        if (!sourcePath) {
+          throw new Error('Backend did not return a storage path');
+        }
         const fileName = result.filename || file.name;
         window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
       }
@@ -87,6 +131,8 @@ export default function UploadPDF() {
       setProcessing(null);
       setError(err.message || 'Upload failed');
     } finally {
+      setActiveJob(null);
+      setCancelingJob(false);
       setUploading(false);
     }
   };
@@ -150,6 +196,28 @@ export default function UploadPDF() {
           <div style={{ marginTop: '0.45rem', textAlign: 'right', fontSize: '0.8rem', color: '#334155' }}>
             {Math.max(0, Math.min(100, processing.progress_percent || 0))}%
           </div>
+          {currentJobId && ['queued', 'running', 'cancelling'].includes(processing.status) && (
+            <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={handleCancelJob}
+                disabled={cancelingJob || processing.status === 'cancelling'}
+                style={{
+                  background: '#ffffff',
+                  color: '#b91c1c',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '0.4rem 0.7rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: (cancelingJob || processing.status === 'cancelling') ? 'not-allowed' : 'pointer',
+                  opacity: (cancelingJob || processing.status === 'cancelling') ? 0.7 : 1
+                }}
+              >
+                {processing.status === 'cancelling' ? 'Cancel Requested…' : (cancelingJob ? 'Canceling…' : 'Cancel Parsing')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

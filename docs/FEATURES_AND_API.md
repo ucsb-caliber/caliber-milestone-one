@@ -34,7 +34,7 @@ Caliber Milestone One is a fullstack teaching platform prototype for:
 ## Current Feature Set
 
 ### Authentication and user lifecycle
-- Supabase auth with JWT-protected backend endpoints.
+- OIDC/Keycloak auth with JWT-protected backend endpoints.
 - Onboarding completion gate before full app access.
 - Profile and preferences endpoints (`/api/user/profile`, `/api/user/preferences`, `/api/user/onboarding`).
 - Admin role management in `/api/users` and `/api/users/{user_id}`.
