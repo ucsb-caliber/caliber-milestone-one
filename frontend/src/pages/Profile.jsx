@@ -3,25 +3,9 @@ import { useAuth } from '../AuthContext.jsx';
 import { getUserInfo, updateUserPreferences, updateUserProfile } from '../api.js';
 
 function getAccountStatus(user) {
-  const supabaseRole = user?.role || 'unknown';
-  const provider = user?.app_metadata?.provider || user?.app_metadata?.providers?.[0] || 'unknown';
-
-  // These are project-specific; we just surface what we can detect.
-  const isAdmin = Boolean(
-    user?.app_metadata?.is_admin ??
-      user?.app_metadata?.admin ??
-      user?.user_metadata?.is_admin ??
-      user?.user_metadata?.admin
-  );
-
-  const isInstructor = Boolean(
-    user?.app_metadata?.is_instructor ??
-      user?.app_metadata?.instructor ??
-      user?.user_metadata?.is_instructor ??
-      user?.user_metadata?.instructor
-  );
-
-  return { supabaseRole, provider, isAdmin, isInstructor };
+  return {
+    provider: user?.auth_provider || 'unknown',
+  };
 }
 
 function ProfileBadge({ prefs, size = 56 }) {
@@ -92,6 +76,7 @@ export default function Profile() {
   if (!user) return null;
 
   const status = getAccountStatus(user);
+  const loggedInEmail = user?.email || userInfo?.email || 'Unknown email';
 
   const getDefaultInitials = (info) => {
     if (info?.first_name && info?.last_name) {
@@ -170,10 +155,10 @@ export default function Profile() {
         <div>
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-              Email
+              Signed In As
             </div>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
-              {user.email}
+              {loggedInEmail}
             </div>
           </div>
 
@@ -294,19 +279,10 @@ export default function Profile() {
               ) : (
                 <>
                   <div>
-                    <strong>Supabase role:</strong> {status.supabaseRole}
-                  </div>
-                  <div>
                     <strong>Auth provider:</strong> {status.provider}
                   </div>
-                  <div>
-                    <strong>Admin:</strong> {status.isAdmin ? 'Yes' : 'No / Unknown'}
-                  </div>
-                  <div>
-                    <strong>Instructor:</strong> {status.isInstructor ? 'Yes' : 'No / Unknown'}
-                  </div>
                   <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.35rem' }}>
-                    Admin/instructor flags depend on what your Supabase project stores in metadata.
+                    Role flags are loaded from the backend profile after authentication.
                   </div>
                 </>
               )}

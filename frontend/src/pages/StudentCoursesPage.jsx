@@ -1,14 +1,7 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { getCourses, joinCourseByCode, getPinnedCourseIds, setCoursePinned } from '../api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { getCourses, getPinnedCourseIds, setCoursePinned } from '../api';
 import CourseCard from '../components/CourseCard';
 import { useAuth } from '../AuthContext';
-
-const SearchIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#94a3b8' }}>
-    <circle cx="11" cy="11" r="8"></circle>
-    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-  </svg>
-);
 
 const RefreshIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -24,11 +17,6 @@ export default function StudentCoursesPage() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showJoinModal, setShowJoinModal] = useState(false);
-  const [courseCode, setCourseCode] = useState('');
-  const [joinLoading, setJoinLoading] = useState(false);
-  const [joinError, setJoinError] = useState('');
-  const [joinSuccess, setJoinSuccess] = useState('');
   const [pinnedIds, setPinnedIds] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('name');
@@ -40,7 +28,7 @@ export default function StudentCoursesPage() {
       const data = await getCourses();
       const normalizedCourses = (data.courses || []).map((course) => ({
         ...course,
-        id: Number(course.id)
+        id: Number(course.id),
       }));
       setCourses(normalizedCourses);
 
@@ -86,23 +74,24 @@ export default function StudentCoursesPage() {
 
   const processedCourses = useMemo(() => {
     if (!Array.isArray(courses)) return [];
-    let filtered = courses.filter(c => {
-      const name = (c.course_name || '').toLowerCase();
-      const school = (c.school_name || '').toLowerCase();
-      const search = searchQuery.toLowerCase();
+    const search = searchQuery.trim().toLowerCase();
+    const filtered = courses.filter((course) => {
+      if (!search) return true;
+      const name = (course.course_name || '').toLowerCase();
+      const school = (course.school_name || '').toLowerCase();
       return name.includes(search) || school.includes(search);
     });
 
-    if (sortBy === 'name') {
-      filtered.sort((a, b) => (a.course_name || '').localeCompare(b.course_name || ''));
-    } else if (sortBy === 'students') {
+    if (sortBy === 'students') {
       filtered.sort((a, b) => (b.student_ids?.length || 0) - (a.student_ids?.length || 0));
+    } else {
+      filtered.sort((a, b) => (a.course_name || '').localeCompare(b.course_name || ''));
     }
     return filtered;
   }, [courses, searchQuery, sortBy]);
 
-  const pinnedCourses = processedCourses.filter(c => pinnedIds.includes(c.id));
-  const otherCourses = processedCourses.filter(c => !pinnedIds.includes(c.id));
+  const pinnedCourses = processedCourses.filter((course) => pinnedIds.includes(course.id));
+  const otherCourses = processedCourses.filter((course) => !pinnedIds.includes(course.id));
 
   useEffect(() => {
     if (user?.id) {
@@ -110,47 +99,30 @@ export default function StudentCoursesPage() {
     }
   }, [user?.id]);
 
-  const handleJoinCourse = async (e) => {
-    e.preventDefault();
-    setJoinError('');
-    setJoinSuccess('');
-
-    const normalizedCode = courseCode.trim().toUpperCase();
-    if (!normalizedCode) {
-      setJoinError('Please enter a course code');
-      return;
-    }
-
-    setJoinLoading(true);
-    try {
-      const joinedCourse = await joinCourseByCode(normalizedCode);
-      setJoinSuccess(`Joined ${joinedCourse.course_name}`);
-      setCourseCode('');
-      await loadCourses();
-    } catch (err) {
-      setJoinError(err.message || 'Failed to join course');
-    } finally {
-      setJoinLoading(false);
-    }
-  };
-
   const styles = {
     container: {
       maxWidth: '1400px',
       margin: '0 auto',
-      paddingBottom: '2rem'
+      paddingBottom: '2rem',
     },
     header: {
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: '2rem'
+      marginBottom: '1rem',
+      gap: '0.9rem',
+      flexWrap: 'wrap',
     },
     title: {
       margin: 0,
       fontSize: '1.75rem',
       fontWeight: '700',
-      color: '#111827'
+      color: '#111827',
+    },
+    helperText: {
+      margin: 0,
+      color: '#64748b',
+      fontSize: '0.92rem',
     },
     refreshButton: {
       padding: '0.75rem 1.5rem',
@@ -160,29 +132,60 @@ export default function StudentCoursesPage() {
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '1rem',
-      fontWeight: '500'
+      fontWeight: '500',
     },
-    joinButton: {
-      padding: '0.75rem 1.5rem',
-      background: '#4f46e5',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
+    controls: {
+      display: 'flex',
+      gap: '12px',
+      alignItems: 'center',
+      marginBottom: '1.25rem',
+      flexWrap: 'wrap',
+    },
+    searchBar: {
+      flexGrow: 1,
+      minWidth: '260px',
+      maxWidth: '420px',
+      padding: '12px 16px',
+      borderRadius: '12px',
+      border: '2px solid #e2e8f0',
       fontSize: '1rem',
-      fontWeight: '600'
+      outline: 'none',
+    },
+    select: {
+      padding: '12px 40px 12px 16px',
+      borderRadius: '12px',
+      border: '2px solid #e2e8f0',
+      background: 'white',
+      fontWeight: '600',
+      color: '#475569',
+      cursor: 'pointer',
+      appearance: 'none',
+      backgroundImage:
+        "url(\"data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e\")",
+      backgroundRepeat: 'no-repeat',
+      backgroundPosition: 'right 12px center',
+      backgroundSize: '16px',
+      outline: 'none',
+    },
+    iconButton: {
+      padding: '12px',
+      borderRadius: '12px',
+      border: '2px solid #e2e8f0',
+      background: 'white',
+      color: '#475569',
+      cursor: 'pointer',
     },
     grid: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-      gap: '1.5rem'
+      gap: '1.5rem',
     },
     emptyState: {
       padding: '4rem',
       background: '#f9fafb',
       borderRadius: '12px',
       textAlign: 'center',
-      color: '#6b7280'
+      color: '#6b7280',
     },
     errorBanner: {
       padding: '1rem',
@@ -191,130 +194,44 @@ export default function StudentCoursesPage() {
       borderRadius: '8px',
       color: '#dc2626',
       marginBottom: '1rem',
-      fontSize: '0.875rem'
-    },
-    modal: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    },
-    modalContent: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '1.5rem',
-      width: 'min(480px, 90vw)',
-      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
-    },
-    input: {
-      width: '100%',
-      padding: '0.75rem',
-      border: '1px solid #d1d5db',
-      borderRadius: '8px',
-      fontSize: '1rem',
-      boxSizing: 'border-box',
-      marginTop: '0.75rem'
-    },
-    helperText: {
-      marginTop: '0.5rem',
-      fontSize: '0.8rem',
-      color: '#6b7280'
-    },
-    buttonRow: {
-      display: 'flex',
-      justifyContent: 'flex-end',
-      gap: '0.75rem',
-      marginTop: '1rem'
-    },
-    cancelButton: {
-      padding: '0.625rem 1rem',
-      border: 'none',
-      borderRadius: '8px',
-      background: '#f3f4f6',
-      color: '#374151',
-      cursor: 'pointer'
-    },
-    joinSubmitButton: {
-      padding: '0.625rem 1rem',
-      border: 'none',
-      borderRadius: '8px',
-      background: '#4f46e5',
-      color: 'white',
-      cursor: 'pointer'
-    },
-    joinError: {
-      marginTop: '0.75rem',
-      color: '#dc2626',
-      fontSize: '0.875rem'
-    },
-    joinSuccess: {
-      marginTop: '0.75rem',
-      color: '#059669',
-      fontSize: '0.875rem'
-    }, 
-    searchBar: { 
-      flexGrow: 1, 
-      maxWidth: '400px', 
-      padding: '12px 16px', 
-      borderRadius: '12px', 
-      border: '2px solid #e2e8f0', 
-      fontSize: '1rem', 
-      outline: 'none' 
-    },
-    controls: { 
-      display: 'flex', 
-      gap: '12px', 
-      alignItems: 'center', 
-      marginBottom: '32px' 
-    },
-    select: { 
-      padding: '12px 40px 12px 16px', 
-      borderRadius: '12px', 
-      border: '2px solid #e2e8f0', 
-      background: 'white', 
-      fontWeight: '600', 
-      color: '#475569', 
-      cursor: 'pointer', 
-      appearance: 'none', 
-      backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, 
-      backgroundRepeat: 'no-repeat', 
-      backgroundPosition: 'right 12px center', 
-      backgroundSize: '16px', 
-      outline: 'none' 
+      fontSize: '0.875rem',
     },
   };
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>Courses</h1>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          <button
-            onClick={() => {
-              setShowJoinModal(true);
-              setJoinError('');
-              setJoinSuccess('');
-            }}
-            style={styles.joinButton}
-          >
-            + Join Course
-          </button>
+        <div>
+          <h1 style={styles.title}>Courses</h1>
+          <p style={styles.helperText}>Join and manage course enrollment from the Platform home page.</p>
         </div>
+        <button
+          onClick={loadCourses}
+          disabled={loading}
+          style={{
+            ...styles.refreshButton,
+            opacity: loading ? 0.6 : 1,
+            cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
       <div style={styles.controls}>
-        <input style={styles.searchBar} placeholder="Search courses..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-        <select style={styles.select} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+        <input
+          style={styles.searchBar}
+          placeholder="Search courses..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <select style={styles.select} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           <option value="name">Sort by Name</option>
           <option value="students">Sort by Size</option>
         </select>
-        <button onClick={loadCourses} style={{ ...styles.select, backgroundImage: 'None', padding: '12px' }} title="Refresh dashboard"><RefreshIcon /></button>
+        <button onClick={loadCourses} style={styles.iconButton} title="Refresh dashboard" aria-label="Refresh dashboard">
+          <RefreshIcon />
+        </button>
       </div>
 
       {error && <div style={styles.errorBanner}>{error}</div>}
@@ -332,7 +249,16 @@ export default function StudentCoursesPage() {
         <>
           {pinnedCourses.length > 0 && (
             <div style={{ marginBottom: '1.5rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '14px', display: 'block' }}>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  color: '#94a3b8',
+                  textTransform: 'uppercase',
+                  marginBottom: '14px',
+                  display: 'block',
+                }}
+              >
                 Pinned Courses
               </span>
               <div style={styles.grid}>
@@ -353,7 +279,16 @@ export default function StudentCoursesPage() {
             </div>
           )}
 
-          <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '14px', display: 'block' }}>
+          <span
+            style={{
+              fontSize: '0.75rem',
+              fontWeight: '800',
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              marginBottom: '14px',
+              display: 'block',
+            }}
+          >
             Your Courses
           </span>
           <div style={styles.grid}>
@@ -372,54 +307,6 @@ export default function StudentCoursesPage() {
             ))}
           </div>
         </>
-      )}
-
-      {showJoinModal && (
-        <div style={styles.modal} onClick={(e) => {
-          if (e.target === e.currentTarget && !joinLoading) {
-            setShowJoinModal(false);
-          }
-        }}>
-          <div style={styles.modalContent}>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#111827' }}>Join Course</h2>
-            <form onSubmit={handleJoinCourse}>
-              <input
-                type="text"
-                value={courseCode}
-                onChange={(e) => setCourseCode(e.target.value.toUpperCase())}
-                placeholder="Enter course code (e.g. CS101_AB12CD)"
-                style={styles.input}
-                disabled={joinLoading}
-              />
-              <div style={styles.helperText}>
-                Format: `CourseNameNoSpaces_RANDOM6`
-              </div>
-              {joinError && <div style={styles.joinError}>{joinError}</div>}
-              {joinSuccess && <div style={styles.joinSuccess}>{joinSuccess}</div>}
-              <div style={styles.buttonRow}>
-                <button
-                  type="button"
-                  style={styles.cancelButton}
-                  disabled={joinLoading}
-                  onClick={() => setShowJoinModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    ...styles.joinSubmitButton,
-                    opacity: joinLoading ? 0.7 : 1,
-                    cursor: joinLoading ? 'not-allowed' : 'pointer'
-                  }}
-                  disabled={joinLoading}
-                >
-                  {joinLoading ? 'Joining...' : 'Join'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
     </div>
   );

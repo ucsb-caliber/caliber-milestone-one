@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -59,6 +61,7 @@ def extract_questions_with_m2(
     source_name: str,
     output_dir: Path,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> List[Dict[str, str]]:
     """
     Run the copied Milestone 2 layout pipeline on an uploaded PDF and map results
@@ -73,6 +76,14 @@ def extract_questions_with_m2(
         tmp_pdf_path = Path(tmp.name)
 
     try:
+        def cancel_requested() -> bool:
+            return bool(should_cancel and should_cancel())
+
+        if cancel_requested():
+            if progress_callback:
+                progress_callback(0, 1, "Canceled before parser start")
+            return []
+
         m2.SHOW_CROPS = False
         m2.SAVE_CROPS = False
         m2.START_PAGE = 1
@@ -87,20 +98,63 @@ def extract_questions_with_m2(
             exam_id=exam_id,
         )
 
-        model = _get_model(m2)
-        pages = m2.convert_from_path(str(tmp_pdf_path))
-        questions = m2.parse_pdf_to_questions(pages, model)
-        total = len(questions)
         if progress_callback:
-            progress_callback(0, total, "Formatting extracted questions")
+            progress_callback(0, 1, "Loading parser model")
+        model_start = time.time()
+        model = _get_model(m2)
+        print(f"[m2] model ready in {time.time() - model_start:.1f}s")
+
+        if cancel_requested():
+            if progress_callback:
+                progress_callback(0, 1, "Canceled before rendering pages")
+            return []
+
+        if progress_callback:
+            progress_callback(0, 1, "Rendering PDF pages")
+        render_start = time.time()
+        render_dpi = max(120, int(os.getenv("M2_RENDER_DPI", "170")))
+        pages = m2.convert_from_path(str(tmp_pdf_path), dpi=render_dpi)
+        print(
+            f"[m2] rendered {len(pages)} pages at {render_dpi} dpi "
+            f"in {time.time() - render_start:.1f}s"
+        )
+
+        if cancel_requested():
+            if progress_callback:
+                progress_callback(0, max(1, len(pages)), "Canceled before parsing pages")
+            return []
+
+        if progress_callback:
+            progress_callback(0, max(1, len(pages)), f"Parsing {len(pages)} pages")
+        parse_start = time.time()
+        questions = m2.parse_pdf_to_questions(
+            pages,
+            model,
+            progress_callback=progress_callback,
+            should_cancel=cancel_requested,
+        )
+        print(f"[m2] extracted {len(questions)} raw questions in {time.time() - parse_start:.1f}s")
+
+        formatting_total = max(1, len(questions))
+        if progress_callback:
+            progress_callback(0, formatting_total, "Formatting extracted questions")
 
         out: List[Dict[str, str]] = []
         for idx, q in enumerate(questions, start=1):
+            if cancel_requested():
+                if progress_callback:
+                    progress_callback(
+                        idx - 1,
+                        formatting_total,
+                        f"Formatting canceled after {idx - 1}/{formatting_total} questions",
+                    )
+                break
+
             qid = m2.make_question_id(exam_id=exam_id, ingestion_id=ingestion_id, question_index=idx)
             text = (q.text or "").strip()
             if not text:
                 if progress_callback:
-                    progress_callback(idx, total, "Formatting extracted questions")
+                    progress_callback(idx, formatting_total, f"Formatting question {idx}/{formatting_total}")
                 continue
             cleaned_text, llm_called = local_llm_markdown_cleanup_with_meta(text)
 
@@ -116,7 +170,7 @@ def extract_questions_with_m2(
                 }
             )
             if progress_callback:
-                progress_callback(idx, total, "Formatting extracted questions")
+                progress_callback(idx, formatting_total, f"Formatting question {idx}/{formatting_total}")
 
         return out
     finally:

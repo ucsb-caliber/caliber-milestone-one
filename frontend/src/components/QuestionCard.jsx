@@ -93,16 +93,22 @@ export default function QuestionCard({
   question,
   userInfo,
   imageUrl,
+  dragHandleProps,
   showDeleteButton = false,
   showEditButton = false,
   showRemoveButton = false,
+  actionLoading = false,
   onDelete,
   onEdit,
   onRemove,
   compact = false,
   showUserIcon = true,
   questionNumber,
-  editButtonLabel = 'Edit'
+  editButtonLabel = 'Edit', 
+  showCourseType = true, 
+  showSchool = true, 
+  showKeywords = true,
+  scale = 1,
 }) {
   let answerChoices = [];
   try {
@@ -158,9 +164,38 @@ export default function QuestionCard({
         flexDirection: 'column',
         position: 'relative',
         breakInside: 'avoid',
-        marginBottom: compact ? '0' : '1.5rem'
+        marginBottom: '0',
+        overflow: 'hidden',
+        height: '100%', 
+        zoom: scale,
       }}
     >
+
+      {/* Drag Handle - Add this as the FIRST element */}
+      {dragHandleProps && (
+        <div 
+          {...dragHandleProps}
+          style={{
+            padding: '0.75rem',
+            cursor: 'grab',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#f9fafb',
+            borderBottom: '1px solid #e5e7eb',
+            fontSize: '1.2rem',
+            color: '#9ca3af',
+            transition: 'background 0.15s ease',
+            userSelect: 'none',
+            touchAction: 'none' // Prevent scrolling on touch devices
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#f9fafb'}
+        >
+          <span style={{ letterSpacing: '-2px', fontWeight: 'bold' }}>⋮⋮</span>
+        </div>
+      )}
+
       {/* User Icon in top right corner */}
       {showUserIcon && userInfo && (
         <div style={{ position: 'absolute', top: '1rem', right: '1rem' }}>
@@ -194,8 +229,7 @@ export default function QuestionCard({
         paddingTop: questionNumber ? '1.5rem' : '0'
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
-
-          {question.school && (
+          {showSchool && question.school && (
             <span style={{
               background: '#6f42c1',
               color: 'white',
@@ -219,7 +253,7 @@ export default function QuestionCard({
               {question.course}
             </span>
           )}
-          {question.course_type && (
+          {showCourseType && question.course_type && (
             <span style={{
               background: '#17a2b8',
               color: 'white',
@@ -272,7 +306,7 @@ export default function QuestionCard({
           </div>
         )}
 
-        {keywords.length > 0 && (
+        {showKeywords && keywords.length > 0 && (
           <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
             <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
             {keywords.map((keyword, index) => (
@@ -543,40 +577,53 @@ export default function QuestionCard({
 
       {/* Action buttons */}
       {(showDeleteButton || showEditButton || showRemoveButton) && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.75rem' }}>
+        <div 
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.75rem' }}
+        >
           {showEditButton && (
             <button
               onClick={handleEdit}
+              disabled={actionLoading}
               style={{
-                padding: '0.5rem 1rem',
-                background: '#007bff',
+                padding: '0.375rem 0.75rem',
+                background: '#4f46e5',
                 color: 'white',
                 border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
+                borderRadius: '6px',
+                cursor: actionLoading ? 'not-allowed' : 'pointer',
                 fontSize: '0.875rem',
-                fontWeight: 'bold'
+                fontWeight: '500',
+                opacity: actionLoading ? 0.6 : 1,
+                transition: 'background-color 0.15s ease'
               }}
+              onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4338ca'; }}
+              onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4f46e5'; }}
             >
               {editButtonLabel}
             </button>
           )}
           {showRemoveButton && onRemove && (
-            <button
-              onClick={(e) => {
+              <button
+                onClick={(e) => {
                 e.stopPropagation();
                 onRemove(question.id);
               }}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#f59e0b',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: 'bold'
-              }}
+                disabled={actionLoading}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  opacity: actionLoading ? 0.6 : 1,
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#c82333'; }}
+                onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#dc3545'; }}
             >
               Remove
             </button>

@@ -4,8 +4,7 @@ const PACIFIC_TIMEZONE = 'America/Los_Angeles';
 
 function parseAssignmentDate(dateStr) {
   if (!dateStr) return null;
-  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
-  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+  return new Date(dateStr);
 }
 
 function formatAssignmentDate(dateStr) {

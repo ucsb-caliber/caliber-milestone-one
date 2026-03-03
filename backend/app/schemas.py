@@ -300,14 +300,14 @@ class CourseCreate(BaseModel):
     """Schema for creating a new course."""
     course_name: str = Field(..., min_length=1)
     school_name: str = ""
-    student_ids: List[str] = []  # List of Supabase user IDs
+    student_ids: List[str] = []  # List of student OIDC subject IDs
 
 
 class CourseUpdate(BaseModel):
     """Schema for updating a course."""
     course_name: Optional[str] = None
     school_name: Optional[str] = None
-    student_ids: Optional[List[str]] = None  # List of Supabase user IDs to replace existing students
+    student_ids: Optional[List[str]] = None  # List of student OIDC subject IDs to replace existing students
 
 
 class CourseResponse(BaseModel):
@@ -317,8 +317,8 @@ class CourseResponse(BaseModel):
     course_code: str
     school_name: str
     instructor_id: str
-    instructor_email: Optional[str] = None  # Populated from User table
-    student_ids: List[str] = []  # List of student Supabase user IDs
+    instructor_email: Optional[str] = None  # Populated from roster service
+    student_ids: List[str] = []  # List of student OIDC subject IDs
     assignments: List[AssignmentResponse] = []
     created_at: datetime
     updated_at: datetime
