@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import List, Optional
 
-from sqlmodel import Session, func, select
+from sqlmodel import Session, delete, func, select
 
 from .models import Question
 
@@ -99,9 +99,17 @@ def get_questions_count(session: Session, user_id: Optional[str] = None,
     return session.exec(statement).one()
 
 
-def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List[Question]:
-    """Get all questions from all users."""
-    statement = select(Question).offset(skip).limit(limit)
+def get_all_questions(
+    session: Session,
+    skip: int = 0,
+    limit: int = 100,
+    verified_only: Optional[bool] = None,
+) -> List[Question]:
+    """Get all questions from all users, optionally filtered by verification status."""
+    statement = select(Question)
+    if verified_only is not None:
+        statement = statement.where(Question.is_verified == verified_only)
+    statement = statement.order_by(Question.created_at.desc(), Question.id.desc()).offset(skip).limit(limit)
     return list(session.exec(statement).all())
 
 
@@ -245,6 +253,7 @@ def upsert_assignment_progress(
 ):
     """Create/update assignment progress for a student."""
     from .models import AssignmentProgress
+    now_utc = datetime.now(timezone.utc)
 
     progress = get_assignment_progress(session, assignment_id, student_id)
     if not progress:
@@ -266,9 +275,9 @@ def upsert_assignment_progress(
     if submitted is not None:
         progress.submitted = submitted
         if submitted:
-            progress.submitted_at = datetime.utcnow()
+            progress.submitted_at = now_utc
 
-    progress.updated_at = datetime.utcnow()
+    progress.updated_at = now_utc
     session.add(progress)
     session.commit()
     session.refresh(progress)
@@ -401,12 +410,12 @@ def delete_assignment(session: Session, assignment_id: int, instructor_id: str) 
     if not assignment or assignment.instructor_id != instructor_id:
         return False
 
-    progress_rows = session.exec(
-        select(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
-    ).all()
-    for row in progress_rows:
-        session.delete(row)
-    
+    # Delete dependent student progress rows first to satisfy FK constraints.
+    session.exec(
+        delete(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
+    )
+    session.flush()
+
     session.delete(assignment)
     session.commit()
     return True

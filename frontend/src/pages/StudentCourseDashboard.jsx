@@ -529,7 +529,15 @@ export default function StudentCourseDashboard() {
       const hardDue = parseAssignmentDate(assignment?.due_date_hard);
       const softDue = parseAssignmentDate(assignment?.due_date_soft);
       const canResubmit = !hardDue || now.getTime() <= hardDue.getTime();
-      const incursLatePenalty = canResubmit && softDue && now.getTime() > softDue.getTime();
+      const nowMs = now.getTime();
+      const softDueMs = softDue ? softDue.getTime() : null;
+      const hardDueMs = hardDue ? hardDue.getTime() : null;
+      const incursLatePenalty = Boolean(
+        softDueMs !== null &&
+        hardDueMs !== null &&
+        nowMs > softDueMs &&
+        nowMs <= hardDueMs
+      );
 
       setResubmitModalAssignment(assignment);
       setResubmitModalTimestamp(progress?.submitted_at || null);
@@ -867,8 +875,8 @@ export default function StudentCourseDashboard() {
             padding: '1.25rem',
             boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
           }}>
-            <h3 style={{ margin: '0 0 0.75rem 0', color: '#111827' }}>
-              {resubmitAllowed ? 'Re-submit this assignment?' : 'Assignment already submitted'}
+            <h3 style={{ margin: '0 0 0.75rem 0', color: '#111827', fontWeight: 800 }}>
+              Assignment already submitted
             </h3>
             <p style={{ margin: '0 0 0.5rem 0', color: '#374151', lineHeight: 1.45 }}>
               You already submitted <strong>{resubmitModalAssignment.title}</strong> on{' '}
@@ -876,14 +884,11 @@ export default function StudentCourseDashboard() {
             </p>
             <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.9rem' }}>
               {resubmitAllowed
-                ? 'You can submit again because the hard due date has not passed yet.'
+                ? (resubmitPenaltyWarning
+                  ? 'Warning: Your assignment will be marked late if you re-submit because the due date has already passed.'
+                  : 'Click to edit and resubmit your assignment.')
                 : 'This assignment is read-only because the hard due date has passed.'}
             </p>
-            {resubmitPenaltyWarning && (
-              <p style={{ margin: '0 0 1rem 0', color: '#b45309', fontSize: '0.9rem', fontWeight: 600 }}>
-                Warning: resubmitting now will incur a late penalty.
-              </p>
-            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <button
                 onClick={() => setResubmitModalAssignment(null)}
@@ -945,7 +950,7 @@ export default function StudentCourseDashboard() {
             padding: '1.1rem 1.2rem',
             boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
           }}>
-            <h3 style={{ margin: '0 0 0.6rem 0', color: '#111827' }}>
+            <h3 style={{ margin: '0 0 0.6rem 0', color: '#111827', fontWeight: 800 }}>
               {submissionNotice.assignmentTitle} {submissionNotice.type}
             </h3>
             <p style={{ margin: '0 0 0.95rem 0', color: '#374151', lineHeight: 1.45 }}>

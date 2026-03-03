@@ -420,7 +420,7 @@ export default function CourseDashboard() {
                 }}
                 onClick={() => window.location.hash = `#course/${courseId}/assignment/new`}
               >
-                + New Assignment
+                Create Assignment
               </button>
             )}
           </div>

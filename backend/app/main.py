@@ -714,13 +714,17 @@ def list_questions(
 def list_all_questions(
     skip: int = 0,
     limit: int = 100,
+    verified_only: Optional[bool] = None,
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user)
 ):
     """Get all questions from all users. Requires authentication."""
-    questions = get_all_questions(session, skip=skip, limit=limit)
+    questions = get_all_questions(session, skip=skip, limit=limit, verified_only=verified_only)
     # Get total count of all questions efficiently
-    total = session.exec(select(func.count(Question.id))).one()
+    count_statement = select(func.count(Question.id))
+    if verified_only is not None:
+        count_statement = count_statement.where(Question.is_verified == verified_only)
+    total = session.exec(count_statement).one()
     
     return QuestionListResponse(
         questions=questions,
@@ -1388,6 +1392,15 @@ def delete_existing_assignment(
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to delete it")
 
 
+def _normalize_utc_datetime(value: Optional[datetime]) -> Optional[datetime]:
+    """Normalize datetimes to explicit UTC for stable frontend timezone rendering."""
+    if value is None:
+        return None
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 @app.get("/api/assignments/{assignment_id}/progress", response_model=AssignmentProgressResponse)
 def get_student_assignment_progress(
     assignment_id: int,
@@ -1427,8 +1440,8 @@ def get_student_assignment_progress(
         answers=json.loads(progress.answers) if progress.answers else {},
         current_question_index=progress.current_question_index,
         submitted=progress.submitted,
-        submitted_at=progress.submitted_at,
-        updated_at=progress.updated_at
+        submitted_at=_normalize_utc_datetime(progress.submitted_at),
+        updated_at=_normalize_utc_datetime(progress.updated_at)
     )
 
 
@@ -1470,8 +1483,8 @@ def save_student_assignment_progress(
         answers=json.loads(progress.answers) if progress.answers else {},
         current_question_index=progress.current_question_index,
         submitted=progress.submitted,
-        submitted_at=progress.submitted_at,
-        updated_at=progress.updated_at
+        submitted_at=_normalize_utc_datetime(progress.submitted_at),
+        updated_at=_normalize_utc_datetime(progress.updated_at)
     )
 
 

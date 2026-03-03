@@ -3,25 +3,10 @@ import QuestionCard from './QuestionCard';
 import { getImageSignedUrl } from '../api';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { getQuestionQID } from '../utils/questionSearch';
 
 // Color palette for tag bubbles
 const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
-
-/**
- * Generate display QID: slugified title + unique backend qid
- */
-const getQID = (question) => {
-  const suffix = (question.qid || `Q${question.id}`);
-  const qidSuffix = String(suffix);
-  if (question.title) {
-    const slug = question.title.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-    if (slug) return `${slug}-${qidSuffix}`;
-  }
-  return `question-${qidSuffix}`;
-};
 
 /**
  * Render user profile icon
@@ -199,7 +184,7 @@ const TableRow = ({
   hasActions,
   isDraggable,
 }) => {
-  const qid = getQID(question);
+  const qid = getQuestionQID(question);
 
   const handleEdit = () => {
     if (onEdit) {

@@ -45,7 +45,7 @@ export default function QuestionSearchBar({
         </div>
         <input
           type="text"
-          placeholder="Search questions by keyword, tag, course, or text..."
+          placeholder="Search by creator, QID, title, course, type, blooms, question type, or tags..."
           value={searchQuery}
           onChange={(e) => onSearchQueryChange(e.target.value)}
           style={{
@@ -91,10 +91,16 @@ export default function QuestionSearchBar({
           }}
         >
           <option value="all">All Fields</option>
+          <option value="creator">Creator</option>
+          <option value="qid">QID</option>
+          <option value="title">Title</option>
+          <option value="course">Course</option>
+          <option value="course_type">Course Type</option>
+          <option value="blooms">Blooms Taxonomy</option>
+          <option value="question_type">Question Type</option>
+          <option value="tags">Tags</option>
           <option value="text">Question Text</option>
           <option value="keywords">Keywords</option>
-          <option value="tags">Tags</option>
-          <option value="course">Course/School</option>
         </select>
       </div>
 

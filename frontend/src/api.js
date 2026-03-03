@@ -378,6 +378,7 @@ export async function getAllQuestions(filters = {}) {
     const params = new URLSearchParams();
     if (filters.skip !== undefined) params.append('skip', String(filters.skip));
     if (filters.limit !== undefined) params.append('limit', String(filters.limit));
+    if (filters.verified_only !== undefined) params.append('verified_only', String(filters.verified_only));
     const url = `${API_BASE}/api/questions/all${params.toString() ? `?${params.toString()}` : ''}`;
 
     const response = await apiFetch(url, {
@@ -1283,8 +1284,17 @@ export async function deleteAssignment(assignmentId) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete assignment');
+      let message = 'Failed to delete assignment';
+      const raw = (await response.text()).trim();
+      if (raw) {
+        try {
+          const error = JSON.parse(raw);
+          message = error.detail || message;
+        } catch {
+          message = raw;
+        }
+      }
+      throw new Error(message);
     }
 
     return { success: true };

@@ -80,6 +80,7 @@ const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
 
 // Sort function for newest-first ordering
 const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+const QUESTION_PAGE_SIZE = 500;
 
 export default function QuestionBank() {
   const { user } = useAuth();
@@ -100,8 +101,18 @@ export default function QuestionBank() {
   const itemsPerPage = 6;
 
   // Filtered questions
-  const filteredMyQuestions = filterQuestionsBySearch(myQuestions, searchQuery, searchFilter);
-  const filteredAllQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
+  const filteredMyQuestions = filterQuestionsBySearch(
+    myQuestions,
+    searchQuery,
+    searchFilter,
+    { userInfoCache }
+  );
+  const filteredAllQuestions = filterQuestionsBySearch(
+    allQuestions,
+    searchQuery,
+    searchFilter,
+    { userInfoCache }
+  );
 
   // Fetch current user info to check if they are a teacher
   useEffect(() => {
@@ -123,19 +134,43 @@ export default function QuestionBank() {
     setLoading(true);
     setError('');
     try {
-      const [myData, allData] = await Promise.all([
-        getQuestions({ limit: 1000 }),
-        getAllQuestions({ limit: 1000 })
+      const fetchAllVerified = async (fetchFn) => {
+        let skip = 0;
+        let expectedTotal = null;
+        const combined = [];
+
+        while (true) {
+          const page = await fetchFn({
+            verified_only: true,
+            skip,
+            limit: QUESTION_PAGE_SIZE,
+          });
+          const pageQuestions = page?.questions || [];
+
+          if (typeof page?.total === 'number') {
+            expectedTotal = page.total;
+          }
+
+          combined.push(...pageQuestions);
+
+          if (pageQuestions.length === 0) break;
+          skip += pageQuestions.length;
+
+          if ((expectedTotal !== null && combined.length >= expectedTotal) || pageQuestions.length < QUESTION_PAGE_SIZE) {
+            break;
+          }
+        }
+
+        return combined;
+      };
+
+      const [verifiedMyQuestions, verifiedAllQuestions] = await Promise.all([
+        fetchAllVerified(getQuestions),
+        fetchAllVerified(getAllQuestions)
       ]);
 
-      // Filter for verified questions only and sort by newest first
-      const verifiedMyQuestions = (myData.questions || [])
-        .filter(q => q.is_verified === true)
-        .sort(sortByNewest);
-
-      const verifiedAllQuestions = (allData.questions || [])
-        .filter(q => q.is_verified === true)
-        .sort(sortByNewest);
+      verifiedMyQuestions.sort(sortByNewest);
+      verifiedAllQuestions.sort(sortByNewest);
 
       setMyQuestions(verifiedMyQuestions);
       setAllQuestions(verifiedAllQuestions);

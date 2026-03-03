@@ -27,6 +27,7 @@ export default function CreateEditAssignment() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [userInfoCache, setUserInfoCache] = useState({});
   const [showQuestionPicker, setShowQuestionPicker] = useState(false);
+  const [pickerSelection, setPickerSelection] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all');
 
@@ -72,7 +73,7 @@ export default function CreateEditAssignment() {
 
       try {
         // Load all questions for selection
-        const questionsData = await getAllQuestions();
+        const questionsData = await getAllQuestions({ verified_only: true, limit: 5000 });
         setAllQuestions(questionsData.questions || []);
 
         const qs = questionsData.questions || [];
@@ -202,16 +203,37 @@ export default function CreateEditAssignment() {
   };
 
   // Toggle question selection
-  const toggleQuestion = (questionId) => {
-    setFormData(prev => ({
-      ...prev,
-      assignment_questions: prev.assignment_questions.includes(questionId)
-        ? prev.assignment_questions.filter(id => id !== questionId)
-        : [...prev.assignment_questions, questionId]
-    }));
+  const openQuestionPicker = () => {
+    setPickerSelection([...formData.assignment_questions]);
+    setShowQuestionPicker(true);
   };
 
-  const filteredQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
+  const closeQuestionPicker = () => {
+    setShowQuestionPicker(false);
+  };
+
+  const saveQuestionPickerSelection = () => {
+    setFormData((prev) => ({
+      ...prev,
+      assignment_questions: [...pickerSelection]
+    }));
+    setShowQuestionPicker(false);
+  };
+
+  const togglePickerQuestion = (questionId) => {
+    setPickerSelection((prev) => (
+      prev.includes(questionId)
+        ? prev.filter((id) => id !== questionId)
+        : [...prev, questionId]
+    ));
+  };
+
+  const filteredQuestions = filterQuestionsBySearch(
+    allQuestions,
+    searchQuery,
+    searchFilter,
+    { userInfoCache }
+  );
 
   const styles = {
     container: {
@@ -470,7 +492,7 @@ export default function CreateEditAssignment() {
             {/* Select Questions Button */}
             <button
               type="button"
-              onClick={() => setShowQuestionPicker(true)}
+              onClick={openQuestionPicker}
               style={{
                 padding: '0.5rem 1rem',
                 background: '#4f46e5',
@@ -519,98 +541,118 @@ export default function CreateEditAssignment() {
         >
           <div
             style={{
-              background: 'white',
               width: '100%',
               height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              position: 'relative'
+              overflowY: 'auto',
+              padding: '1.2rem'
             }}
           >
-            {/* Header */}
             <div
               style={{
-                padding: '1rem 1.5rem',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                position: 'fixed',
-                top: '64px',
-                left: 0,
-                right: 0,
-                zIndex: 1001,
-                background: 'white',
-                borderBottom: '1px solid #e5e7eb'
+                maxWidth: '1400px',
+                margin: '0 auto',
+                background: '#ffffff',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+                padding: '1rem'
               }}
             >
-              
-              {/*Select Questions title and show # selected*/}
-              <h2
+              <div
                 style={{
-                  margin: 0,
+                  padding: '0.25rem 0.2rem 0.9rem',
                   display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  gap: '0.5rem',
+                  gap: '0.8rem',
+                  flexWrap: 'wrap',
+                  borderBottom: '1px solid #e5e7eb'
                 }}
               >
-                Select Questions
-                {formData.assignment_questions.length > 0 && (
-                  <span
+                <h2
+                  style={{
+                    margin: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '1.2rem'
+                  }}
+                >
+                  Select Questions
+                  {pickerSelection.length > 0 && (
+                    <span
+                      style={{
+                        fontSize: '0.92rem',
+                        fontWeight: 600,
+                        color: '#6b7280',
+                      }}
+                    >
+                      ({pickerSelection.length} selected)
+                    </span>
+                  )}
+                </h2>
+
+                <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={closeQuestionPicker}
                     style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 500,
-                      color: '#6b7280',
+                      padding: '0.5rem 0.95rem',
+                      background: '#f3f4f6',
+                      color: '#374151',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
                     }}
                   >
-                    ({formData.assignment_questions.length} selected)
-                  </span>
-                )}
-              </h2>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveQuestionPickerSelection}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: '#4f46e5',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Save Selection & Return
+                  </button>
+                </div>
+              </div>
 
-              <button
-                onClick={() => setShowQuestionPicker(false)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: '#4f46e5',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                }}
-              >
-                Save Selection & Return
-              </button>
-            </div>
+              <div style={{ padding: '1rem 0.2rem 0.2rem' }}>
+                <p style={{ margin: '0 0 0.8rem', color: '#6b7280', fontSize: '0.88rem' }}>
+                  Use the table below to select questions for this assignment.
+                </p>
 
-            {/* Table area */}
-            <div
-              style={{
-                flex: 1,
-                overflow: 'auto',
-                padding: '6rem 1rem 1rem'
-              }}
-            >
-              <QuestionSearchBar
-                searchQuery={searchQuery}
-                searchFilter={searchFilter}
-                onSearchQueryChange={setSearchQuery}
-                onSearchFilterChange={setSearchFilter}
-                onClearSearch={() => setSearchQuery('')}
-                compact
-              />
+                <QuestionSearchBar
+                  searchQuery={searchQuery}
+                  searchFilter={searchFilter}
+                  onSearchQueryChange={setSearchQuery}
+                  onSearchFilterChange={setSearchFilter}
+                  onClearSearch={() => setSearchQuery('')}
+                  compact
+                  showResultCount={Boolean(searchQuery)}
+                  resultCount={filteredQuestions.length}
+                  containerStyle={{ marginBottom: '0.9rem' }}
+                />
 
-              <QuestionTable
-                questions={filteredQuestions}
-                userInfoCache={userInfoCache}
-                user={user}
-
-                selectable
-                selectedQuestionIds={formData.assignment_questions}
-                onToggleQuestion={toggleQuestion}
-                showActions={false}
-              />
+                <QuestionTable
+                  questions={filteredQuestions}
+                  userInfoCache={userInfoCache}
+                  user={user}
+                  selectable
+                  selectedQuestionIds={pickerSelection}
+                  onToggleQuestion={togglePickerQuestion}
+                  showActions={false}
+                />
+              </div>
             </div>
           </div>
         </div>
