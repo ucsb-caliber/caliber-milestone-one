@@ -1193,10 +1193,26 @@ def update_existing_assignment(
     """
     Update an existing assignment. Only accessible by the course instructor.
     """
+    existing_assignment = get_assignment(session, assignment_id)
+    if not existing_assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to update it")
+
+    # Auth source-of-truth is roster membership/role. This keeps assignment updates
+    # working for legacy rows whose stored instructor_id predates auth migrations.
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{existing_assignment.course_id}",
+    )
+    if course_payload.get("instructor_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only the course instructor can update assignments")
+
     assignment = update_assignment(
         session=session,
         assignment_id=assignment_id,
-        instructor_id=user_id,
+        # Use persisted owner value to satisfy legacy ownership checks in CRUD.
+        instructor_id=existing_assignment.instructor_id,
         title=assignment_data.title,
         type=assignment_data.type,
         description=assignment_data.description,
@@ -1211,12 +1227,6 @@ def update_existing_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to update it")
 
-    course_payload = _roster_call_for_user(
-        session,
-        user_id,
-        "GET",
-        f"/api/courses/{assignment.course_id}",
-    )
     instructor_email = course_payload.get("instructor_email")
 
     return build_assignment_response(session, assignment, instructor_email=instructor_email)
