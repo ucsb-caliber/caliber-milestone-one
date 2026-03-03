@@ -6,22 +6,7 @@ const PACIFIC_TIMEZONE = 'America/Los_Angeles';
 
 function parseAssignmentDate(dateStr) {
   if (!dateStr) return null;
-  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
-  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
-}
-
-function formatAssignmentDate(dateStr) {
-  const parsed = parseAssignmentDate(dateStr);
-  if (!parsed) return 'Not set';
-  return parsed.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: PACIFIC_TIMEZONE,
-    timeZoneName: 'short'
-  });
+  return new Date(dateStr);
 }
 
 function formatDateObject(dateObj) {
@@ -37,14 +22,15 @@ function formatDateObject(dateObj) {
   });
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 export default function StudentCourseDashboard() {
   const [course, setCourse] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [activeInfoAssignmentId, setActiveInfoAssignmentId] = useState(null);
+  const [collapsedSections, setCollapsedSections] = useState({
+    'in-progress': false,
+    completed: false
+  });
   const [submissionByAssignmentId, setSubmissionByAssignmentId] = useState({});
   const [resubmitModalAssignment, setResubmitModalAssignment] = useState(null);
   const [resubmitModalTimestamp, setResubmitModalTimestamp] = useState(null);
@@ -200,15 +186,6 @@ export default function StudentCourseDashboard() {
       (releaseMs === null || nowMs >= releaseMs) &&
       (softDueMs === null || nowMs <= softDueMs);
 
-    let status = { label: 'In Progress', tone: '#0f766e', bg: '#ccfbf1' };
-    if (isLate || isClosed) {
-      status = { label: 'Late', tone: '#b91c1c', bg: '#fef2f2' };
-    }
-
-    const timeRemainingPercent = releaseMs && softDueMs && softDueMs > releaseMs
-      ? clamp(((nowMs - releaseMs) / (softDueMs - releaseMs)) * 100, 0, 100)
-      : null;
-
     const formatRemainingTime = () => {
       const targetMs = isLate ? (hardDueMs ?? dueMs) : dueMs;
       if (targetMs === null) return 'N/A';
@@ -243,8 +220,6 @@ export default function StudentCourseDashboard() {
       isLate,
       isInProgress,
       isClosed,
-      status,
-      timeRemainingPercent,
       remainingTimeLabel: formatRemainingTime(),
       remainingTimePrefix: isLate ? 'Time Remaining (LATE):' : 'Time Remaining:'
     };
@@ -311,14 +286,134 @@ export default function StudentCourseDashboard() {
     infoValue: {
       color: '#6b7280'
     },
+    cardGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      gap: '1.2rem'
+    },
     timelineCard: {
       border: '1px solid #dbeafe',
       background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
-      borderRadius: '12px',
-      padding: '1.05rem 1.15rem',
-      marginBottom: '0.95rem',
+      borderRadius: '16px',
+      padding: '1.2rem',
       cursor: 'pointer',
-      transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s'
+      transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
+      display: 'flex',
+      flexDirection: 'column',
+      height: '235px',
+      position: 'relative'
+    },
+    sectionHeaderButton: {
+      width: '100%',
+      border: 'none',
+      background: 'transparent',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 0,
+      margin: '0 0 0.65rem 0',
+      cursor: 'pointer'
+    },
+    sectionHeaderTitle: {
+      margin: 0,
+      fontSize: '0.95rem',
+      fontWeight: 700,
+      color: '#0f172a'
+    },
+    sectionHeaderArrow: {
+      color: '#64748b',
+      fontSize: '0.95rem',
+      fontWeight: 700,
+      lineHeight: 1
+    },
+    cardHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: '0.8rem'
+    },
+    cardTitle: {
+      margin: 0,
+      fontSize: '1.05rem',
+      fontWeight: 700,
+      color: '#0f172a',
+      lineHeight: 1.3,
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      overflow: 'hidden'
+    },
+    tagRow: {
+      marginTop: '0.5rem',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.4rem',
+      flexWrap: 'wrap'
+    },
+    typeTag: {
+      fontSize: '0.72rem',
+      fontWeight: 600,
+      color: '#1d4ed8',
+      background: '#dbeafe',
+      borderRadius: '999px',
+      padding: '0.16rem 0.46rem'
+    },
+    dueLabel: {
+      fontSize: '0.74rem',
+      fontWeight: 700,
+      color: '#64748b',
+      textTransform: 'uppercase',
+      letterSpacing: '0.02em',
+      marginTop: '0.9rem',
+      marginBottom: '0.2rem'
+    },
+    dueValue: {
+      fontSize: '0.88rem',
+      color: '#1f2937',
+      fontWeight: 600
+    },
+    infoButton: {
+      width: '24px',
+      height: '24px',
+      borderRadius: '999px',
+      border: '1px solid #cbd5e1',
+      background: 'white',
+      color: '#475569',
+      fontSize: '0.78rem',
+      fontWeight: 700,
+      cursor: 'pointer',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      lineHeight: 1
+    },
+    infoPopover: {
+      position: 'absolute',
+      top: '32px',
+      right: 0,
+      width: 'min(300px, 78vw)',
+      background: 'white',
+      border: '1px solid #dbeafe',
+      borderRadius: '10px',
+      boxShadow: '0 12px 24px rgba(15, 23, 42, 0.16)',
+      padding: '0.7rem 0.78rem',
+      zIndex: 5
+    },
+    infoPopoverRow: {
+      display: 'grid',
+      gridTemplateColumns: '80px 1fr',
+      gap: '0.45rem',
+      alignItems: 'start',
+      marginBottom: '0.45rem',
+      fontSize: '0.78rem'
+    },
+    infoPopoverLabel: {
+      color: '#475569',
+      fontWeight: 700
+    },
+    infoPopoverValue: {
+      color: '#111827',
+      lineHeight: 1.35
     },
     emptyState: {
       background: '#f9fafb',
@@ -336,7 +431,8 @@ export default function StudentCourseDashboard() {
     actionButtons: {
       display: 'flex',
       gap: '0.5rem',
-      flexShrink: 0
+      flexWrap: 'wrap',
+      marginTop: 'auto'
     },
     startButton: {
       border: 'none',
@@ -392,13 +488,43 @@ export default function StudentCourseDashboard() {
     });
   };
 
-  const openAssignment = (assignmentId, resubmit = false) => {
-    window.location.hash = resubmit
-      ? `#student-course/${courseId}/assignment/${assignmentId}?resubmit=1`
+  const formatDueSummary = (dateObj) => {
+    if (!dateObj) return 'No due date';
+    return dateObj.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: PACIFIC_TIMEZONE,
+      timeZoneName: 'short'
+    });
+  };
+
+  const getRemainingInfoLabel = (item) => {
+    if (item.isClosed) return 'Closed';
+    return `${item.remainingTimePrefix} ${item.remainingTimeLabel}`;
+  };
+
+  const toggleSectionCollapsed = (sectionKey) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
+
+  const openAssignment = (assignmentId, resubmit = false, readOnly = false) => {
+    setActiveInfoAssignmentId(null);
+    const params = new URLSearchParams();
+    if (resubmit) params.set('resubmit', '1');
+    if (readOnly) params.set('readonly', '1');
+    const query = params.toString();
+    window.location.hash = query
+      ? `#student-course/${courseId}/assignment/${assignmentId}?${query}`
       : `#student-course/${courseId}/assignment/${assignmentId}`;
   };
 
   const handleAssignmentClick = (assignment, progress) => {
+    setActiveInfoAssignmentId(null);
     if (progress?.submitted) {
       const hardDue = parseAssignmentDate(assignment?.due_date_hard);
       const softDue = parseAssignmentDate(assignment?.due_date_soft);
@@ -483,58 +609,162 @@ export default function StudentCourseDashboard() {
               { key: 'completed', title: 'Completed', emptyLabel: 'No Completed assignments.', items: timelineCompleted }
             ].map((section, sectionIndex) => (
               <div key={section.key}>
-                <h3 style={{ margin: '0 0 0.65rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{section.title}</h3>
-                {section.items.length === 0 ? (
+                <button
+                  type="button"
+                  style={styles.sectionHeaderButton}
+                  onClick={() => toggleSectionCollapsed(section.key)}
+                >
+                  <h3 style={styles.sectionHeaderTitle}>{section.title}</h3>
+                  <span style={styles.sectionHeaderArrow}>
+                    {collapsedSections[section.key] ? '▸' : '▾'}
+                  </span>
+                </button>
+                {collapsedSections[section.key] ? null : section.items.length === 0 ? (
                   <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>{section.emptyLabel}</p>
                 ) : (
-                  section.items.map((item) => {
-                    const progress = getSubmissionMeta(item.assignment.id);
-                    const canStart =
-                      submissionStatusLoaded &&
-                      !progress.submitted &&
-                      !item.isClosed;
+                  <div style={styles.cardGrid}>
+                    {section.items.map((item) => {
+                      const progress = getSubmissionMeta(item.assignment.id);
+                      const canStart =
+                        submissionStatusLoaded &&
+                        !progress.submitted &&
+                        !item.isClosed;
 
-                    const canEdit =
-                      submissionStatusLoaded &&
-                      progress.submitted &&
-                      !item.isClosed;
+                      const canEdit =
+                        submissionStatusLoaded &&
+                        progress.submitted &&
+                        !item.isClosed;
 
-                    return (
-                      <div
-                        key={item.assignment.id}
-                        style={styles.timelineCard}
-                        onClick={() => handleAssignmentClick(item.assignment, progress)}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
-                              <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>{item.assignment.title}</h3>
-                              {!(item.isClosed && item.status.label === 'Late') && (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: item.status.tone, background: item.status.bg, borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                  {item.status.label}
-                                </span>
-                              )}
-                              {item.isClosed && (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7f1d1d', background: '#fee2e2', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                  Completed
-                                </span>
-                              )}
-                              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#1d4ed8', background: '#dbeafe', borderRadius: '6px', padding: '0.15rem 0.4rem' }}>
-                                {item.assignment.type}
-                              </span>
-                              {Boolean(progress.submitted) && (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46', background: '#d1fae5', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                  Submitted
-                                </span>
-                              )}
+                      const showViewSubmittedButton =
+                        submissionStatusLoaded &&
+                        (section.key === 'completed' || Boolean(progress.submitted));
+
+                      let cardStatusStyle = {};
+                      const submittedAtDate = parseAssignmentDate(progress.submitted_at);
+                      const submittedAtMs = submittedAtDate ? submittedAtDate.getTime() : null;
+                      const softDueMs = item.softDueDate ? item.softDueDate.getTime() : null;
+                      const hardDueMs = item.hardDueDate ? item.hardDueDate.getTime() : null;
+                      const nowMs = now.getTime();
+
+                      const submittedLateBeforeHardDue =
+                        Boolean(progress.submitted) &&
+                        softDueMs !== null &&
+                        submittedAtMs !== null &&
+                        submittedAtMs > softDueMs &&
+                        (hardDueMs === null || submittedAtMs <= hardDueMs);
+                      const unsubmittedPastDue =
+                        !progress.submitted &&
+                        softDueMs !== null &&
+                        nowMs >= softDueMs;
+
+                      if (submittedLateBeforeHardDue) {
+                        cardStatusStyle = {
+                          background: '#fffdf2',
+                          borderColor: '#fde68a',
+                        };
+                      } else if (progress.submitted) {
+                        cardStatusStyle = {
+                          background: '#f5fdf8',
+                          borderColor: '#a7f3d0',
+                        };
+                      } else if (unsubmittedPastDue) {
+                        cardStatusStyle = {
+                          background: '#fff5f5',
+                          borderColor: '#fecaca',
+                        };
+                      }
+
+                      let submissionBadge = null;
+                      if (submissionStatusLoaded) {
+                        if (submittedLateBeforeHardDue) {
+                          submissionBadge = {
+                            label: 'Submitted Late',
+                            color: '#a16207',
+                            background: '#fef3c7',
+                          };
+                        } else if (progress.submitted) {
+                          submissionBadge = {
+                            label: 'Submitted',
+                            color: '#065f46',
+                            background: '#d1fae5',
+                          };
+                        } else {
+                          submissionBadge = {
+                            label: 'Not Submitted',
+                            color: '#b91c1c',
+                            background: '#fee2e2',
+                          };
+                        }
+                      }
+
+                      const isInfoOpen = activeInfoAssignmentId === item.assignment.id;
+
+                      return (
+                        <div
+                          key={item.assignment.id}
+                          style={{ ...styles.timelineCard, ...cardStatusStyle }}
+                          onClick={() => handleAssignmentClick(item.assignment, progress)}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 10px 20px rgba(15, 23, 42, 0.10)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = 'none';
+                          }}
+                        >
+                          <div style={styles.cardHeader}>
+                            <div style={{ minWidth: 0 }}>
+                              <h3 style={styles.cardTitle}>{item.assignment.title}</h3>
+                              <div style={styles.tagRow}>
+                                <span style={styles.typeTag}>{item.assignment.type}</span>
+                                {submissionBadge && (
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: submissionBadge.color, background: submissionBadge.background, borderRadius: '999px', padding: '0.16rem 0.46rem' }}>
+                                    {submissionBadge.label}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <div style={{ marginTop: '0.7rem', fontSize: '0.82rem', color: '#475569', display: 'flex', gap: '1.15rem', rowGap: '0.45rem', flexWrap: 'wrap' }}>
-                              <span><strong>Release:</strong> {formatAssignmentDate(item.assignment.release_date)}</span>
-                              <span><strong>Due Date:</strong> {formatDateObject(item.softDueDate || item.dueDate)}</span>
-                              <span><strong>Late Due Date:</strong> {formatDateObject(item.hardDueDate)}</span>
-                              <span><strong>Questions:</strong> {item.assignment.assignment_questions?.length || 0}</span>
+
+                            <div style={{ position: 'relative', flexShrink: 0 }}>
+                              <button
+                                style={styles.infoButton}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveInfoAssignmentId(isInfoOpen ? null : item.assignment.id);
+                                }}
+                                title="Assignment timing details"
+                              >
+                                i
+                              </button>
+                              {isInfoOpen && (
+                                <div
+                                  style={styles.infoPopover}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div style={styles.infoPopoverRow}>
+                                    <span style={styles.infoPopoverLabel}>Release</span>
+                                    <span style={styles.infoPopoverValue}>{formatDateObject(item.releaseDate)}</span>
+                                  </div>
+                                  <div style={styles.infoPopoverRow}>
+                                    <span style={styles.infoPopoverLabel}>Due</span>
+                                    <span style={styles.infoPopoverValue}>{formatDateObject(item.softDueDate || item.dueDate)}</span>
+                                  </div>
+                                  <div style={styles.infoPopoverRow}>
+                                    <span style={styles.infoPopoverLabel}>Late Due</span>
+                                    <span style={styles.infoPopoverValue}>{formatDateObject(item.hardDueDate)}</span>
+                                  </div>
+                                  <div style={{ ...styles.infoPopoverRow, marginBottom: 0 }}>
+                                    <span style={styles.infoPopoverLabel}>Remaining</span>
+                                    <span style={styles.infoPopoverValue}>{getRemainingInfoLabel(item)}</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
+
+                          <div style={styles.dueLabel}>Due Date</div>
+                          <div style={styles.dueValue}>{formatDueSummary(item.softDueDate || item.dueDate)}</div>
 
                           <div style={styles.actionButtons}>
                             {canStart && (
@@ -559,12 +789,12 @@ export default function StudentCourseDashboard() {
                               </button>
                             )}
 
-                            {progress.submitted && (
+                            {showViewSubmittedButton && (
                               <button
                                 style={styles.viewButton}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openAssignment(item.assignment.id, false);
+                                  openAssignment(item.assignment.id, false, !progress.submitted);
                                 }}
                                 onMouseEnter={(e) => {
                                   e.currentTarget.style.background = '#111827';
@@ -577,7 +807,7 @@ export default function StudentCourseDashboard() {
                                   e.currentTarget.style.boxShadow = 'none';
                                 }}
                               >
-                                View Submitted
+                                View
                               </button>
                             )}
 
@@ -604,38 +834,9 @@ export default function StudentCourseDashboard() {
                             )}
                           </div>
                         </div>
-
-                        <div style={{ marginTop: '0.95rem' }}>
-                          <div>
-                            <div style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1fr 1fr',
-                              alignItems: 'center',
-                              fontSize: '0.74rem',
-                              color: '#475569',
-                              marginBottom: '0.35rem',
-                              columnGap: '0.6rem'
-                            }}>
-                              <span style={{ textAlign: 'left' }}>{formatDateObject(item.releaseDate)}</span>
-                              <span style={{ textAlign: 'right' }}>{formatDateObject(item.softDueDate || item.dueDate)}</span>
-                            </div>
-                            <div style={{ height: '8px', borderRadius: '999px', background: '#dbeafe', overflow: 'hidden' }}>
-                              <div style={{
-                                height: '100%',
-                                width: `${item.timeRemainingPercent ?? 0}%`,
-                                background: '#2563eb'
-                              }} />
-                            </div>
-                            {section.key === 'in-progress' && (
-                              <div style={{ marginTop: '0.4rem', fontSize: '0.76rem', color: '#334155', fontWeight: 700 }}>
-                                {item.remainingTimePrefix} {item.remainingTimeLabel}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 )}
                 {sectionIndex < 1 && (
                   <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '0.85rem 0 1rem 0' }} />

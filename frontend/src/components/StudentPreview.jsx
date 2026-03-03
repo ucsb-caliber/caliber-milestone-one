@@ -29,9 +29,13 @@ export default function StudentPreview({
   isPreviewMode = true,
   showCorrectAnswers = false,
   closeButtonText = 'Back to Course',
+  secondaryActionText = '',
+  onSecondaryAction = null,
   initialAnswers,
   initialQuestionIndex,
   initialSubmitted,
+  forceReadOnly = false,
+  readOnlyMessage = '',
   onAnswersChange,
   onQuestionChange,
   onSubmit,
@@ -42,6 +46,7 @@ export default function StudentPreview({
   const [answers, setAnswers] = useState(initialAnswers || {});
   const [submitted, setSubmitted] = useState(Boolean(initialSubmitted));
   const [imageUrls, setImageUrls] = useState({});
+  const isReadOnly = submitted || forceReadOnly;
 
   useEffect(() => {
     if (initialAnswers === undefined) return;
@@ -91,7 +96,7 @@ export default function StudentPreview({
   };
 
   const handleAnswerSelect = (questionId, answer) => {
-    if (submitted) return;
+    if (isReadOnly) return;
     setAnswers(prev => {
       const next = {
         ...prev,
@@ -103,7 +108,7 @@ export default function StudentPreview({
   };
 
   const handleTextAnswer = (questionId, text) => {
-    if (submitted) return;
+    if (isReadOnly) return;
     setAnswers(prev => {
       const next = {
         ...prev,
@@ -204,6 +209,17 @@ export default function StudentPreview({
       fontWeight: '600'
     },
     closeButton: {
+      padding: '0.5rem 1rem',
+      background: 'rgba(255,255,255,0.2)',
+      color: 'white',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '0.875rem',
+      fontWeight: '500',
+      transition: 'background 0.15s'
+    },
+    secondaryButton: {
       padding: '0.5rem 1rem',
       background: 'rgba(255,255,255,0.2)',
       color: 'white',
@@ -446,6 +462,15 @@ export default function StudentPreview({
       textAlign: 'center',
       fontWeight: '600'
     },
+    notSubmittedBanner: {
+      background: '#dc2626',
+      color: 'white',
+      padding: '1rem',
+      borderRadius: '8px',
+      marginBottom: '1rem',
+      textAlign: 'center',
+      fontWeight: '600'
+    },
     emptyState: {
       textAlign: 'center',
       padding: '4rem 2rem',
@@ -543,34 +568,52 @@ export default function StudentPreview({
             <div style={styles.bannerText}>
               Assignment
             </div>
-            <button
-              style={{
-                ...styles.closeButton,
-                ...((closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
-                  ? { background: '#10b981' }
-                  : {})
-              }}
-              onClick={onClose}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
-                  ? '#059669'
-                  : 'rgba(255,255,255,0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
-                  ? '#10b981'
-                  : 'rgba(255,255,255,0.2)';
-              }}
-            >
-              {closeButtonText}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              {secondaryActionText && onSecondaryAction && (
+                <button
+                  style={styles.secondaryButton}
+                  onClick={onSecondaryAction}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
+                  }}
+                >
+                  {secondaryActionText}
+                </button>
+              )}
+              <button
+                style={{
+                  ...styles.closeButton,
+                  ...((closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                    ? { background: '#10b981' }
+                    : {})
+                }}
+                onClick={onClose}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                    ? '#059669'
+                    : 'rgba(255,255,255,0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                    ? '#10b981'
+                    : 'rgba(255,255,255,0.2)';
+                }}
+              >
+                {closeButtonText}
+              </button>
+            </div>
           </div>
         )}
 
         {/* Submitted Banner */}
-        {submitted && (
-          <div style={styles.submittedBanner}>
-            ✓ {isPreviewMode ? 'Preview Complete' : 'Assignment Submitted'} {/*- You answered {getAnsweredCount()} of {totalQuestions} questions*/}
+        {(submitted || forceReadOnly) && (
+          <div style={forceReadOnly && !submitted ? styles.notSubmittedBanner : styles.submittedBanner}>
+            {forceReadOnly && !submitted
+              ? (readOnlyMessage || 'Assignment Was Not Submitted')
+              : `✓ ${isPreviewMode ? 'Preview Complete' : 'Assignment Submitted'}`}
           </div>
         )}
 
@@ -708,15 +751,15 @@ export default function StudentPreview({
                         key={idx}
                         style={buttonStyle}
                         onClick={() => handleAnswerSelect(currentQuestion.id, choice)}
-                        disabled={submitted}
+                        disabled={isReadOnly}
                         onMouseEnter={(e) => {
-                          if (!submitted && !isSelected) {
+                          if (!isReadOnly && !isSelected) {
                             e.currentTarget.style.borderColor = '#a5b4fc';
                             e.currentTarget.style.background = '#f5f3ff';
                           }
                         }}
                         onMouseLeave={(e) => {
-                          if (!submitted && !isSelected) {
+                          if (!isReadOnly && !isSelected) {
                             e.currentTarget.style.borderColor = '#e5e7eb';
                             e.currentTarget.style.background = 'white';
                           }
@@ -782,7 +825,7 @@ export default function StudentPreview({
                   placeholder="Enter your short answer..."
                   value={selectedAnswer || ''}
                   onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
-                  disabled={submitted}
+                  disabled={isReadOnly}
                   onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                   onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                 />
@@ -848,7 +891,7 @@ export default function StudentPreview({
                           newParts[idx] = e.target.value;
                           handleTextAnswer(currentQuestion.id, newParts);
                         }}
-                        disabled={submitted}
+                        disabled={isReadOnly}
                         onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                         onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                       />
@@ -866,7 +909,7 @@ export default function StudentPreview({
                   placeholder="Type your answer here..."
                   value={selectedAnswer || ''}
                   onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
-                  disabled={submitted}
+                  disabled={isReadOnly}
                   onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                   onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                 />
@@ -881,7 +924,7 @@ export default function StudentPreview({
                   placeholder="Type your answer here..."
                   value={selectedAnswer || ''}
                   onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
-                  disabled={submitted}
+                  disabled={isReadOnly}
                   onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                   onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                 />

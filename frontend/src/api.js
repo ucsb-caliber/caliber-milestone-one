@@ -46,23 +46,35 @@ async function getAuthHeaders() {
       'Authorization': 'Bearer test-token-1',
     };
   }
-
-  const accessToken = await getValidAccessToken();
-  if (accessToken) {
-    return {
-      Authorization: `Bearer ${accessToken}`,
-    };
-  }
-
-  // Keycloak auth is propagated via access_token cookie on same-origin requests.
+  // Prefer same-origin cookie/session auth by default.
   return {};
 }
 
 async function apiFetch(url, options = {}) {
-  return fetch(url, {
+  const isTestMode = localStorage.getItem('test-mode') === 'true';
+  const requestOptions = {
     credentials: 'include',
     ...options,
-  });
+  };
+
+  let response = await fetch(url, requestOptions);
+  const requestHeaders = new Headers(requestOptions.headers || {});
+  const hasAuthorizationHeader = requestHeaders.has('Authorization');
+
+  // If cookie auth is unavailable, retry once with direct OIDC bearer token.
+  if (!isTestMode && response.status === 401 && !hasAuthorizationHeader) {
+    const accessToken = await getValidAccessToken();
+    if (accessToken) {
+      const retryHeaders = new Headers(requestOptions.headers || {});
+      retryHeaders.set('Authorization', `Bearer ${accessToken}`);
+      response = await fetch(url, {
+        ...requestOptions,
+        headers: retryHeaders,
+      });
+    }
+  }
+
+  return response;
 }
 
 /**
