@@ -157,11 +157,15 @@ export async function uploadPDF(file, storagePath, metadata = {}) {
 /**
  * Fetch progress for a queued PDF upload job.
  * @param {string} jobId - Upload job identifier returned by /api/upload-pdf
+ * @param {string|null} jobToken - Signed upload job token returned by /api/upload-pdf
  * @returns {Promise<Object>} - Status payload
  */
-export async function getUploadStatus(jobId) {
+export async function getUploadStatus(jobId, jobToken = null) {
   try {
     const headers = await getAuthHeaders();
+    if (jobToken) {
+      headers['X-Upload-Job-Token'] = jobToken;
+    }
     const response = await apiFetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}`, { headers });
 
     if (!response.ok) {
@@ -188,11 +192,15 @@ export async function getUploadStatus(jobId) {
 /**
  * Request cancellation for a queued/running PDF upload job.
  * @param {string} jobId - Upload job identifier returned by /api/upload-pdf
+ * @param {string|null} jobToken - Signed upload job token returned by /api/upload-pdf
  * @returns {Promise<Object>} - Updated status payload
  */
-export async function cancelUploadJob(jobId) {
+export async function cancelUploadJob(jobId, jobToken = null) {
   try {
     const headers = await getAuthHeaders();
+    if (jobToken) {
+      headers['X-Upload-Job-Token'] = jobToken;
+    }
     const response = await apiFetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}/cancel`, {
       method: 'POST',
       headers,
