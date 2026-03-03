@@ -13,20 +13,30 @@ const PACIFIC_TIMEZONE = 'America/Los_Angeles';
 
 function parseAssignmentDate(dateStr) {
   if (!dateStr) return null;
-  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
-  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+  return new Date(dateStr);
 }
 
 const DateTimeline = ({ assignment }) => {
   const now = new Date();
 
-  const release = assignment.release_date ? new Date(assignment.release_date) : null;
-  const softDue = assignment.due_date_soft ? new Date(assignment.due_date_soft) : null;
+  const release = parseAssignmentDate(assignment.release_date);
+  const softDue = parseAssignmentDate(assignment.due_date_soft);
 
   const formatDate = (d) =>
-    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) +
+    d.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: PACIFIC_TIMEZONE
+    }) +
     '\n' +
-    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    d.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: PACIFIC_TIMEZONE,
+      timeZoneName: 'short'
+    });
 
   const getTimeLeft = (date) => {
     if (!date) return null;

@@ -191,34 +191,32 @@ function loadStoredUser() {
 }
 
 async function fetchKeycloakUser() {
-  const headers = {};
-  let usedBearerToken = false;
+  let response;
   if (isTestModeEnabled()) {
-    headers.Authorization = 'Bearer test-token-1';
+    response = await fetch(`${API_BASE}/api/user`, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer test-token-1' },
+      credentials: 'include',
+    });
   } else {
-    const accessToken = await getValidAccessToken();
-    if (accessToken) {
-      headers.Authorization = `Bearer ${accessToken}`;
-      usedBearerToken = true;
-    }
-  }
-
-  let response = await fetch(`${API_BASE}/api/user`, {
-    method: 'GET',
-    headers,
-    credentials: 'include',
-  });
-
-  // If Bearer auth fails, clear cached OIDC tokens and retry once with cookie-only auth.
-  // This prevents redirect loops when stale browser token storage conflicts with a valid
-  // portal session cookie.
-  if (response.status === 401 && usedBearerToken) {
-    clearOidcTokens();
+    // Prefer cookie/session auth first so switching portal accounts takes effect immediately.
     response = await fetch(`${API_BASE}/api/user`, {
       method: 'GET',
       headers: {},
       credentials: 'include',
     });
+
+    // Fallback to direct OIDC bearer only when cookie auth is unavailable.
+    if (response.status === 401) {
+      const accessToken = await getValidAccessToken();
+      if (accessToken) {
+        response = await fetch(`${API_BASE}/api/user`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${accessToken}` },
+          credentials: 'include',
+        });
+      }
+    }
   }
 
   if (response.status === 401) {
