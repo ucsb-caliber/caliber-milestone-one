@@ -101,49 +101,40 @@ export default function StudentCoursesPage() {
 
   const styles = {
     container: {
-      maxWidth: '1400px',
+      maxWidth: '1300px',
       margin: '0 auto',
-      paddingBottom: '2rem',
+      padding: '40px 20px',
+      minHeight: '100vh',
+      fontFamily: 'Inter, system-ui, sans-serif',
     },
     header: {
       display: 'flex',
       justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '1rem',
-      gap: '0.9rem',
+      alignItems: 'flex-end',
+      marginBottom: '20px',
+      gap: '20px',
       flexWrap: 'wrap',
     },
     title: {
+      fontSize: '2.3rem',
+      fontWeight: '800',
       margin: 0,
-      fontSize: '1.75rem',
-      fontWeight: '700',
-      color: '#111827',
+      color: '#0f172a',
+      letterSpacing: '-0.025em',
     },
     helperText: {
-      margin: 0,
-      color: '#64748b',
-      fontSize: '0.92rem',
-    },
-    refreshButton: {
-      padding: '0.75rem 1.5rem',
-      background: '#007bff',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '1rem',
-      fontWeight: '500',
+      margin: '8px 0 0 0',
+      color: '#475569',
+      fontSize: '0.95rem',
     },
     controls: {
       display: 'flex',
       gap: '12px',
       alignItems: 'center',
-      marginBottom: '1.25rem',
-      flexWrap: 'wrap',
+      marginBottom: '28px',
     },
     searchBar: {
       flexGrow: 1,
-      minWidth: '260px',
       maxWidth: '420px',
       padding: '12px 16px',
       borderRadius: '12px',
@@ -205,17 +196,6 @@ export default function StudentCoursesPage() {
           <h1 style={styles.title}>Courses</h1>
           <p style={styles.helperText}>Join and manage course enrollment from the Platform home page.</p>
         </div>
-        <button
-          onClick={loadCourses}
-          disabled={loading}
-          style={{
-            ...styles.refreshButton,
-            opacity: loading ? 0.6 : 1,
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
       </div>
 
       <div style={styles.controls}>
