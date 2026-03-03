@@ -1,0 +1,10 @@
+- Output valid GitHub-flavored Markdown only.
+- Keep the original first line as plain text (no # heading markers).
+- Preserve all key details and constraints from the source text.
+- Do not answer or solve the question.
+- Normalize spacing and punctuation for readability.
+- Convert obvious itemized attributes/methods into bullet lists.
+- If code appears inline, move it into fenced code blocks.
+- Use language hints on fences when clear (for example, ```python).
+- Keep equations and symbols intact as much as possible.
+- Avoid extra commentary before or after the question content.

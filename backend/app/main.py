@@ -1,6 +1,7 @@
 import os
 import threading
 import uuid
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
 from .auth import get_current_user
+from .storage_client import build_pdf_storage_path, upload_pdf_to_storage
 from .roster_integration import (
     call_roster,
     delete_local_course,
@@ -76,6 +78,7 @@ Path("data").mkdir(parents=True, exist_ok=True)
 # In-memory upload status for progress UI.
 _UPLOAD_JOBS: Dict[str, Dict[str, Any]] = {}
 _UPLOAD_JOBS_LOCK = threading.Lock()
+_UPLOAD_TERMINAL_STATUSES = {"completed", "failed", "canceled"}
 
 
 def _create_upload_job(job_id: str, filename: str, storage_path: str, user_id: str):
@@ -90,6 +93,7 @@ def _create_upload_job(job_id: str, filename: str, storage_path: str, user_id: s
             "storage_path": storage_path,
             "filename": filename,
             "user_id": user_id,
+            "cancel_requested": False,
         }
 
 
@@ -107,6 +111,29 @@ def _get_upload_job(job_id: str) -> Optional[Dict[str, Any]]:
     with _UPLOAD_JOBS_LOCK:
         job = _UPLOAD_JOBS.get(job_id)
         return dict(job) if job else None
+
+
+def _is_upload_cancel_requested(job_id: Optional[str]) -> bool:
+    if not job_id:
+        return False
+    with _UPLOAD_JOBS_LOCK:
+        job = _UPLOAD_JOBS.get(job_id)
+        return bool(job and job.get("cancel_requested"))
+
+
+def _request_upload_cancel(job_id: str) -> Optional[Dict[str, Any]]:
+    with _UPLOAD_JOBS_LOCK:
+        job = _UPLOAD_JOBS.get(job_id)
+        if not job:
+            return None
+        if job.get("status") in _UPLOAD_TERMINAL_STATUSES:
+            return dict(job)
+
+        job["cancel_requested"] = True
+        if job.get("status") in {"queued", "running"}:
+            job["status"] = "cancelling"
+        job["message"] = "Cancellation requested. Finishing current step..."
+        return dict(job)
 
 
 @app.on_event("startup")
@@ -235,6 +262,20 @@ def process_pdf_background(
     text = ""
     question_dicts = []
 
+    def cancel_requested() -> bool:
+        return _is_upload_cancel_requested(job_id)
+
+    def mark_canceled(phase: str):
+        expected = len(question_dicts) if question_dicts else None
+        _update_upload_job(
+            job_id,
+            status="canceled",
+            progress_percent=100,
+            message=f"Canceled during {phase}. Saved {inserted_count} questions.",
+            created_questions=inserted_count,
+            expected_questions=expected,
+        )
+
     def m2_progress(current: int, total: int, message: str):
         # Reserve 10%-70% for parse + formatting to show smooth progress during LLM cleanup.
         if total <= 0:
@@ -243,35 +284,49 @@ def process_pdf_background(
             pct = 10 + int((current / total) * 60)
         _update_upload_job(
             job_id,
-            status="running",
+            status="cancelling" if cancel_requested() else "running",
             progress_percent=max(10, min(70, pct)),
             message=message,
             expected_questions=total if total > 0 else None,
             created_questions=current if current > 0 else 0,
         )
 
+    if cancel_requested():
+        mark_canceled("before processing started")
+        return
+
     # Primary path: run the copied Milestone 2 layout parser from this repo.
     _update_upload_job(job_id, status="running", progress_percent=10, message="Parsing PDF layout")
     try:
+        m2_start = time.time()
         question_dicts = extract_questions_with_m2(
             file_content=file_content,
             source_name=storage_path,
             output_dir=Path(UPLOAD_DIR) / "layout_debug",
             progress_callback=m2_progress,
+            should_cancel=cancel_requested,
+        )
+        print(
+            f"[m2] completed source={storage_path} "
+            f"questions={len(question_dicts)} elapsed={time.time() - m2_start:.1f}s"
         )
     except Exception as e:
         print(f"Error running copied M2 parser for {storage_path}: {e!r}")
 
+    if cancel_requested() and not question_dicts:
+        mark_canceled("PDF parsing")
+        return
+
     try:
         # Secondary path: in-repo text + OCR extractor.
-        if not question_dicts:
+        if not question_dicts and not cancel_requested():
             _update_upload_job(job_id, status="running", progress_percent=25, message="Using fallback extractor")
             question_dicts = extract_questions_from_pdf_bytes(file_content, storage_path)
     except Exception as e:
         print(f"Error extracting structured questions from {storage_path}: {e!r}")
 
     # Compatibility fallback for edge-cases where the structured extractor fails.
-    if not question_dicts:
+    if not question_dicts and not cancel_requested():
         try:
             text = extract_text_from_pdf(file_content)
         except Exception as e:
@@ -284,6 +339,10 @@ def process_pdf_background(
             print(f"Error in fallback agent pipeline for {storage_path}: {e!r}")
 
     if not question_dicts:
+        if cancel_requested():
+            mark_canceled("fallback parsing")
+            return
+
         fallback_text = (text or "").strip()[:300]
         question_dicts = [{
             "title": "Extracted Preview",
@@ -294,7 +353,7 @@ def process_pdf_background(
 
     _update_upload_job(
         job_id,
-        status="running",
+        status="cancelling" if cancel_requested() else "running",
         progress_percent=75,
         message="Preparing question records",
         expected_questions=len(question_dicts),
@@ -343,7 +402,7 @@ def process_pdf_background(
                     progress = min(95, 75 + int((inserted_count / expected_count) * 20))
                     _update_upload_job(
                         job_id,
-                        status="running",
+                        status="cancelling" if cancel_requested() else "running",
                         progress_percent=progress,
                         message="Saving generated questions",
                         expected_questions=expected_count,
@@ -352,7 +411,7 @@ def process_pdf_background(
                 except Exception as e:
                     print(f"Skipping bad generated question for {storage_path}: {e!r}")
 
-            if inserted_count == 0:
+            if inserted_count == 0 and not cancel_requested():
                 create_question(
                     session=session,
                     text=f"Fallback draft generated for {storage_path}.",
@@ -378,14 +437,25 @@ def process_pdf_background(
                 )
 
         print(f"Successfully processed {storage_path}: created {inserted_count} questions for user {user_id}")
-        _update_upload_job(
-            job_id,
-            status="completed",
-            progress_percent=100,
-            message=f"Created {inserted_count} questions",
-            created_questions=inserted_count,
-            expected_questions=max(inserted_count, len(question_dicts) if question_dicts else inserted_count),
-        )
+        expected_total = max(inserted_count, len(question_dicts) if question_dicts else inserted_count)
+        if cancel_requested():
+            _update_upload_job(
+                job_id,
+                status="canceled",
+                progress_percent=100,
+                message=f"Canceled. Saved {inserted_count} questions parsed so far.",
+                created_questions=inserted_count,
+                expected_questions=expected_total,
+            )
+        else:
+            _update_upload_job(
+                job_id,
+                status="completed",
+                progress_percent=100,
+                message=f"Created {inserted_count} questions",
+                created_questions=inserted_count,
+                expected_questions=expected_total,
+            )
     except Exception as e:
         print(f"Error storing generated questions for {storage_path}: {e!r}")
         _update_upload_job(
@@ -401,7 +471,7 @@ def process_pdf_background(
 async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    storage_path: str = Form(...),
+    storage_path: Optional[str] = Form(None),
     school: str = Form(""),
     course: str = Form(""),
     course_type: str = Form(""),
@@ -409,26 +479,38 @@ async def upload_pdf(
 ):
     """
     Upload a PDF file for processing. Requires authentication.
-    
-    The PDF is already uploaded to object storage, and storage_path is provided.
+
+    The backend stores the file in Supabase Storage using a service-role key,
+    then queues a background parse job.
     A background task is queued to:
     1. Extract and segment questions from the PDF
     2. Use OCR fallback for scanned/image PDFs when available
     3. Store questions in the database associated with the user
        with the storage_path as source_pdf
     """
-    if not file.filename.endswith('.pdf'):
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
     # Read file content for processing
     file_content = await file.read()
+    if not file_content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    resolved_storage_path = build_pdf_storage_path(user_id, file.filename, storage_path)
+    upload_pdf_to_storage(file_content=file_content, storage_path=resolved_storage_path)
+
     job_id = uuid.uuid4().hex
-    _create_upload_job(job_id=job_id, filename=file.filename, storage_path=storage_path, user_id=user_id)
+    _create_upload_job(
+        job_id=job_id,
+        filename=file.filename,
+        storage_path=resolved_storage_path,
+        user_id=user_id,
+    )
     
     # Queue background processing with user_id and storage_path
     background_tasks.add_task(
         process_pdf_background,
-        storage_path,
+        resolved_storage_path,
         file_content,
         user_id,
         job_id=job_id,
@@ -440,7 +522,7 @@ async def upload_pdf(
     return UploadResponse(
         status="queued",
         filename=file.filename,
-        storage_path=storage_path,
+        storage_path=resolved_storage_path,
         job_id=job_id,
         progress_percent=5,
         message="PDF upload successful. Processing in background."
@@ -459,7 +541,27 @@ def get_upload_status(
     if job.get("user_id") != user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    public_job = {k: v for k, v in job.items() if k != "user_id"}
+    public_job = {k: v for k, v in job.items() if k not in {"user_id", "cancel_requested"}}
+    return UploadStatusResponse(**public_job)
+
+
+@app.post("/api/upload-status/{job_id}/cancel", response_model=UploadStatusResponse)
+def cancel_upload_status(
+    job_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Request cancellation for a queued/running upload job."""
+    job = _get_upload_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Upload job not found")
+    if job.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    updated = _request_upload_cancel(job_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Upload job not found")
+
+    public_job = {k: v for k, v in updated.items() if k not in {"user_id", "cancel_requested"}}
     return UploadStatusResponse(**public_job)
 
 

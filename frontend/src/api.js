@@ -22,6 +22,17 @@ function getCurrentAuthUserId() {
   return 'unknown-user';
 }
 
+function createStoragePathForUser(fileExt) {
+  const safeExt = String(fileExt || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase() || 'pdf';
+  const userId = getCurrentAuthUserId();
+  return `${userId}/${Date.now()}.${safeExt}`;
+}
+
+function isStorageObjectMissing(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return msg.includes('object not found');
+}
+
 /**
  * Get authentication headers with the current user's token
  */
@@ -69,7 +80,7 @@ export async function uploadPDFToStorage(file) {
       throw new Error('Invalid file extension');
     }
     
-    const fileName = `${getCurrentAuthUserId()}/${Date.now()}.${fileExt}`;
+    const fileName = createStoragePathForUser(fileExt);
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
@@ -94,13 +105,15 @@ export async function uploadPDFToStorage(file) {
 /**
  * Upload a PDF file to the backend for processing
  * @param {File} file - The PDF file to upload and process
- * @param {string} storagePath - The Supabase Storage path of the PDF
+ * @param {string} [storagePath] - Optional explicit storage path (backend can generate one)
  * @returns {Promise<Object>} - Upload response with status and message
  */
 export async function uploadPDF(file, storagePath, metadata = {}) {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('storage_path', storagePath);
+  if (storagePath) {
+    formData.append('storage_path', storagePath);
+  }
   formData.append('school', metadata.school || '');
   formData.append('course', metadata.course || '');
   formData.append('course_type', metadata.course_type || '');
@@ -142,6 +155,40 @@ export async function getUploadStatus(jobId) {
     if (!response.ok) {
       const errorText = await response.text();
       let message = 'Failed to fetch upload status';
+      try {
+        const err = JSON.parse(errorText);
+        message = err.detail || message;
+      } catch (e) {
+        message = errorText || message;
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Request cancellation for a queued/running PDF upload job.
+ * @param {string} jobId - Upload job identifier returned by /api/upload-pdf
+ * @returns {Promise<Object>} - Updated status payload
+ */
+export async function cancelUploadJob(jobId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let message = 'Failed to cancel upload job';
       try {
         const err = JSON.parse(errorText);
         message = err.detail || message;
@@ -216,7 +263,9 @@ export async function getImageSignedUrl(imagePath) {
       .createSignedUrl(imagePath, 3600); // 1 hour in seconds
 
     if (error) {
-      console.error('Error creating signed URL:', error);
+      if (!isStorageObjectMissing(error)) {
+        console.error('Error creating signed URL:', error);
+      }
       return null;
     }
 
@@ -245,7 +294,9 @@ export async function getPDFSignedUrl(pdfPath) {
       .createSignedUrl(pdfPath, 3600); // 1 hour in seconds
 
     if (error) {
-      console.error('Error creating signed URL:', error);
+      if (!isStorageObjectMissing(error)) {
+        console.error('Error creating signed URL:', error);
+      }
       return null;
     }
 

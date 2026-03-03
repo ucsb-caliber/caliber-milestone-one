@@ -192,20 +192,34 @@ function loadStoredUser() {
 
 async function fetchKeycloakUser() {
   const headers = {};
+  let usedBearerToken = false;
   if (isTestModeEnabled()) {
     headers.Authorization = 'Bearer test-token-1';
   } else {
     const accessToken = await getValidAccessToken();
     if (accessToken) {
       headers.Authorization = `Bearer ${accessToken}`;
+      usedBearerToken = true;
     }
   }
 
-  const response = await fetch(`${API_BASE}/api/user`, {
+  let response = await fetch(`${API_BASE}/api/user`, {
     method: 'GET',
     headers,
     credentials: 'include',
   });
+
+  // If Bearer auth fails, clear cached OIDC tokens and retry once with cookie-only auth.
+  // This prevents redirect loops when stale browser token storage conflicts with a valid
+  // portal session cookie.
+  if (response.status === 401 && usedBearerToken) {
+    clearOidcTokens();
+    response = await fetch(`${API_BASE}/api/user`, {
+      method: 'GET',
+      headers: {},
+      credentials: 'include',
+    });
+  }
 
   if (response.status === 401) {
     return null;
@@ -273,7 +287,15 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        await handleDirectOidcCallbackIfPresent();
+        try {
+          await handleDirectOidcCallbackIfPresent();
+        } catch (callbackErr) {
+          // Continue with cookie-based auth fallback even if direct OIDC callback handling fails.
+          console.error('OIDC callback handling failed; falling back to cookie auth:', callbackErr);
+          clearOidcTokens();
+          clearOidcRequestState();
+        }
+
         const nextUser = await fetchKeycloakUser();
         if (!cancelled) {
           setUser(nextUser);
