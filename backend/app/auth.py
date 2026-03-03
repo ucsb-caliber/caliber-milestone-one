@@ -1,5 +1,6 @@
 import logging
 import os
+from contextvars import ContextVar
 from collections.abc import Sequence
 from typing import Any, Optional
 
@@ -17,6 +18,8 @@ OIDC_JWKS_URL = (os.getenv("OIDC_JWKS_URL") or "").strip()
 OIDC_AUDIENCE = (os.getenv("OIDC_AUDIENCE") or "").strip() or None
 
 _oidc_jwks_client = None
+_current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
+_current_user_name: ContextVar[Optional[str]] = ContextVar("current_user_name", default=None)
 
 
 def _audience_matches(claims: dict[str, Any], expected: str | None) -> bool:
@@ -45,7 +48,7 @@ def _get_oidc_jwks_client() -> PyJWKClient:
 security = HTTPBearer(auto_error=False)
 
 
-def _decode_keycloak_token(token: str) -> tuple[str, Optional[str]]:
+def _decode_keycloak_token(token: str) -> tuple[str, Optional[str], Optional[str]]:
     if not OIDC_ISSUER and not OIDC_JWKS_URL:
         raise ValueError("OIDC_ISSUER or OIDC_JWKS_URL must be configured")
 
@@ -66,10 +69,11 @@ def _decode_keycloak_token(token: str) -> tuple[str, Optional[str]]:
     if not user_id:
         raise jwt.InvalidTokenError("Token missing subject")
     email = payload.get("email") or payload.get("preferred_username")
-    return user_id, email
+    full_name = payload.get("name")
+    return user_id, email, full_name
 
 
-def verify_jwt_token(token: str) -> tuple[str, Optional[str]]:
+def verify_jwt_token(token: str) -> tuple[str, Optional[str], Optional[str]]:
     """
     Verify a JWT token and return the user ID and email.
 
@@ -153,7 +157,9 @@ async def get_current_user(
         )
     
     # Verify the token using the common verification function
-    user_id, _ = verify_jwt_token(token)
+    user_id, email, full_name = verify_jwt_token(token)
+    _current_user_email.set(email)
+    _current_user_name.set(full_name)
     return user_id
 
 
@@ -181,7 +187,17 @@ async def get_optional_user(
         return None
     
     try:
-        user_id, _ = verify_jwt_token(token)
+        user_id, email, full_name = verify_jwt_token(token)
+        _current_user_email.set(email)
+        _current_user_name.set(full_name)
         return user_id
     except Exception:
         return None
+
+
+def get_current_user_email() -> Optional[str]:
+    return _current_user_email.get()
+
+
+def get_current_user_name() -> Optional[str]:
+    return _current_user_name.get()

@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import Home from './pages/Home.jsx'
+import UploadPDF from './pages/UploadPDF.jsx'
 import QuestionBank from './pages/QuestionBank.jsx'
 import CreateQuestion from './pages/CreateQuestion.jsx'
 import EditQuestion from './pages/EditQuestion.jsx'
@@ -64,19 +64,19 @@ function App() {
     return 'logged-out';
   }
   const hash = window.location.hash.slice(1);
-  return hash.split('?')[0] || 'student-courses';
+  return hash.split('?')[0] || 'courses';
   };
 
   const [page, setPage] = React.useState(getPageFromHash());
   const [userInfo, setUserInfo] = React.useState(null);
   const [checkingProfile, setCheckingProfile] = React.useState(true);
-  const [toast, setToast] = React.useState(null);
-  const toastTimerRef = React.useRef(null);
   const [profilePrefs, setProfilePrefs] = React.useState({
     iconShape: 'circle',
     color: '#4f46e5',
     initials: ''
   });
+
+
   const { user, loading } = useAuth();
   const isInstructorOrAdmin = Boolean(userInfo?.teacher || userInfo?.admin);
 
@@ -142,25 +142,9 @@ function App() {
     window.location.hash = 'student-courses';
   }, [user, page]);
 
-  React.useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
-      }
-    };
-  }, []);
-
-  const showToast = React.useCallback((message, kind = 'info', ms = 2800) => {
-    setToast({ message, kind });
-    if (toastTimerRef.current) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-    toastTimerRef.current = window.setTimeout(() => setToast(null), ms);
-  }, []);
-
   const handleLogoClick = () => {
-    // Students land on courses; instructors/admins land on home
-    window.location.hash = isInstructorOrAdmin ? 'home' : 'student-courses';
+    // Students land on courses; instructors/admins land on course dashboard
+    window.location.hash = isInstructorOrAdmin ? 'courses' : 'student-courses';
     window.location.reload();
   };
 
@@ -216,7 +200,7 @@ function App() {
       }}>
         <h1 style={{ margin: 0 }}>
           <a
-            href="#home"
+            href="#courses"
             onClick={handleLogoClick}
             style={{ fontSize: '1.5rem', cursor: 'pointer', color: 'inherit', textDecoration: 'none' }}
           >
@@ -244,13 +228,10 @@ function App() {
           {user && (
             <>
               {isInstructorOrAdmin && (
-                <NavLink href="#home" active={page === 'home'}>Home</NavLink>
+                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
               )}
               {isInstructorOrAdmin && (
                 <NavLink href="#questions" active={page === 'questions'}>Question Bank</NavLink>
-              )}
-              {isInstructorOrAdmin && (
-                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
               )}
               {isInstructorOrAdmin && (
                 <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
@@ -299,25 +280,6 @@ function App() {
           )}
         </div>
       </nav>
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '84px',
-            right: '16px',
-            zIndex: 11000,
-            maxWidth: '360px',
-            background: toast.kind === 'error' ? '#7f1d1d' : toast.kind === 'success' ? '#14532d' : '#1f2937',
-            color: 'white',
-            borderRadius: '8px',
-            padding: '0.7rem 0.85rem',
-            boxShadow: '0 12px 24px rgba(0,0,0,0.25)',
-            fontSize: '0.9rem'
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
       <main style={{ padding: '2rem' }}>
         {!user && !loading ? (
           page === 'logged-out' ? <LoggedOut /> : <Auth />
@@ -325,9 +287,9 @@ function App() {
           <Onboarding onComplete={handleOnboardingComplete} />
         ) : (
           <>
-            {isInstructorOrAdmin && page === 'home' && (
+            {isInstructorOrAdmin && page === 'upload-pdf' && (
               <ProtectedRoute>
-                <Home />
+                <UploadPDF />
               </ProtectedRoute>
             )}
             {isInstructorOrAdmin && page === 'questions' && (
