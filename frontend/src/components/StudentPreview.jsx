@@ -34,6 +34,7 @@ export default function StudentPreview({
   initialSubmitted,
   onAnswersChange,
   onQuestionChange,
+  inline = false, //new prop
   onSubmit,
   isSubmitting = false,
   submitButtonText = 'Submit Assignment'
@@ -42,6 +43,7 @@ export default function StudentPreview({
   const [answers, setAnswers] = useState(initialAnswers || {});
   const [submitted, setSubmitted] = useState(Boolean(initialSubmitted));
   const [imageUrls, setImageUrls] = useState({});
+  
 
   useEffect(() => {
     if (initialAnswers === undefined) return;
@@ -452,6 +454,12 @@ export default function StudentPreview({
       color: '#6b7280'
     }
   };
+  const wrapperStyle = inline 
+    ? { background: '#f3f4f6', height: '100%', overflowY: 'auto' } 
+    : styles.overlay;
+  const containerStyle = inline
+    ? { ...styles.container, maxWidth: '100%', padding: '1rem' }
+    : styles.container;
 
   if (questions.length === 0) {
     return (
@@ -518,7 +526,7 @@ export default function StudentPreview({
   const isLastQuestion = currentIndex === totalQuestions - 1;
 
   return (
-    <div style={styles.overlay}>
+    <div style={wrapperStyle}>
       <div style={styles.container}>
         {/* Preview Mode Banner */}
         {isPreviewMode && (

@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { createQuestion, uploadImage, getUserInfo } from '../api';
 import { useAuth } from '../AuthContext';
+import StudentPreview from '../components/StudentPreview';
 
 export default function CreateQuestion() {
   const { user } = useAuth();
@@ -31,8 +32,29 @@ export default function CreateQuestion() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [viewMode, setViewMode] = useState('edit');
+  const [viewMode, setViewMode] = useState('edit');//edit preview and split 
   const [profileSchool, setProfileSchool] = useState('');
+
+  // Auto-save to LocalStorage whenever formData changes
+  useEffect(() => {
+    if (formData.title || formData.text) {
+      localStorage.setItem('question_draft', JSON.stringify(formData));
+    }
+  }, [formData]);
+
+  // Load draft on initial component mount
+  useEffect(() => {
+    const savedDraft = localStorage.getItem('question_draft');
+    if (savedDraft) {
+      const parsedDraft = JSON.parse(savedDraft);
+      // Ask user if they want to restore (optional, or just do it automatically)
+      if (window.confirm("Found an unsaved draft. Would you like to restore it?")) {
+        setFormData(parsedDraft);
+      } else {
+        localStorage.removeItem('question_draft');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -172,12 +194,12 @@ export default function CreateQuestion() {
       e.preventDefault();
       const { selectionStart, selectionEnd, value } = e.target;
       const newValue = value.substring(0, selectionStart) + '  ' + value.substring(selectionEnd);
-      
+
       setFormData(prev => ({
         ...prev,
         text: newValue
       }));
-      
+
       // Set cursor position after the inserted spaces
       setTimeout(() => {
         e.target.selectionStart = e.target.selectionEnd = selectionStart + 2;
@@ -219,9 +241,9 @@ export default function CreateQuestion() {
     const nextLabel = `Part ${String.fromCharCode(65 + formData.rubric_parts.length)}`;
     setFormData(prev => ({
       ...prev,
-      rubric_parts: [...prev.rubric_parts, { 
-        part_label: nextLabel, 
-        rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] 
+      rubric_parts: [...prev.rubric_parts, {
+        part_label: nextLabel,
+        rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }]
       }]
     }));
   };
@@ -305,7 +327,7 @@ export default function CreateQuestion() {
         setImagePreview(null);
         return;
       }
-      
+
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setError('Image size must be less than 5MB');
@@ -313,11 +335,11 @@ export default function CreateQuestion() {
         setImagePreview(null);
         return;
       }
-      
+
       // Clear any previous errors
       setError('');
       setImageFile(file);
-      
+
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -390,7 +412,7 @@ export default function CreateQuestion() {
 
     try {
       let imageUrl = null;
-      
+
       // Upload image first if one is selected
       if (imageFile) {
         try {
@@ -401,11 +423,11 @@ export default function CreateQuestion() {
           return;
         }
       }
-      
+
       // Prepare answer choices based on question type
       let answerChoicesData = '[]';
       let correctAnswerData = '';
-      
+
       if (needsAnswerChoices()) {
         const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
         answerChoicesData = JSON.stringify(validAnswers);
@@ -432,6 +454,8 @@ export default function CreateQuestion() {
         image_url: imageUrl,
         is_verified: true
       });
+
+      localStorage.removeItem('question_draft'); // Clear the draft after successful publish
 
       setSuccess(true);
       // Reset form
@@ -465,7 +489,7 @@ export default function CreateQuestion() {
   return (
     <div style={styles.container}>
       <div style={styles.wrapper}>
-        
+
         {/* Header */}
         <header style={styles.header}>
           <div>
@@ -482,11 +506,17 @@ export default function CreateQuestion() {
         {/* Validation Message */}
         {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
 
-        <form onSubmit={handleSubmit} style={styles.grid}>
-          
-          {/* Main Column */}
+        <form onSubmit={handleSubmit} style={{
+          display: 'grid',
+          // Dynamically adjust grid: 1:1 for Split View, 1:Sidebar for others
+          gridTemplateColumns: viewMode === 'split' ? '1fr 1fr' : '1fr 350px',
+          gap: '24px',
+          alignItems: 'start'
+        }}>
+
+          {/* Main Column (Left Side) */}
           <div style={{ width: '100%' }}>
-            
+
             {/* Title Card */}
             <div style={styles.card}>
               <label style={styles.label}>Question Title</label>
@@ -504,434 +534,417 @@ export default function CreateQuestion() {
             <div style={styles.card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <label style={styles.label}>Question Body</label>
-                <div style={{ display: 'flex', background: '#f7fafc', padding: '2px', borderRadius: '6px' }}>
-                  <button 
-                    type="button"
-                    onClick={() => setViewMode('edit')}
-                    style={{ ...styles.secondaryBtn, padding: '4px 12px', border: 'none', background: viewMode === 'edit' ? 'white' : 'transparent', boxShadow: viewMode === 'edit' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' }}>
-                    Write
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setViewMode('preview')}
-                    style={{ ...styles.secondaryBtn, padding: '4px 12px', border: 'none', background: viewMode === 'preview' ? 'white' : 'transparent', boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' }}>
-                    Preview
-                  </button>
+                {/* NEW SECTION: Autosave indicator + Buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ fontSize: '12px', color: '#a0aec0', fontStyle: 'italic' }}>
+                    ✓ Autosaved
+                  </span>
+                  <div style={{ display: 'flex', background: '#f7fafc', padding: '2px', borderRadius: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('edit')}
+                      style={{ ...
+                        styles.secondaryBtn, 
+                        padding: '4px 12px', 
+                        border: 'none', 
+                        background: viewMode === 'edit' ? 'white' : 'transparent', 
+                        boxShadow: viewMode === 'edit' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                       }}>
+                      Write
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('preview')}
+                      style={{ ...
+                        styles.secondaryBtn, 
+                        padding: '4px 12px',
+                        border: 'none', 
+                        background: viewMode === 'preview' ? 'white' : 'transparent', 
+                        boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                        }}>
+                      Full Preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('split')}
+                      style={{ ...
+                      styles.secondaryBtn, 
+                      padding: '4px 12px', 
+                      border: 'none', 
+                      background: viewMode === 'split' ? 'white' : 'transparent', 
+                      boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                      }}>
+                      Split View
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {viewMode === 'edit' ? (
+              {viewMode === 'preview' ? (
+                <div style={{ ...
+                styles.input, 
+                minHeight: '300px', 
+                padding: '12px', 
+                border: '1px solid #edf2f7', 
+                borderRadius: '8px', 
+                overflow: 'auto' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      code({ node, inline, className, children, ...props }) {
+                        return inline ? (
+                          <code style={{ 
+                            background: '#e9ecef', 
+                            padding: '0.2rem 0.4rem', 
+                            borderRadius: '3px', 
+                            fontSize: '0.9em', 
+                            fontFamily: 'monospace' 
+                          }} 
+                            {...props}>{children}</code>
+                        ) : (
+                          <pre style={{ 
+                            background: '#2d2d2d', 
+                            color: '#f8f8f2', 
+                            padding: '1rem', 
+                            borderRadius: '4px',
+                             overflow: 'auto', 
+                             fontSize: '0.875rem' 
+                            }}>
+                            <code className={className} {...props}>{children}</code>
+                          </pre>
+                        );
+                      },
+                      p({ children }) { return <p 
+                        style={{ 
+                          margin: '0 0 0.5rem 0', 
+                          fontSize: '1rem', 
+                          lineHeight: '1.5'
+                         }}>
+                          {children}</p>; }
+                    }}
+                  >
+                    {formData.text || "*Nothing to preview yet...*"}
+                  </ReactMarkdown>
+                </div>
+              ) : (
                 <textarea
                   name="text"
                   value={formData.text}
                   onChange={handleInputChange}
                   onKeyDown={handleTextareaKeyDown}
                   placeholder="Supports Markdown & LaTeX: $E=mc^2$"
-                  style={{ ...styles.input, minHeight: '150px', padding: '12px', fontFamily: 'monospace', lineHeight: '1.5' }}
+                  style={{ ...
+                    styles.input, 
+                    minHeight: '300px', 
+                    padding: '12px', 
+                    fontFamily: 'monospace', 
+                    lineHeight: '1.5' 
+                  }}
                 />
-              ) : (
-                <div style={{ ...styles.input, minHeight: '150px', padding: '12px', border: '1px solid #edf2f7', borderRadius: '8px', overflow: 'auto' }}>
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm, remarkMath]} 
-                    rehypePlugins={[rehypeKatex]}
-                    components={{
-                      code({node, inline, className, children, ...props}) {
-                        return inline ? (
-                          <code style={{
-                            background: '#e9ecef',
-                            padding: '0.2rem 0.4rem',
-                            borderRadius: '3px',
-                            fontSize: '0.9em',
-                            fontFamily: 'monospace'
-                          }} {...props}>
-                            {children}
-                          </code>
-                        ) : (
-                          <pre style={{
-                            background: '#2d2d2d',
-                            color: '#f8f8f2',
-                            padding: '1rem',
-                            borderRadius: '4px',
-                            overflow: 'auto',
-                            fontSize: '0.875rem',
-                            border: '1px solid #444'
-                          }}>
-                            <code className={className} {...props}>
-                              {children}
-                            </code>
-                          </pre>
-                        );
-                      },
-                      p({children}) {
-                        return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
-                      }
-                    }}
-                  >
-                    {formData.text || "*Nothing to preview yet...*"}
-                  </ReactMarkdown>
-                </div>
               )}
             </div>
 
-            {/* Answer Section - Conditional based on question type */}
+            {/* Answer Section */}
             {needsAnswerChoices() && (
               <div style={styles.card}>
                 <label style={styles.label}>
                   {isTrueFalse() ? 'Select the correct answer' : 'Answer Choices (Select the correct one)'}
                 </label>
                 {isTrueFalse() ? (
-                  /* True/False: locked to exactly True and False, no add/remove */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '12px' 
+                    }}>
                     {['True', 'False'].map((choice) => (
                       <div key={choice} style={styles.choiceRow}>
-                        <input 
-                          type="radio" 
-                          name="correct-choice" 
-                          style={styles.radio}
-                          checked={formData.correct_answer === choice}
-                          onChange={() => setCorrectAnswer(choice)}
-                        />
-                        <span style={{ flex: 1, padding: '12px', fontSize: '16px', color: '#1a202c' }}>{choice}</span>
+                        <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice} onChange={() => setCorrectAnswer(choice)} />
+                        <span style={{ 
+                          flex: 1, 
+                          padding: '12px', 
+                          fontSize: '16px', 
+                          color: '#1a202c' 
+                          }}>{choice}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  /* MCQ: editable choices with add/remove */
                   <>
                     {formData.answer_choices.map((choice, index) => (
                       <div key={index} style={styles.choiceRow}>
-                        <input 
-                          type="radio" 
-                          name="correct-choice" 
-                          style={styles.radio}
-                          checked={formData.correct_answer === choice && choice !== ''}
-                          onChange={() => setCorrectAnswer(choice)}
-                        />
-                        <input
-                          type="text"
-                          value={choice}
-                          placeholder={`Option ${index + 1}`}
-                          style={styles.input}
-                          onChange={(e) => handleAnswerChange(index, e.target.value)}
-                        />
+                        <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice && choice !== ''} onChange={() => setCorrectAnswer(choice)} />
+                        <input type="text" value={choice} placeholder={`Option ${index + 1}`} style={styles.input} onChange={(e) => handleAnswerChange(index, e.target.value)} />
                         {formData.answer_choices.length > 2 && (
-                          <button type="button" style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer' }} onClick={() => {removeAnswerChoice(index)}}>
-                            ✕
-                          </button>
+                          <button type="button" style={{ 
+                            border: 'none', 
+                            background: 'none', 
+                            color: '#e53e3e', 
+                            cursor: 'pointer' 
+                          }} onClick={() => removeAnswerChoice(index)}>✕</button>
                         )}
                       </div>
                     ))}
-                    <button type="button" style={{ ...styles.secondaryBtn, width: '100%', marginTop: '12px', borderStyle: 'dashed' }} onClick={() => {addAnswerChoice()}}>
-                      + Add Another Option
-                    </button>
+                    <button type="button" style={{ ...
+                      styles.secondaryBtn,
+                      width: '100%', 
+                      marginTop: '12px', 
+                      borderStyle: 'dashed' 
+                      }} onClick={addAnswerChoice}>+ Add Another Option</button>
                   </>
                 )}
               </div>
             )}
 
-            {/* Parts & Rubric Builder - for both Free Response and Short Answer */}
+            {/* Rubric Builder */}
             {needsRubric() && (
               <div style={styles.card}>
                 {isFreeResponse() && (
-                <div style={{ 
-                  padding: '12px 16px', 
-                  background: '#eff6ff', 
-                  border: '1px solid #bfdbfe', 
-                  borderRadius: '8px', 
-                  marginBottom: '20px' 
-                }}>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e40af', marginBottom: '6px' }}>
-                    📋 Parts vs Rubric — What's the difference?
+                  <div style={{
+                    padding: '12px 16px', 
+                    background: '#eff6ff',
+                     border: '1px solid #bfdbfe', 
+                     borderRadius: '8px', 
+                     marginBottom: '20px' 
+                     }}>
+                    <div style={{ 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: '#1e40af', 
+                      marginBottom: '6px' 
+                      }}>
+                        📋 Parts vs Rubric</div>
+                    <ul style={{ 
+                      margin: 0, 
+                      paddingLeft: '20px', 
+                      fontSize: '13px', 
+                      color: '#1e3a8a', 
+                      lineHeight: 1.6 
+                      }}>
+                      <li><strong>Parts</strong> = Sub-questions.</li>
+                      <li><strong>Rubric</strong> = Grading criteria per part.</li>
+                    </ul>
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#1e3a8a', lineHeight: 1.6 }}>
-                    <li><strong>Parts</strong> = Sub-questions or sections. Each part gets its own answer area for students (e.g., Part A, Part B).</li>
-                    <li><strong>Rubric</strong> = Grading criteria for each part. Define how many points for each level (e.g., +6 full credit, +3 partial, +0 no credit).</li>
-                  </ul>
-                </div>
                 )}
 
-                {isShortAnswer() && (
                 <div style={{ 
-                  padding: '12px 16px', 
-                  background: '#f0fdf4', 
-                  border: '1px solid #bbf7d0', 
-                  borderRadius: '8px', 
-                  marginBottom: '20px' 
-                }}>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#166534', marginBottom: '4px' }}>
-                    Short Answer — Grading Rubric
-                  </div>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#166534', lineHeight: 1.5 }}>
-                    Short answer has one response. Define grading levels (e.g., +6 full credit, +3 partial, +0 no credit).
-                  </p>
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  marginBottom: '16px' 
+                  }}>
+                  <label style={styles.label}>{isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}</label>
+                  <span style={{ 
+                    fontSize: '14px', 
+                    color: '#6b7280' 
+                    }}>Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points</span>
                 </div>
-                )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <label style={{ ...styles.label, marginBottom: 0 }}>
-                    {isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}
-                  </label>
-                  <span style={{ fontSize: '14px', color: '#6b7280' }}>
-                    Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points
-                  </span>
-                </div>
-                
-                {formData.rubric_parts.map((part, partIndex) => {
-                  const levels = part.rubric_levels || [];
-                  return (
-                    <div key={partIndex} style={{ 
-                      background: '#f8fafc', 
-                      border: '1px solid #e2e8f0', 
-                      borderRadius: '8px', 
-                      padding: '16px', 
-                      marginBottom: '16px' 
+                {formData.rubric_parts.map((part, partIndex) => (
+                  <div key={partIndex} style={{ 
+                    background: '#f8fafc', 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: '8px', 
+                    padding: '16px', 
+                    marginBottom: '16px' 
                     }}>
-                      {/* Part header - only for FR (Short Answer has no parts) */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        {isFreeResponse() ? (
-                          <input
-                            type="text"
-                            value={part.part_label}
-                            onChange={(e) => updatePartLabel(partIndex, e.target.value)}
-                            style={{ 
-                              ...styles.input, 
-                              width: '140px', 
-                              fontWeight: '600',
-                              padding: '8px 12px',
-                              background: 'white'
-                            }}
-                            placeholder="Part A"
-                          />
-                        ) : (
-                          <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
-                        )}
-                        {isFreeResponse() && formData.rubric_parts.length > 1 && (
-                          <button 
-                            type="button" 
-                            style={{ 
-                              border: 'none', 
-                              background: '#fee2e2', 
-                              color: '#dc2626', 
-                              cursor: 'pointer',
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                              fontWeight: '500'
-                            }} 
-                            onClick={() => removePart(partIndex)}
-                          >
-                            Remove Part
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Rubric for this part */}
-                      <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '10px' }}>
-                          {isFreeResponse() ? `Rubric for ${part.part_label || `Part ${partIndex + 1}`} — grading levels:` : 'Define point values and criteria:'}
-                        </div>
-                        {levels.map((level, levelIndex) => (
-                          <div key={levelIndex} style={{ 
-                            display: 'flex', 
-                            alignItems: 'flex-start', 
-                            gap: '12px', 
-                            marginBottom: '10px',
-                            background: 'white',
-                            padding: '10px 12px',
-                            borderRadius: '6px',
-                            border: '1px solid #e2e8f0'
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>+</span>
-                              <input
-                                type="number"
-                                value={level.points}
-                                onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'points', e.target.value)}
-                                style={{ 
-                                  ...styles.input, 
-                                  width: '56px',
-                                  padding: '6px 8px',
-                                  textAlign: 'center'
-                                }}
-                                min="0"
-                              />
-                              <span style={{ fontSize: '13px', color: '#64748b' }}>pts</span>
-                            </div>
-                            <input
-                              type="text"
-                              value={level.criteria || ''}
-                              onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)}
-                              placeholder="e.g., correct answer with valid explanation"
-                              style={{ 
-                                ...styles.input, 
-                                flex: 1,
-                                padding: '8px 12px'
-                              }}
-                            />
-                            {levels.length > 1 && (
-                              <button 
-                                type="button" 
-                                style={{ 
-                                  border: 'none', 
-                                  background: 'none', 
-                                  color: '#94a3b8', 
-                                  cursor: 'pointer',
-                                  padding: '4px 8px',
-                                  fontSize: '12px'
-                                }} 
-                                onClick={() => removeRubricLevel(partIndex, levelIndex)}
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        <button 
-                          type="button" 
-                          style={{ 
-                            ...styles.secondaryBtn, 
-                            padding: '8px 14px', 
-                            fontSize: '13px',
-                            borderStyle: 'dashed'
-                          }} 
-                          onClick={() => addRubricLevel(partIndex)}
-                        >
-                          + Add rubric level
-                        </button>
-                      </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      marginBottom: '12px' 
+                      }}>
+                      {isFreeResponse() ? (
+                        <input type="text" value={part.part_label} onChange={(e) => updatePartLabel(partIndex, e.target.value)} style={{ ...styles.input, width: '140px', fontWeight: '600', background: 'white' }} placeholder="Part A" />
+                      ) : (
+                        <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
+                      )}
+                      {isFreeResponse() && formData.rubric_parts.length > 1 && (
+                        <button type="button" style={{ 
+                          border: 'none', 
+                          background: '#fee2e2', 
+                          color: '#dc2626', 
+                          cursor: 'pointer', 
+                          padding: '6px 12px', 
+                          borderRadius: '6px', 
+                          fontSize: '13px' 
+                        }} onClick={() => removePart(partIndex)}>Remove Part</button>
+                      )}
                     </div>
-                  );
-                })}
-                
+
+                    <div style={{ 
+                      marginTop: '12px', 
+                      paddingTop: '12px', 
+                      borderTop: '1px solid #e2e8f0' 
+                      }}>
+                      {part.rubric_levels.map((level, levelIndex) => (
+                        <div key={levelIndex} style={{ 
+                          display: 'flex', 
+                          alignItems: 'flex-start', 
+                          gap: '12px', 
+                          marginBottom: '10px', 
+                          background: 'white', 
+                          padding: '10px 12px', 
+                          borderRadius: '6px', 
+                          border: '1px solid #e2e8f0' 
+                          }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px', 
+                            flexShrink: 0 
+                            }}>
+                            <span style={{ fontWeight: '600' }}>+</span>
+                            <input type="number" value={level.points} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'points', e.target.value)} style={{ ...styles.input, width: '56px', textAlign: 'center' }} min="0" />
+                            <span style={{ fontSize: '13px' }}>pts</span>
+                          </div>
+                          <input type="text" value={level.criteria} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)} placeholder="Criteria..." style={{ ...styles.input, flex: 1 }} />
+                          {part.rubric_levels.length > 1 && (
+                            <button type="button" style={{ 
+                              border: 'none', 
+                              background: 'none', 
+                              color: '#94a3b8', 
+                              cursor: 'pointer'
+                            }} onClick={() => removeRubricLevel(partIndex, levelIndex)}>✕</button>
+                          )}
+                        </div>
+                      ))}
+                      <button type="button" style={{ ...
+                        styles.secondaryBtn, 
+                        padding: '8px 14px',
+                        fontSize: '13px', 
+                        borderStyle: 'dashed' 
+                        }} onClick={() => addRubricLevel(partIndex)}>+ Add level</button>
+                    </div>
+                  </div>
+                ))}
+
                 {isFreeResponse() && (
-                <button 
-                  type="button" 
-                  style={{ 
-                    ...styles.secondaryBtn, 
-                    width: '100%', 
-                    marginTop: '8px', 
-                    borderStyle: 'dashed',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px'
-                  }} 
-                  onClick={addPart}
-                >
-                  <span style={{ fontSize: '18px' }}>+</span> Add Another Part
-                </button>
+                  <button type="button" style={{ ...
+                  styles.secondaryBtn,
+                  width: '100%', 
+                  borderStyle: 'dashed', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px'
+                  }} onClick={addPart}>
+                    <span style={{ fontSize: '18px' }}>+</span> Add Another Part
+                  </button>
                 )}
               </div>
             )}
-
           </div>
 
-          {/* Sidebar Column */}
-          <aside>
-            <div style={styles.card}>
-              <h3 style={{ marginTop: 0, fontSize: '16px', marginBottom: '16px' }}>Question Metadata</h3>
-              <div style={styles.sidebarSection}>
-                <label style={styles.label}>School</label>
-                <input
-                  type="text"
-                  name="school"
-                  value={formData.school}
-                  onChange={handleInputChange}
-                  style={styles.input}
-                  placeholder="Enter school"
-                />
-              </div>
-
-              <div style={styles.sidebarSection}>
-                <label style={styles.label}>Course Info</label>
-                <input type="text" name="course" placeholder="Name (e.g. CS101)" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
-                <input type="text" name="course_type" placeholder="Type (e.g. Intro to Python)" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
-              </div>
-
-              <div style={styles.sidebarSection}>
-                <label style={styles.label}>Question Type</label>
-                <select
-                  name="question_type"
-                  value={formData.question_type}
-                  onChange={handleInputChange}
-                  style={{...styles.input, marginBottom: '8px'}}
-                >
-                  <option disabled>Select question type</option>
-                  <option value="mcq">Multiple Choice (MCQ)</option>
-                  <option value="fr">Free Response (FR)</option>
-                  <option value="short_answer">Short Answer</option>
-                  <option value="true_false">True/False</option>
-                </select>
-                <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords (comma separated)" style={styles.input} onChange={handleInputChange} />
-              </div>
-
-              <div style={styles.sidebarSection}>
-                <label style={styles.label}>Bloom's Taxonomy</label>
-                <select name="blooms_taxonomy" style={styles.input} onChange={handleInputChange}>
-                  <option value="">Select Bloom's level</option>
-                  <option value="Remembering">Remembering</option>
-                  <option value="Understanding">Understanding</option>
-                  <option value="Applying">Applying</option>
-                  <option value="Analyzing">Analyzing</option>
-                  <option value="Evaluating">Evaluating</option>
-                  <option value="Creating">Creating</option>
-                </select>
-              </div>
-
-              <div style={styles.sidebarSection}>
-                <label style={styles.label}>Tags (comma-separated)</label>
-                <input type="text" name="tags" value={formData.tags} placeholder="midterm, important, chapter-3" style={styles.input} onChange={handleInputChange} />
-              </div>
-
-              <div>
-                <label style={styles.label}>Image (optional)</label>
-                <div style={{ border: '2px dashed #cbd5e0', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer' }}>
-                  {
-                    <input
-                      id="image-upload"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      ref={(ref) => setImageInputRef(ref)}
-                      style={{
-                      }}
-                    />}
-                      {imagePreview && (
-                      <div style={{ marginTop: '1rem', position: 'relative', display: 'inline-block' }}>
-                        <img 
-                          src={imagePreview} 
-                          alt="Preview" 
-                          style={{ 
-                            maxWidth: '300px', 
-                            width: '100%',
-                            maxHeight: '300px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px'
-                          }} 
-                        />
-                      <button
-                        type="button"
-                        onClick={removeImage}
-                        style={{
-                          position: 'absolute',
-                          top: '0.5rem',
-                          right: '0.5rem',
-                          padding: '0.5rem',
-                          background: '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '0.875rem'
-                        }}
-                      >
-                      Remove
-                    </button>
-                  </div>
-                  )}
+          {/* Sidebar / Split View (Right Column) */}
+          <aside style={{ 
+            position: 'sticky',
+            top: '20px' }}>
+            {viewMode === 'split' ? (
+              /* --- SPLIT VIEW PREVIEW --- */
+              <div style={styles.card}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  alignItems: 'center', 
+                  marginBottom: '16px' 
+                  }}>
+                  <h3 style={{ 
+                    margin: 0, 
+                    fontSize: '14px', 
+                    color: '#64748b', 
+                    textTransform: 'uppercase' 
+                    }}>Live Student View</h3>
                 </div>
-            </div>
-            </div>
+                <div style={{ 
+                  border: '1px solid #edf2f7', 
+                  borderRadius: '8px', 
+                  background: '#f8fafc', 
+                  overflow: 'hidden' 
+                  }}>
+                  <StudentPreview
+                    inline={true}
+                    isPreviewMode={false}
+                    assignmentTitle={formData.title || "Untitled Question"}
+                    questions={[{
+                      id: 'live-preview',
+                      title: formData.title,
+                      text: formData.text,
+                      question_type: formData.question_type,
+                      answer_choices: (formData.question_type === 'mcq' || formData.question_type === 'true_false')
+                        ? JSON.stringify(formData.answer_choices)
+                        : JSON.stringify(formData.rubric_parts),
+                      correct_answer: formData.correct_answer
+                    }]}
+                  />
+                </div>
+              </div>
+            ) : (
+              /* --- ORIGINAL METADATA SIDEBAR --- */
+              <div style={styles.card}>
+                <h3 style={{ 
+                  marginTop: 0, 
+                  fontSize: '16px',
+                  marginBottom: '16px'
+                  }}>Question Metadata</h3>
+                <div style={styles.sidebarSection}>
+                  <label style={styles.label}>School</label>
+                  <input type="text" name="school" value={formData.school} onChange={handleInputChange} style={styles.input} />
+                </div>
+                <div style={styles.sidebarSection}>
+                  <label style={styles.label}>Course Info</label>
+                  <input type="text" name="course" placeholder="Name" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+                  <input type="text" name="course_type" placeholder="Type" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+                </div>
+                <div style={styles.sidebarSection}>
+                  <label style={styles.label}>Question Type</label>
+                  <select name="question_type" value={formData.question_type} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
+                    <option value="mcq">Multiple Choice (MCQ)</option>
+                    <option value="fr">Free Response (FR)</option>
+                    <option value="short_answer">Short Answer</option>
+                    <option value="true_false">True/False</option>
+                  </select>
+                  <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
+                </div>
+                <div style={styles.sidebarSection}>
+                  <label style={styles.label}>Bloom's Taxonomy</label>
+                  <select name="blooms_taxonomy" style={styles.input} onChange={handleInputChange}>
+                    <option value="">Select Level</option>
+                    <option value="Remembering">Remembering</option>
+                    <option value="Understanding">Understanding</option>
+                    <option value="Applying">Applying</option>
+                    <option value="Analyzing">Analyzing</option>
+                    <option value="Evaluating">Evaluating</option>
+                    <option value="Creating">Creating</option>
+                  </select>
+                </div>
+                <div style={styles.sidebarSection}>
+                  <label style={styles.label}>Tags</label>
+                  <input type="text" name="tags" value={formData.tags} placeholder="midterm, chapter-1" style={styles.input} onChange={handleInputChange} />
+                </div>
+                <div>
+                  <label style={styles.label}>Image (optional)</label>
+                  <div style={{ 
+                    border: '2px dashed #cbd5e0', 
+                    borderRadius: '8px', 
+                    padding: '20px', 
+                    textAlign: 'center', 
+                    cursor: 'pointer' 
+                    }}>
+                    <input type="file" accept="image/*" onChange={handleImageChange} ref={setImageInputRef} />
+                    {imagePreview && (
+                      <div style={{ 
+                        marginTop: '1rem', 
+                        position: 'relative' 
+                        }}>
+                        <img src={imagePreview} alt="Preview" style={{ maxWidth: '100%', borderRadius: '4px' }} />
+                        <button type="button" onClick={removeImage} style={{ position: 'absolute', top: '5px', right: '5px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✕</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </aside>
         </form>
       </div>
