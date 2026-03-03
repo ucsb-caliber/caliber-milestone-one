@@ -1,7 +1,37 @@
 import { supabase } from './supabaseClient';
+import { getValidAccessToken } from './oidcTokens';
 
 // API base URL - can be overridden with VITE_API_BASE environment variable
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const AUTH_USER_STORAGE_KEY = 'caliber-auth-user';
+
+function getStoredAuthUser() {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function getCurrentAuthUserId() {
+  const authUser = getStoredAuthUser();
+  if (authUser?.id) return authUser.id;
+  if (authUser?.user_id) return authUser.user_id;
+  return 'unknown-user';
+}
+
+function createStoragePathForUser(fileExt) {
+  const safeExt = String(fileExt || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase() || 'pdf';
+  const userId = getCurrentAuthUserId();
+  return `${userId}/${Date.now()}.${safeExt}`;
+}
+
+function isStorageObjectMissing(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return msg.includes('object not found');
+}
 
 /**
  * Get authentication headers with the current user's token
@@ -17,15 +47,22 @@ async function getAuthHeaders() {
     };
   }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  if (!session?.access_token) {
-    throw new Error('Not authenticated');
+  const accessToken = await getValidAccessToken();
+  if (accessToken) {
+    return {
+      Authorization: `Bearer ${accessToken}`,
+    };
   }
-  
-  return {
-    'Authorization': `Bearer ${session.access_token}`,
-  };
+
+  // Keycloak auth is propagated via access_token cookie on same-origin requests.
+  return {};
+}
+
+async function apiFetch(url, options = {}) {
+  return fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
 }
 
 /**
@@ -35,13 +72,6 @@ async function getAuthHeaders() {
  */
 export async function uploadPDFToStorage(file) {
   try {
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
     // Create a unique filename with user ID and timestamp
     const fileExt = file.name.split('.').pop();
     
@@ -50,7 +80,7 @@ export async function uploadPDFToStorage(file) {
       throw new Error('Invalid file extension');
     }
     
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    const fileName = createStoragePathForUser(fileExt);
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
@@ -75,13 +105,15 @@ export async function uploadPDFToStorage(file) {
 /**
  * Upload a PDF file to the backend for processing
  * @param {File} file - The PDF file to upload and process
- * @param {string} storagePath - The Supabase Storage path of the PDF
+ * @param {string} [storagePath] - Optional explicit storage path (backend can generate one)
  * @returns {Promise<Object>} - Upload response with status and message
  */
 export async function uploadPDF(file, storagePath, metadata = {}) {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('storage_path', storagePath);
+  if (storagePath) {
+    formData.append('storage_path', storagePath);
+  }
   formData.append('school', metadata.school || '');
   formData.append('course', metadata.course || '');
   formData.append('course_type', metadata.course_type || '');
@@ -89,7 +121,7 @@ export async function uploadPDF(file, storagePath, metadata = {}) {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/upload-pdf`, {
+    const response = await apiFetch(`${API_BASE}/api/upload-pdf`, {
       method: 'POST',
       headers,
       body: formData,
@@ -111,19 +143,77 @@ export async function uploadPDF(file, storagePath, metadata = {}) {
 }
 
 /**
+ * Fetch progress for a queued PDF upload job.
+ * @param {string} jobId - Upload job identifier returned by /api/upload-pdf
+ * @returns {Promise<Object>} - Status payload
+ */
+export async function getUploadStatus(jobId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}`, { headers });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let message = 'Failed to fetch upload status';
+      try {
+        const err = JSON.parse(errorText);
+        message = err.detail || message;
+      } catch (e) {
+        message = errorText || message;
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Request cancellation for a queued/running PDF upload job.
+ * @param {string} jobId - Upload job identifier returned by /api/upload-pdf
+ * @returns {Promise<Object>} - Updated status payload
+ */
+export async function cancelUploadJob(jobId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/upload-status/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let message = 'Failed to cancel upload job';
+      try {
+        const err = JSON.parse(errorText);
+        message = err.detail || message;
+      } catch (e) {
+        message = errorText || message;
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Upload an image file to Supabase Storage
  * @param {File} file - The image file to upload
  * @returns {Promise<string>} - The storage path of the uploaded image
  */
 export async function uploadImage(file) {
   try {
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
     // Create a unique filename with user ID and timestamp
     const fileExt = file.name.split('.').pop();
     
@@ -132,7 +222,7 @@ export async function uploadImage(file) {
       throw new Error('Invalid file extension');
     }
     
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    const fileName = `${getCurrentAuthUserId()}/${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
@@ -173,7 +263,9 @@ export async function getImageSignedUrl(imagePath) {
       .createSignedUrl(imagePath, 3600); // 1 hour in seconds
 
     if (error) {
-      console.error('Error creating signed URL:', error);
+      if (!isStorageObjectMissing(error)) {
+        console.error('Error creating signed URL:', error);
+      }
       return null;
     }
 
@@ -202,7 +294,9 @@ export async function getPDFSignedUrl(pdfPath) {
       .createSignedUrl(pdfPath, 3600); // 1 hour in seconds
 
     if (error) {
-      console.error('Error creating signed URL:', error);
+      if (!isStorageObjectMissing(error)) {
+        console.error('Error creating signed URL:', error);
+      }
       return null;
     }
 
@@ -224,10 +318,12 @@ export async function getQuestions(filters = {}) {
     const params = new URLSearchParams();
     if (filters.verified_only !== undefined) params.append('verified_only', filters.verified_only);
     if (filters.source_pdf) params.append('source_pdf', filters.source_pdf);
+    if (filters.skip !== undefined) params.append('skip', String(filters.skip));
+    if (filters.limit !== undefined) params.append('limit', String(filters.limit));
     
     const url = `${API_BASE}/api/questions${params.toString() ? `?${params.toString()}` : ''}`;
     
-    const response = await fetch(url, { headers });
+    const response = await apiFetch(url, { headers });
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -255,11 +351,16 @@ export async function getQuestions(filters = {}) {
 /**
  * Fetch all questions from all users
  */
-export async function getAllQuestions() {
+export async function getAllQuestions(filters = {}) {
   try {
     const headers = await getAuthHeaders();
-    
-    const response = await fetch(`${API_BASE}/api/questions/all`, {
+
+    const params = new URLSearchParams();
+    if (filters.skip !== undefined) params.append('skip', String(filters.skip));
+    if (filters.limit !== undefined) params.append('limit', String(filters.limit));
+    const url = `${API_BASE}/api/questions/all${params.toString() ? `?${params.toString()}` : ''}`;
+
+    const response = await apiFetch(url, {
       headers,
     });
 
@@ -290,7 +391,7 @@ export async function getAllQuestions() {
 export async function getQuestion(id) {
   const headers = await getAuthHeaders();
   
-  const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+  const response = await apiFetch(`${API_BASE}/api/questions/${id}`, {
     headers,
   });
 
@@ -311,7 +412,7 @@ export async function getQuestionsBatch(questionIds) {
   
   const headers = await getAuthHeaders();
   
-  const response = await fetch(`${API_BASE}/api/questions/batch`, {
+  const response = await apiFetch(`${API_BASE}/api/questions/batch`, {
     method: 'POST',
     headers: {
       ...headers,
@@ -355,7 +456,7 @@ export async function createQuestion(questionData) {
       formData.append('image_url', questionData.image_url);
     }
 
-    const response = await fetch(`${API_BASE}/api/questions`, {
+    const response = await apiFetch(`${API_BASE}/api/questions`, {
       method: 'POST',
       headers,
       body: formData,
@@ -382,7 +483,7 @@ export async function deleteQuestion(id, options = {}) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+    const response = await apiFetch(`${API_BASE}/api/questions/${id}`, {
       method: 'DELETE',
       headers,
       keepalive: Boolean(options.keepalive),
@@ -419,7 +520,7 @@ export async function deleteUnverifiedQuestionsBySource(sourcePdf, options = {})
     const headers = await getAuthHeaders();
     const query = new URLSearchParams({ source_pdf: sourcePdf }).toString();
 
-    const response = await fetch(`${API_BASE}/api/questions-by-source/unverified?${query}`, {
+    const response = await apiFetch(`${API_BASE}/api/questions-by-source/unverified?${query}`, {
       method: 'DELETE',
       headers,
       keepalive: Boolean(options.keepalive),
@@ -454,7 +555,7 @@ export async function updateQuestion(id, updateData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/questions/${id}`, {
+    const response = await apiFetch(`${API_BASE}/api/questions/${id}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(updateData), // This sends { is_verified: true }
@@ -473,13 +574,52 @@ export async function updateQuestion(id, updateData) {
 }
 
 /**
+ * Atomically verify selected draft questions from one source PDF,
+ * and delete remaining unselected drafts.
+ */
+export async function verifyQuestionsBySource(sourcePdf, selectedQuestionIds) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await apiFetch(`${API_BASE}/api/questions/verify-by-source`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        source_pdf: sourcePdf,
+        selected_question_ids: selectedQuestionIds || [],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to verify selected questions';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Get current user information including profile data
  */
 export async function getUserInfo() {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/user`, {
+    const response = await apiFetch(`${API_BASE}/api/user`, {
       headers,
     });
 
@@ -505,7 +645,7 @@ export async function updateUserProfile(profileData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/user/profile`, {
+    const response = await apiFetch(`${API_BASE}/api/user/profile`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(profileData),
@@ -533,7 +673,7 @@ export async function completeOnboarding(onboardingData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/user/onboarding`, {
+    const response = await apiFetch(`${API_BASE}/api/user/onboarding`, {
       method: 'POST',
       headers,
       body: JSON.stringify(onboardingData),
@@ -561,7 +701,7 @@ export async function updateUserPreferences(preferencesData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/user/preferences`, {
+    const response = await apiFetch(`${API_BASE}/api/user/preferences`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(preferencesData),
@@ -592,7 +732,7 @@ export async function updateUserRoles(userId, roles) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/users/${userId}`, {
+    const response = await apiFetch(`${API_BASE}/api/users/${userId}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(roles),
@@ -619,7 +759,7 @@ export async function getUserById(userId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/users/${userId}`, {
+    const response = await apiFetch(`${API_BASE}/api/users/${userId}`, {
       headers,
     });
 
@@ -646,7 +786,7 @@ export async function getCourses() {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses`, {
+    const response = await apiFetch(`${API_BASE}/api/courses`, {
       headers,
     });
 
@@ -671,7 +811,7 @@ export async function getAllCourses() {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/courses/all`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/all`, {
       headers,
     });
 
@@ -696,7 +836,7 @@ export async function getAdminCoursesOverview() {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/admin/courses-overview`, {
+    const response = await apiFetch(`${API_BASE}/api/admin/courses-overview`, {
       headers,
     });
 
@@ -721,7 +861,7 @@ export async function getCourse(courseId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}`, {
       headers,
     });
 
@@ -746,7 +886,7 @@ export async function createCourse(courseData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses`, {
+    const response = await apiFetch(`${API_BASE}/api/courses`, {
       method: 'POST',
       headers: {
         ...headers,
@@ -776,7 +916,7 @@ export async function updateCourse(courseId, courseData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}`, {
       method: 'PUT',
       headers: {
         ...headers,
@@ -806,7 +946,7 @@ export async function deleteCourse(courseId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}`, {
       method: 'DELETE',
       headers,
     });
@@ -832,7 +972,7 @@ export async function getAllUsers() {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/users`, {
+    const response = await apiFetch(`${API_BASE}/api/users`, {
       headers,
     });
 
@@ -858,7 +998,7 @@ export async function joinCourseByCode(courseCode) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/courses/join`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/join`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ course_code: courseCode }),
@@ -885,7 +1025,7 @@ export async function getPinnedCourseIds() {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/courses/pins`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/pins`, {
       headers,
     });
 
@@ -918,7 +1058,7 @@ export async function setCoursePinned(courseId, pinned) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/courses/${courseId}/pin`, {
+    const response = await apiFetch(`${API_BASE}/api/courses/${courseId}/pin`, {
       method: 'PUT',
       headers,
       body: JSON.stringify({ pinned: Boolean(pinned) }),
@@ -953,7 +1093,7 @@ export async function createAssignment(assignmentData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments`, {
       method: 'POST',
       headers: {
         ...headers,
@@ -983,7 +1123,7 @@ export async function getAssignment(assignmentId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}`, {
       headers,
     });
 
@@ -1008,7 +1148,7 @@ export async function getAssignmentProgress(assignmentId) {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
       headers,
     });
 
@@ -1034,7 +1174,7 @@ export async function saveAssignmentProgress(assignmentId, progressData) {
     const headers = await getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/progress`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(progressData),
@@ -1061,7 +1201,7 @@ export async function updateAssignment(assignmentId, assignmentData) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}`, {
       method: 'PUT',
       headers: {
         ...headers,
@@ -1091,7 +1231,7 @@ export async function releaseAssignmentNow(assignmentId) {
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}/release-now`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/release-now`, {
       method: 'POST',
       headers,
     });
@@ -1117,7 +1257,7 @@ export async function deleteAssignment(assignmentId) {
   try {
     const headers = await getAuthHeaders();
     
-    const response = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}`, {
       method: 'DELETE',
       headers,
     });

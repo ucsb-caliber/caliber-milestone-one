@@ -4,7 +4,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 ## What This Build Covers
 
-- Authentication and onboarding via Supabase
+- Authentication via Keycloak/OIDC (portal session or Bearer token)
 - Role-aware product experience:
   - Students: `Courses` + profile access
   - Instructors/Admins: full platform access + student-view preview
@@ -38,7 +38,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 ## Main Product Areas
 
 ### Authentication + Roles
-- Supabase JWT auth across frontend/backend
+- Keycloak/OIDC JWT auth across frontend/backend
 - Onboarding collects profile data
 - Instructor requests are captured as `pending`
 - Admin approval toggles users into instructor access
@@ -70,19 +70,30 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 ### Question Pipeline
 - PDF upload starts background parsing
-- Stubbed parser currently extracts mock question chunks
+- Milestone 2 parser files are vendored into `backend/app/m2/` and executed from Milestone 1 backend
+- Upload processing runs the copied M2 layout pipeline first (layout detection + OCR extraction)
+- Fallback parser performs question segmentation from PDF text, with OCR fallback for scanned PDFs
 - Question bank supports verification/editing and assignment inclusion
 
 ## Architecture Snapshot
 
 - **Frontend**: React + Vite
 - **Backend**: FastAPI + SQLModel + Alembic
-- **Auth/Storage/DB infra**: Supabase
+- **Auth**: Keycloak/OIDC
+- **DB**: PostgreSQL (or SQLite for local testing)
+- **Storage**: Supabase buckets for uploaded PDFs/images
 - **Background work**: FastAPI background tasks for PDF parsing
+
+## Additional Docs
+
+- `docs/FEATURES_AND_API.md` for current feature scope, routes, and endpoint map
+- `docs/SETUP_OPERATIONS_AND_TESTING.md` for setup, migrations, storage policy setup, and smoke testing
 
 ## Quick Start
 
 ### Backend Setup
+
+Use Python 3.10 or 3.11 for the Milestone 2 parser dependencies (`torch==2.1.2`, `effdet`).
 
 ```bash
 cd backend
@@ -92,20 +103,55 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit your `.env` file and replace the placeholders:
-- Replace `your-project-id` in `DATABASE_URL` with your actual Supabase project details
-- Replace `your-password` in `DATABASE_URL` with your Supabase database password
-- Replace `your-project-id.supabase.co` in `SUPABASE_URL` with your actual Supabase URL
-- Replace `your-anon-key-here` in `SUPABASE_ANON_KEY` with your Supabase anon key from step 2 above
-- **SUPABASE_JWT_SECRET**: Not needed for modern projects! Only set if you have a legacy project.
+Install system dependencies required by the copied Milestone 2 parser:
+- macOS: `brew install poppler tesseract`
+- Ubuntu/Debian: `sudo apt-get install -y poppler-utils tesseract-ocr`
+
+Notes:
+- The first PDF upload may take longer because model files are downloaded and cached.
+- The `torch` / `effdet` stack is required to run the copied `backend/app/m2/layout_ingest.py`.
+
+Then install Ollama, which runs a local LLM to clean PDF extraction output:
+```bash
+brew install ollama
+```
+
+You can then either run `ollama serve` in a new terminal, or run `brew services start ollama` to run it in the background.
+
+Then in `backend/.env` set the following:
+```env
+LLM_CLEANUP_ENABLED=true
+LLM_CLEANUP_BASE_URL=http://127.0.0.1:11434
+LLM_CLEANUP_MODEL=llama3.1:8b
+# Optional: stronger formatter model if your machine can run it.
+# LLM_CLEANUP_MODEL=qwen2.5:14b
+# Optional fallback chain:
+# LLM_CLEANUP_MODEL_FALLBACKS=qwen2.5:14b,qwen2.5:7b
+# Optional: force LLM formatting on every question (slower).
+# LLM_CLEANUP_FORCE=true
+# Optional: debug logs for formatter behavior.
+# LLM_CLEANUP_DEBUG=true
+```
+
+Prompt style instructions are read from `backend/app/prompts/llm_cleanup_style.md`.
+You can override that by setting `LLM_CLEANUP_STYLE_GUIDE_PATH=/absolute/path/to/your-style-guide.md`.
+
+Edit your `backend/.env` file and replace placeholders:
+- `DATABASE_URL` with your local/dev Postgres URL
+- `OIDC_ISSUER` and/or `OIDC_JWKS_URL` for your Keycloak realm
+- `OIDC_AUDIENCE` if your tokens enforce audience checks
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` so `/api/upload-pdf` can store files in `question-pdfs`
+- Optional: `M2_TESSERACT_TIMEOUT_SEC` to cap per-page OCR time (default `45`)
+- Optional: `M2_RENDER_DPI` to control PDF rasterization cost (default `170`)
+- Optional: configure `LLM_CLEANUP_*` and `ROSTER_*` values only if you plan to use those integrations locally
 
 **Run database migrations** (first time setup):
 ```bash
 alembic upgrade head
 ```
-If you're getting some weird errors here you need to make sure you're using python v3.12 to create your venv!
+If you hit install/runtime errors, make sure your backend venv uses Python 3.10 or 3.11.
 
-See `backend/MIGRATIONS.md` for more details on how to use alembic.
+See `docs/SETUP_OPERATIONS_AND_TESTING.md` for Alembic workflow details and troubleshooting.
 
 **Start the backend server:**
 ```bash
@@ -123,14 +169,62 @@ cp .env.example .env
 ```
 
 Edit your frontend `.env` file and replace the placeholders:
-- Replace `your-project-id.supabase.co` with your actual Supabase URL
-- Replace `your-anon-key-here` with your Supabase anon key
+- Replace `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for signed URL + image helpers
+- Set `VITE_API_BASE` to your backend URL (default: `http://localhost:8000`)
+- Use `VITE_BASE_PATH=/` for local dev
+- Set `VITE_OIDC_ISSUER` + `VITE_OIDC_CLIENT_ID` for direct local Keycloak login (recommended for `npm run dev`)
+- Set `VITE_PORTAL_BASE_URL` only if you want legacy portal `/login` + cookie flow
 
 ```bash
 npm run dev
 ```
 
 The frontend will be available at http://localhost:5173
+
+## Team Local Run Modes
+
+### A) Fastest local iteration (no local Keycloak): test mode
+This bypasses SSO and is useful for frontend/backend iteration.
+
+1. Start backend and frontend normally.
+2. Open `http://localhost:5173/?test-mode=true`.
+
+### B) Local frontend + backend with real SSO
+Use direct Keycloak PKCE login from the frontend (works with `npm run dev` + `uvicorn`).
+
+`frontend/.env`:
+```env
+VITE_API_BASE=http://localhost:8000
+VITE_BASE_PATH=/
+VITE_OIDC_ISSUER=https://app.caliber.cs.ucsb.edu/auth/realms/platform
+VITE_OIDC_CLIENT_ID=portal
+VITE_OIDC_SCOPES=openid profile email
+```
+
+`backend/.env`:
+```env
+OIDC_ISSUER=https://app.caliber.cs.ucsb.edu/auth/realms/platform
+OIDC_JWKS_URL=https://app.caliber.cs.ucsb.edu/auth/realms/platform/protocol/openid-connect/certs
+OIDC_AUDIENCE=portal
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+If your Keycloak client does not already allow local redirects, add:
+1. Valid redirect URI: `http://localhost:5173/*`
+2. Web origin: `http://localhost:5173`
+3. Post logout redirect URI: `http://localhost:5173/?logged_out=1`
+
+### C) Build Docker image locally and serve on localhost
+Yes, your teammates can compile and host the frontend image locally while testing.
+
+```bash
+cd caliber-milestone-one
+docker build -t caliber-frontend:dev .
+docker run --rm -p 8003:8003 caliber-frontend:dev
+```
+
+Then open `http://localhost:8003` (or through your reverse proxy path).
 
 ## Key API Groups
 
@@ -144,4 +238,6 @@ The frontend will be available at http://localhost:5173
 ## Notes
 
 - Run migrations whenever pulling schema/model changes.
-- Current PDF “agent pipeline” is intentionally stubbed and ready to be swapped with a production extraction pipeline.
+- OCR fallback requires a local `tesseract` binary in `PATH`.
+- Milestone 2 parser code is copied into `backend/app/m2/` and called by `POST /api/upload-pdf`.
+- Local LLM markdown cleanup is optional and uses Ollama (no API key).

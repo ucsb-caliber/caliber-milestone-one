@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCourse, updateCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
+import { getCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
 import { useAuth } from '../AuthContext';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
@@ -52,22 +52,6 @@ export default function CourseDashboard() {
   const [isInstructor, setIsInstructor] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Edit modal
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [formData, setFormData] = useState({
-    course_name: '',
-    school_name: '',
-    student_ids: []
-  });
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [studentSearchQuery, setStudentSearchQuery] = useState('');
-  const [showAddStudentsModal, setShowAddStudentsModal] = useState(false);
-  const [addStudentsSelection, setAddStudentsSelection] = useState([]);
-  const [addStudentSearchQuery, setAddStudentSearchQuery] = useState('');
-  const [addStudentsSaving, setAddStudentsSaving] = useState(false);
-  const [addStudentsError, setAddStudentsError] = useState('');
-
   // Delete assignment modal
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -80,7 +64,7 @@ export default function CourseDashboard() {
   };
 
   const courseId = getCourseIdFromHash();
-  const backToCoursesHash = isAdmin && !isInstructor ? '#admin/courses' : '#courses';
+  const backToCoursesHash = '#courses';
   const canViewAssignments = isInstructor || isAdmin;
 
   useEffect(() => {
@@ -103,11 +87,6 @@ export default function CourseDashboard() {
         setIsInstructor(courseData.instructor_id === user?.id);
         setIsAdmin(Boolean(userInfo?.admin));
 
-        setFormData({
-          course_name: courseData.course_name || '',
-          school_name: courseData.school_name || '',
-          student_ids: courseData.student_ids || []
-        });
       } catch (err) {
         setError(err.message || 'Failed to load course');
       } finally {
@@ -149,41 +128,6 @@ export default function CourseDashboard() {
     return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const availableStudents = allUsers.filter((u) => !u.teacher && u.user_id !== user?.id);
-
-  const filteredStudents = availableStudents.filter((u) => {
-    if (!studentSearchQuery.trim()) return true;
-
-    const searchLower = studentSearchQuery.toLowerCase();
-    const displayName = getUserDisplayName(u).toLowerCase();
-    const email = (u.email || '').toLowerCase();
-
-    return displayName.includes(searchLower) || email.includes(searchLower);
-  });
-
-  const addableStudents = availableStudents.filter(
-    (u) => !course?.student_ids?.includes(u.user_id)
-  );
-
-  const filteredAddableStudents = addableStudents.filter((u) => {
-    if (!addStudentSearchQuery.trim()) return true;
-
-    const searchLower = addStudentSearchQuery.toLowerCase();
-    const displayName = getUserDisplayName(u).toLowerCase();
-    const email = (u.email || '').toLowerCase();
-
-    return displayName.includes(searchLower) || email.includes(searchLower);
-  });
-
-  const toggleStudent = (studentId) => {
-    setFormData((prev) => ({
-      ...prev,
-      student_ids: prev.student_ids.includes(studentId)
-        ? prev.student_ids.filter((id) => id !== studentId)
-        : [...prev.student_ids, studentId]
-    }));
-  };
-
   const handleDeleteAssignment = async () => {
     if (!deleteConfirmId) return;
 
@@ -199,102 +143,6 @@ export default function CourseDashboard() {
       alert(`Failed to delete assignment: ${err.message || 'Unknown error'}`);
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!formData.course_name.trim()) {
-      setSaveError('Course name is required');
-      return;
-    }
-
-    setSaving(true);
-    setSaveError('');
-
-    try {
-      const updated = await updateCourse(courseId, formData);
-      setCourse(updated);
-      setShowEditModal(false);
-      setStudentSearchQuery('');
-    } catch (err) {
-      setSaveError(err.message || 'Failed to save changes');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setFormData({
-      course_name: course.course_name || '',
-      school_name: course.school_name || '',
-      student_ids: course.student_ids || []
-    });
-    setShowEditModal(false);
-    setStudentSearchQuery('');
-    setSaveError('');
-  };
-
-  const handleSelectAll = () => {
-    setFormData((prev) => ({
-      ...prev,
-      student_ids: [...availableStudents.map((u) => u.user_id)]
-    }));
-  };
-
-  const handleDeselectAll = () => {
-    setFormData((prev) => ({
-      ...prev,
-      student_ids: []
-    }));
-  };
-
-  const openAddStudentsModal = () => {
-    setAddStudentsSelection([]);
-    setAddStudentSearchQuery('');
-    setAddStudentsError('');
-    setShowAddStudentsModal(true);
-  };
-
-  const closeAddStudentsModal = () => {
-    setShowAddStudentsModal(false);
-    setAddStudentsSelection([]);
-    setAddStudentSearchQuery('');
-    setAddStudentsError('');
-  };
-
-  const toggleAddStudent = (studentId) => {
-    setAddStudentsSelection((prev) => (
-      prev.includes(studentId)
-        ? prev.filter((id) => id !== studentId)
-        : [...prev, studentId]
-    ));
-  };
-
-  const handleAddSelectedStudents = async () => {
-    if (!course) return;
-    if (addStudentsSelection.length === 0) {
-      setAddStudentsError('Select at least one student.');
-      return;
-    }
-
-    setAddStudentsSaving(true);
-    setAddStudentsError('');
-    try {
-      const mergedStudentIds = Array.from(
-        new Set([...(course.student_ids || []), ...addStudentsSelection])
-      );
-      const updated = await updateCourse(courseId, {
-        course_name: course.course_name,
-        school_name: course.school_name,
-        student_ids: mergedStudentIds
-      });
-      setCourse(updated);
-      setFormData((prev) => ({ ...prev, student_ids: updated.student_ids || [] }));
-      closeAddStudentsModal();
-    } catch (err) {
-      setAddStudentsError(err.message || 'Failed to add students');
-    } finally {
-      setAddStudentsSaving(false);
     }
   };
 
@@ -377,139 +225,12 @@ export default function CourseDashboard() {
       fontSize: '0.78rem',
       letterSpacing: '0.02em'
     },
-    formGroup: {
-      marginBottom: '1rem'
-    },
-    label: {
-      display: 'block',
-      marginBottom: '0.2rem',
-      fontWeight: 600,
-      color: '#334155',
-      fontSize: '0.875rem'
-    },
-    input: {
-      width: '100%',
-      padding: '0.75rem',
-      border: '1px solid #cbd5e1',
-      borderRadius: '8px',
-      fontSize: '1rem',
-      boxSizing: 'border-box'
-    },
-    searchInput: {
-      width: '100%',
-      padding: '0.625rem 0.75rem',
-      border: '1px solid #cbd5e1',
-      borderRadius: '6px',
-      fontSize: '0.875rem',
-      boxSizing: 'border-box',
-      marginTop: '-0.4rem',
-      marginBottom: '0.5rem',
-      background: '#ffffff'
-    },
-    bulkActionButtons: {
-      display: 'flex',
-      alignItems: 'center',
-      marginBottom: '0.5rem'
-    },
-    bulkActionBtn: {
-      background: 'none',
-      border: 'none',
-      padding: 0,
-      color: '#2563eb',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: 600,
-      textDecoration: 'none',
-      marginRight: 'auto'
-    },
-    studentList: {
-      maxHeight: '200px',
-      minHeight: '200px',
-      overflow: 'auto',
-      border: '1px solid #e2e8f0',
-      borderRadius: '8px'
-    },
-    studentItem: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.75rem',
-      padding: '0.75rem',
-      borderBottom: '1px solid #f1f5f9',
-      cursor: 'pointer'
-    },
-    checkbox: {
-      width: '18px',
-      height: '18px',
-      cursor: 'pointer'
-    },
-    buttonGroup: {
-      display: 'flex',
-      gap: '0.75rem',
-      justifyContent: 'flex-end',
-      marginTop: '1.5rem'
-    },
-    saveBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#2563eb',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: 600
-    },
-    cancelBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#f1f5f9',
-      color: '#334155',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      fontWeight: 600
-    },
-    addStudentsBtn: {
-      padding: '0.55rem 0.9rem',
-      borderRadius: '8px',
-      border: '1px solid #93c5fd',
-      background: '#eff6ff',
-      color: '#1d4ed8',
-      fontWeight: 600,
-      cursor: 'pointer',
-      fontSize: '0.82rem'
-    },
     error: {
       background: '#fef2f2',
       color: '#dc2626',
       padding: '0.75rem 1rem',
       borderRadius: '8px',
       marginBottom: '1rem'
-    },
-    modal: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    },
-    modalContent: {
-      background: 'white',
-      padding: '2rem',
-      borderRadius: '12px',
-      maxWidth: '500px',
-      width: '90%',
-      maxHeight: '80vh',
-      overflow: 'auto'
-    },
-    modalTitle: {
-      margin: '0 0 1.5rem 0',
-      fontSize: '1.25rem',
-      fontWeight: 700
     },
     timelineCard: {
       border: '1px solid #dbeafe',
@@ -518,233 +239,6 @@ export default function CourseDashboard() {
       padding: '1.05rem 1.15rem',
       marginBottom: '0.95rem'
     }
-  };
-
-  const renderEditModal = () => {
-    const handleBackdropClick = (e) => {
-      if (e.target === e.currentTarget) {
-        handleCancel();
-      }
-    };
-
-    return (
-      <div style={styles.modal} onClick={handleBackdropClick}>
-        <div style={styles.modalContent}>
-          <h2 style={styles.modalTitle}>Edit Course</h2>
-
-          {saveError && (
-            <div style={styles.error}>{saveError}</div>
-          )}
-
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Course Name *</label>
-              <input
-                type="text"
-                value={formData.course_name}
-                onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
-                style={styles.input}
-                placeholder="e.g., Introduction to Computer Science"
-                disabled={saving}
-              />
-            </div>
-
-            <div style={styles.formGroup}>
-              <label style={styles.label}>School Name</label>
-              <input
-                type="text"
-                value={formData.school_name}
-                onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
-                style={styles.input}
-                placeholder="e.g., UCSB"
-                disabled={saving}
-              />
-            </div>
-
-            <div style={styles.formGroup}>
-              <div style={styles.bulkActionButtons}>
-                <label style={styles.label}>
-                  Students ({formData.student_ids.length} selected)
-                </label>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={handleSelectAll}
-                    disabled={saving}
-                    style={styles.bulkActionBtn}
-                  >
-                    Select All
-                  </button>
-                  <span style={{ display: 'inline-block', marginBottom: '0.2rem' }}>|</span>
-                  <button
-                    type="button"
-                    onClick={handleDeselectAll}
-                    disabled={saving}
-                    style={styles.bulkActionBtn}
-                  >
-                    Clear Selection
-                  </button>
-                </div>
-              </div>
-
-              {availableStudents.length === 0 ? (
-                <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>
-                  No students available to add.
-                </p>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    value={studentSearchQuery}
-                    onChange={(e) => setStudentSearchQuery(e.target.value)}
-                    style={styles.searchInput}
-                    placeholder="Search for students..."
-                    disabled={saving}
-                  />
-                  <div style={styles.studentList}>
-                    {filteredStudents.map((u) => (
-                      <div
-                        key={u.user_id}
-                        style={{
-                          ...styles.studentItem,
-                          background: formData.student_ids.includes(u.user_id) ? '#eff6ff' : 'transparent'
-                        }}
-                        onClick={() => !saving && toggleStudent(u.user_id)}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.student_ids.includes(u.user_id)}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            toggleStudent(u.user_id);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={styles.checkbox}
-                          disabled={saving}
-                        />
-                        <span style={{ fontSize: '0.875rem', color: '#334155' }}>
-                          {getUserDisplayName(u)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div style={styles.buttonGroup}>
-              <button
-                type="button"
-                onClick={handleCancel}
-                style={styles.cancelBtn}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                style={{
-                  ...styles.saveBtn,
-                  opacity: saving ? 0.6 : 1,
-                  cursor: saving ? 'not-allowed' : 'pointer'
-                }}
-                disabled={saving}
-              >
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  };
-
-  const renderAddStudentsModal = () => {
-    const handleBackdropClick = (e) => {
-      if (e.target === e.currentTarget) {
-        closeAddStudentsModal();
-      }
-    };
-
-    return (
-      <div style={styles.modal} onClick={handleBackdropClick}>
-        <div style={styles.modalContent}>
-          <h2 style={styles.modalTitle}>Add Students</h2>
-
-          {addStudentsError && (
-            <div style={styles.error}>{addStudentsError}</div>
-          )}
-
-          {addableStudents.length === 0 ? (
-            <p style={styles.mutedText}>No additional students are available to add.</p>
-          ) : (
-            <>
-              <input
-                type="text"
-                value={addStudentSearchQuery}
-                onChange={(e) => setAddStudentSearchQuery(e.target.value)}
-                style={styles.searchInput}
-                placeholder="Search for students..."
-                disabled={addStudentsSaving}
-              />
-              <div style={styles.studentList}>
-                {filteredAddableStudents.map((u) => (
-                  <div
-                    key={u.user_id}
-                    style={{
-                      ...styles.studentItem,
-                      background: addStudentsSelection.includes(u.user_id) ? '#eff6ff' : 'transparent'
-                    }}
-                    onClick={() => !addStudentsSaving && toggleAddStudent(u.user_id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={addStudentsSelection.includes(u.user_id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleAddStudent(u.user_id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={styles.checkbox}
-                      disabled={addStudentsSaving}
-                    />
-                    <span style={{ fontSize: '0.875rem', color: '#334155' }}>
-                      {getUserDisplayName(u)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p style={{ ...styles.mutedText, marginTop: '0.5rem' }}>
-                {addStudentsSelection.length} selected
-              </p>
-            </>
-          )}
-
-          <div style={styles.buttonGroup}>
-            <button
-              type="button"
-              onClick={closeAddStudentsModal}
-              style={styles.cancelBtn}
-              disabled={addStudentsSaving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleAddSelectedStudents}
-              style={{
-                ...styles.saveBtn,
-                opacity: addStudentsSaving ? 0.6 : 1,
-                cursor: addStudentsSaving ? 'not-allowed' : 'pointer'
-              }}
-              disabled={addStudentsSaving || addableStudents.length === 0}
-            >
-              {addStudentsSaving ? 'Adding...' : 'Add Selected'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
   };
 
   if (loading) {
@@ -928,22 +422,6 @@ export default function CourseDashboard() {
                 onClick={() => window.location.hash = `#course/${courseId}/assignment/new`}
               >
                 + New Assignment
-              </button>
-            )}
-            {isInstructor && (
-              <button
-                style={{
-                  padding: '0.6rem 0.95rem',
-                  borderRadius: '8px',
-                  border: '1px solid #93c5fd',
-                  background: 'white',
-                  color: '#1d4ed8',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-                onClick={() => setShowEditModal(true)}
-              >
-                Edit Course
               </button>
             )}
           </div>
@@ -1144,12 +622,10 @@ export default function CourseDashboard() {
       <div style={styles.section}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.7rem', gap: '0.75rem', flexWrap: 'wrap' }}>
           <h2 style={styles.sectionTitle}>Students ({course.student_ids?.length || 0})</h2>
-          {isInstructor && (
-            <button style={styles.addStudentsBtn} onClick={openAddStudentsModal}>
-              + Add Students
-            </button>
-          )}
         </div>
+        <p style={{ ...styles.mutedText, marginBottom: '0.8rem' }}>
+          Enrollment changes are managed from the Platform home page.
+        </p>
 
         {course.student_ids?.length > 0 ? (
           <div style={styles.studentGrid}>
@@ -1234,8 +710,6 @@ export default function CourseDashboard() {
         </div>
       )}
 
-      {showEditModal && renderEditModal()}
-      {showAddStudentsModal && renderAddStudentsModal()}
     </div>
   );
 }
