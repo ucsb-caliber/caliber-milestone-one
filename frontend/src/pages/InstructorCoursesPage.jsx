@@ -111,9 +111,9 @@ export default function InstructorCoursesPage() {
 
   const styles = {
     container: {
-      maxWidth: '1300px',
+      maxWidth: '1400px',
       margin: '0 auto',
-      padding: '40px 20px',
+      padding: '0.25rem 0.5rem 40px',
       minHeight: '100vh',
       fontFamily: 'Inter, system-ui, sans-serif',
     },
@@ -131,9 +131,10 @@ export default function InstructorCoursesPage() {
       margin: 0,
       color: '#0f172a',
       letterSpacing: '-0.025em',
+      lineHeight: 1.08,
     },
     helper: {
-      margin: '8px 0 0 0',
+      margin: '0.45rem 0 0 0',
       color: '#475569',
       fontSize: '0.95rem',
     },

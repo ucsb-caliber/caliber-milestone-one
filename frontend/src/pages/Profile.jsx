@@ -134,20 +134,19 @@ export default function Profile() {
   };
 
   return (
-    <div style={{ maxWidth: '820px', margin: '0 auto' }}>
-      <h2 style={{ marginTop: 0, color: '#111827' }}>Your Profile</h2>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '120px 1fr',
-          gap: '1.5rem',
-          padding: '1.25rem',
-          border: '1px solid #e5e7eb',
-          borderRadius: '10px',
-          background: 'white',
-        }}
-      >
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0.25rem 0.5rem 1.75rem' }}>
+      <div style={{ maxWidth: '820px', margin: '0 auto' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '120px 1fr',
+            gap: '1.5rem',
+            padding: '1.25rem',
+            border: '1px solid #e5e7eb',
+            borderRadius: '10px',
+            background: 'white',
+          }}
+        >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
           <ProfileBadge prefs={prefs} />
         </div>
@@ -289,17 +288,17 @@ export default function Profile() {
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
-      <div
-        style={{
-          marginTop: '1.5rem',
-          padding: '1.25rem',
-          border: '1px solid #e5e7eb',
-          borderRadius: '10px',
-          background: 'white',
-        }}
-      >
+        <div
+          style={{
+            marginTop: '1.5rem',
+            padding: '1.25rem',
+            border: '1px solid #e5e7eb',
+            borderRadius: '10px',
+            background: 'white',
+          }}
+        >
         <h3 style={{ marginTop: 0, color: '#111827' }}>Profile icon</h3>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -358,6 +357,7 @@ export default function Profile() {
               ))}
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
