@@ -161,8 +161,8 @@ function SortableCard({ id, children }) {
     opacity: isDragging ? 0.5 : 1,
     backgroundColor: isDragging ? '#f9fafb' : 'transparent',
     cursor: 'grab',
-    width: 280, 
-    minWidth: 280,
+    width: '100%',
+    minWidth: 0,
   };
 
   return (
@@ -632,7 +632,7 @@ export default function AssignmentView() {
             onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
             onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
           >
-            👁️ Student Preview
+            Student Preview
           </button>
           {canEditAssignment && (
             <button
@@ -650,7 +650,7 @@ export default function AssignmentView() {
 
       {/* Assignment Details */}
       <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>📋 Assignment Details</h2>
+        <h2 style={styles.sectionTitle}>Assignment Details</h2>
         
         <DateTimeline assignment={assignment} />
 
@@ -666,7 +666,7 @@ export default function AssignmentView() {
       <div style={styles.section}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600', color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            📝 Questions ({questions.length})
+            Questions ({questions.length})
             {actionLoading && <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>Saving...</span>}
           </h2>
 
@@ -699,6 +699,11 @@ export default function AssignmentView() {
             >Table View</button>
           </div>
         </div>
+        {questions.length > 0 && (
+          <p style={{ margin: '-0.25rem 0 1rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
+            Drag and drop questions to reorder them in this assignment.
+          </p>
+        )}
 
         {questions.length > 0 ? (
           <DndContext
@@ -741,7 +746,7 @@ export default function AssignmentView() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
                     gap: '1.5rem',
                     alignItems: 'stretch',
                   }}
@@ -759,11 +764,11 @@ export default function AssignmentView() {
                         onEdit={handleEditQuestion}
                         onRemove={handleRemoveQuestion}
                         actionLoading={actionLoading}
-                        compact={true}
+                        compact={false}
                         showSchool={false}
                         showKeywords={false}
                         showCourseType={false}
-                        scale={0.5}
+                        scale={0.95}
                       />
                     </SortableCard>
                   ))}
