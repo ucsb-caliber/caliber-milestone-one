@@ -4,16 +4,16 @@ import re
 import json
 import hashlib
 import uuid
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Callable
 
 import layoutparser as lp
 from pdf2image import convert_from_path
 from PIL import Image
 import pytesseract
-import concurrent.futures
 import matplotlib.pyplot as plt
 import torch
 import requests
@@ -48,6 +48,7 @@ QUESTIONS_DB_FILENAME = "questions.json"  # stored inside OUTPUT_DIR
 
 DEBUG = True
 DEBUG_DRAW_LAYOUT = False   # <-- IMPORTANT: avoids Pillow10 layoutparser crash
+M2_TESSERACT_TIMEOUT_SEC = max(5, int(os.getenv("M2_TESSERACT_TIMEOUT_SEC", "45")))
 
 
 # ===================== QUESTION DETECTION =====================
@@ -216,12 +217,27 @@ def get_text_within_box(ocr_data: Dict, bbox: Tuple[int, int, int, int], conf_th
     return " ".join(words).strip()
 
 
-def parse_page(layout: lp.Layout, page_img: Image.Image, page_num: int) -> List[Block]:
-    ocr_data = pytesseract.image_to_data(
-        page_img,
-        output_type=Output.DICT,
-        config="--oem 3 --psm 6 -l eng"
-    )
+def parse_page(
+    layout: lp.Layout,
+    page_img: Image.Image,
+    page_num: int,
+    *,
+    ocr_timeout_sec: int = M2_TESSERACT_TIMEOUT_SEC,
+) -> List[Block]:
+    try:
+        ocr_data = pytesseract.image_to_data(
+            page_img,
+            output_type=Output.DICT,
+            config="--oem 3 --psm 6 -l eng",
+            timeout=ocr_timeout_sec,
+        )
+    except RuntimeError as exc:
+        # pytesseract raises RuntimeError on OCR timeout.
+        print(f"[warn] OCR timeout on page {page_num} after {ocr_timeout_sec}s: {exc}")
+        return []
+    except Exception as exc:
+        print(f"[warn] OCR failed on page {page_num}: {exc!r}")
+        return []
 
     page_blocks: List[Block] = []
     for b in layout:
@@ -287,46 +303,85 @@ def sort_layout_reading_order(layout: lp.Layout, y_tol: int) -> lp.Layout:
 
 # ===================== MAIN PARSER =====================
 
-def parse_pdf_to_questions(pages: List[Image.Image], model: Any) -> List[Question]:
+def parse_pdf_to_questions(
+    pages: List[Image.Image],
+    model: Any,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
+) -> List[Question]:
     last_page = len(pages)
     start = max(1, START_PAGE)
     end = END_PAGE or last_page
     end = min(end, last_page)
+    total_pages = max(0, end - start + 1)
 
     all_questions: List[Question] = []
     current_question: Optional[Question] = None
 
-    max_workers = max(1, (os.cpu_count() or 2) - 1)
+    if progress_callback:
+        progress_callback(0, max(1, total_pages), "Parsing PDF pages")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for page_idx in range(start - 1, end):
-            page_num = page_idx + 1
-            page_img = pages[page_idx]
+    for offset, page_idx in enumerate(range(start - 1, end), start=1):
+        if should_cancel and should_cancel():
+            print(
+                f"[m2] cancellation requested before page {offset}/{total_pages}; "
+                f"returning partial parse with {len(all_questions)} questions"
+            )
+            break
 
+        page_num = page_idx + 1
+        page_img = pages[page_idx]
+        page_start = time.time()
+
+        if progress_callback:
+            progress_callback(offset - 1, max(1, total_pages), f"Parsing page {offset}/{total_pages}")
+
+        try:
             layout = model.detect(page_img)
             layout = keep_largest_blocks(layout, threshold=0.9)
             layout = sort_layout_reading_order(layout, Y_TOL)
+        except Exception as exc:
+            print(f"[warn] Layout detection failed on page {page_num}: {exc!r}")
+            if progress_callback:
+                progress_callback(offset, max(1, total_pages), f"Skipped page {offset}/{total_pages}")
+            continue
 
-            if DEBUG and DEBUG_DRAW_LAYOUT:
-                Path("pages").mkdir(exist_ok=True)
-                save_path = os.path.join("pages", f"debug_page_{page_num}.png")
-                safe_draw_layout_debug(page_img, layout, save_path)
+        if DEBUG and DEBUG_DRAW_LAYOUT:
+            Path("pages").mkdir(exist_ok=True)
+            save_path = os.path.join("pages", f"debug_page_{page_num}.png")
+            safe_draw_layout_debug(page_img, layout, save_path)
 
-            futures.append((page_num, executor.submit(parse_page, layout, page_img, page_num)))
+        page_blocks = parse_page(
+            layout,
+            page_img,
+            page_num,
+            ocr_timeout_sec=M2_TESSERACT_TIMEOUT_SEC,
+        )
 
-        futures.sort(key=lambda x: x[0])
-
-        for _, fut in futures:
-            for block in fut.result():
-                if is_question_start(block):
-                    if current_question is not None:
-                        all_questions.append(current_question)
-                    current_question = Question(start_page=block.page)
+        for block in page_blocks:
+            if is_question_start(block):
+                if current_question is not None:
+                    all_questions.append(current_question)
+                current_question = Question(start_page=block.page)
+                current_question.add_block(block)
+            else:
+                if current_question is not None:
                     current_question.add_block(block)
-                else:
-                    if current_question is not None:
-                        current_question.add_block(block)
+
+        elapsed = time.time() - page_start
+        print(
+            f"[m2] page {offset}/{total_pages} (pdf page {page_num}) "
+            f"blocks={len(page_blocks)} elapsed={elapsed:.1f}s"
+        )
+        if progress_callback:
+            progress_callback(offset, max(1, total_pages), f"Parsed page {offset}/{total_pages}")
+
+        if should_cancel and should_cancel():
+            print(
+                f"[m2] cancellation requested after page {offset}/{total_pages}; "
+                f"returning partial parse with {len(all_questions)} questions"
+            )
+            break
 
     if current_question is not None:
         all_questions.append(current_question)
