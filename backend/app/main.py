@@ -5,7 +5,9 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, status
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlmodel import Session, select, func
@@ -29,7 +31,7 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   delete_unverified_questions_by_source)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
-from .auth import get_current_user, get_current_user_email, get_current_user_name
+from .auth import get_current_user, get_current_user_email, get_current_user_name, get_optional_user
 from .storage_client import build_pdf_storage_path, upload_pdf_to_storage
 from .roster_integration import (
     call_roster,
@@ -79,6 +81,12 @@ Path("data").mkdir(parents=True, exist_ok=True)
 _UPLOAD_JOBS: Dict[str, Dict[str, Any]] = {}
 _UPLOAD_JOBS_LOCK = threading.Lock()
 _UPLOAD_TERMINAL_STATUSES = {"completed", "failed", "canceled"}
+try:
+    _UPLOAD_JOB_TOKEN_TTL_SEC = max(60, int(os.getenv("UPLOAD_JOB_TOKEN_TTL_SEC", "86400")))
+except ValueError:
+    _UPLOAD_JOB_TOKEN_TTL_SEC = 86400
+_UPLOAD_JOB_TOKEN_SECRET = os.getenv("UPLOAD_JOB_TOKEN_SECRET") or os.getenv("SECRET_KEY") or "change-me"
+_UPLOAD_JOB_TOKEN_ALG = "HS256"
 
 
 def _create_upload_job(job_id: str, filename: str, storage_path: str, user_id: str):
@@ -86,7 +94,7 @@ def _create_upload_job(job_id: str, filename: str, storage_path: str, user_id: s
         _UPLOAD_JOBS[job_id] = {
             "job_id": job_id,
             "status": "queued",
-            "progress_percent": 5,
+            "progress_percent": 10,
             "message": "Queued for processing",
             "expected_questions": None,
             "created_questions": 0,
@@ -134,6 +142,74 @@ def _request_upload_cancel(job_id: str) -> Optional[Dict[str, Any]]:
             job["status"] = "cancelling"
         job["message"] = "Cancellation requested. Finishing current step..."
         return dict(job)
+
+
+def _issue_upload_job_token(job_id: str, user_id: str) -> str:
+    now = int(time.time())
+    payload = {
+        "job_id": job_id,
+        "sub": user_id,
+        "iat": now,
+        "exp": now + _UPLOAD_JOB_TOKEN_TTL_SEC,
+    }
+    return jwt.encode(payload, _UPLOAD_JOB_TOKEN_SECRET, algorithm=_UPLOAD_JOB_TOKEN_ALG)
+
+
+def _verify_upload_job_token(job_id: str, token: str) -> str:
+    try:
+        payload = jwt.decode(
+            token,
+            _UPLOAD_JOB_TOKEN_SECRET,
+            algorithms=[_UPLOAD_JOB_TOKEN_ALG],
+            options={"require": ["exp", "iat", "job_id", "sub"]},
+        )
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Upload job token expired. Please sign in again.")
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid upload job token.")
+
+    token_job_id = str(payload.get("job_id") or "")
+    token_user_id = str(payload.get("sub") or "")
+    if token_job_id != job_id or not token_user_id:
+        raise HTTPException(status_code=401, detail="Invalid upload job token.")
+    return token_user_id
+
+
+def _extract_upload_job_token(request: Request, query_token: Optional[str]) -> Optional[str]:
+    token = (query_token or "").strip()
+    if token:
+        return token
+    header_token = (request.headers.get("X-Upload-Job-Token") or "").strip()
+    return header_token or None
+
+
+def _authorize_upload_job_access(
+    *,
+    job_id: str,
+    current_user_id: Optional[str],
+    upload_job_token: Optional[str],
+) -> Dict[str, Any]:
+    job = _get_upload_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Upload job not found")
+
+    owner_user_id = str(job.get("user_id") or "")
+    if current_user_id and current_user_id == owner_user_id:
+        return job
+
+    if upload_job_token:
+        token_user_id = _verify_upload_job_token(job_id, upload_job_token)
+        if token_user_id == owner_user_id:
+            return job
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if current_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    raise HTTPException(
+        status_code=401,
+        detail="Not authenticated. Please sign in again or provide a valid upload job token.",
+    )
 
 
 @app.on_event("startup")
@@ -280,16 +356,42 @@ def process_pdf_background(
             expected_questions=expected,
         )
 
+    def _existing_progress(default: int = 0) -> int:
+        existing = _get_upload_job(job_id) if job_id else None
+        if not existing:
+            return default
+        try:
+            return int(existing.get("progress_percent") or default)
+        except (TypeError, ValueError):
+            return default
+
     def m2_progress(current: int, total: int, message: str):
-        # Reserve 10%-70% for parse + formatting to show smooth progress during LLM cleanup.
-        if total <= 0:
-            pct = 20
+        # Keep progress monotonic and phase-bucketed:
+        # Upload: 0-10
+        # OCR:    10-40
+        # LLM:    40-100
+        msg = (message or "").lower()
+        ratio = 0.0
+        if total > 0:
+            ratio = max(0.0, min(1.0, float(current) / float(total)))
+
+        is_llm_phase = any(
+            marker in msg
+            for marker in ("formatting", "llm", "cleanup", "question records", "generated questions")
+        )
+
+        if is_llm_phase:
+            pct = 40 + int(ratio * 60)
         else:
-            pct = 10 + int((current / total) * 60)
+            pct = 10 + int(ratio * 30)
+
+        existing_progress = _existing_progress(default=10)
+        pct = max(existing_progress, pct)
+
         _update_upload_job(
             job_id,
             status="cancelling" if cancel_requested() else "running",
-            progress_percent=max(10, min(70, pct)),
+            progress_percent=max(10, min(99, pct)),
             message=message,
             expected_questions=total if total > 0 else None,
             created_questions=current if current > 0 else 0,
@@ -358,7 +460,7 @@ def process_pdf_background(
     _update_upload_job(
         job_id,
         status="cancelling" if cancel_requested() else "running",
-        progress_percent=75,
+        progress_percent=max(40, _existing_progress(default=40)),
         message="Preparing question records",
         expected_questions=len(question_dicts),
         created_questions=max(0, len(question_dicts)),
@@ -403,7 +505,8 @@ def process_pdf_background(
                     )
                     inserted_count += 1
                     expected_count = len(question_dicts) if question_dicts else 1
-                    progress = min(95, 75 + int((inserted_count / expected_count) * 20))
+                    save_progress = min(99, 40 + int((inserted_count / expected_count) * 59))
+                    progress = max(_existing_progress(default=40), save_progress)
                     _update_upload_job(
                         job_id,
                         status="cancelling" if cancel_requested() else "running",
@@ -434,7 +537,7 @@ def process_pdf_background(
                 _update_upload_job(
                     job_id,
                     status="running",
-                    progress_percent=95,
+                    progress_percent=max(_existing_progress(default=99), 99),
                     message="Saving generated questions",
                     expected_questions=max(1, len(question_dicts)),
                     created_questions=inserted_count,
@@ -528,7 +631,8 @@ async def upload_pdf(
         filename=file.filename,
         storage_path=resolved_storage_path,
         job_id=job_id,
-        progress_percent=5,
+        job_token=_issue_upload_job_token(job_id=job_id, user_id=user_id),
+        progress_percent=10,
         message="PDF upload successful. Processing in background."
     )
 
@@ -536,14 +640,17 @@ async def upload_pdf(
 @app.get("/api/upload-status/{job_id}", response_model=UploadStatusResponse)
 def get_upload_status(
     job_id: str,
-    user_id: str = Depends(get_current_user),
+    request: Request,
+    job_token: Optional[str] = None,
+    user_id: Optional[str] = Depends(get_optional_user),
 ):
     """Get progress for a queued PDF upload job."""
-    job = _get_upload_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Upload job not found")
-    if job.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    upload_job_token = _extract_upload_job_token(request, job_token)
+    job = _authorize_upload_job_access(
+        job_id=job_id,
+        current_user_id=user_id,
+        upload_job_token=upload_job_token,
+    )
 
     public_job = {k: v for k, v in job.items() if k not in {"user_id", "cancel_requested"}}
     return UploadStatusResponse(**public_job)
@@ -552,14 +659,17 @@ def get_upload_status(
 @app.post("/api/upload-status/{job_id}/cancel", response_model=UploadStatusResponse)
 def cancel_upload_status(
     job_id: str,
-    user_id: str = Depends(get_current_user),
+    request: Request,
+    job_token: Optional[str] = None,
+    user_id: Optional[str] = Depends(get_optional_user),
 ):
     """Request cancellation for a queued/running upload job."""
-    job = _get_upload_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Upload job not found")
-    if job.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    upload_job_token = _extract_upload_job_token(request, job_token)
+    _authorize_upload_job_access(
+        job_id=job_id,
+        current_user_id=user_id,
+        upload_job_token=upload_job_token,
+    )
 
     updated = _request_upload_cancel(job_id)
     if not updated:

@@ -132,6 +132,7 @@ class UploadResponse(BaseModel):
     filename: str
     storage_path: Optional[str] = None
     job_id: Optional[str] = None
+    job_token: Optional[str] = None
     progress_percent: Optional[int] = None
     message: str
 

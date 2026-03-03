@@ -1,12 +1,68 @@
 import React, { useRef, useState } from 'react';
 import { uploadPDF, getUploadStatus, cancelUploadJob } from '../api';
 
+const UploadFlowIcon = () => (
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+);
+
+const OcrFlowIcon = () => (
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="4" y="3.5" width="16" height="17" rx="2.5" />
+    <line x1="8" y1="8" x2="16" y2="8" />
+    <line x1="8" y1="11" x2="15" y2="11" />
+    <line x1="8" y1="14" x2="13.5" y2="14" />
+    <rect
+      x="5.2"
+      y="16.8"
+      width="5.5"
+      height="1.8"
+      rx="0.9"
+      fill="#60a5fa"
+      stroke="none"
+      style={{ animation: 'ocrSweep 2.4s ease-in-out infinite' }}
+    />
+  </svg>
+);
+
+const LlmFlowIcon = () => (
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#0f766e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="4" y="4" width="16" height="16" rx="3" />
+    <line x1="8" y1="10" x2="16" y2="10" />
+    <line x1="8" y1="13" x2="15" y2="13" />
+    <line x1="8" y1="16" x2="13" y2="16" />
+    <path
+      d="M17.3 5.8l0.5 1.2 1.2 0.5-1.2 0.5-0.5 1.2-0.5-1.2-1.2-0.5 1.2-0.5z"
+      fill="#14b8a6"
+      stroke="none"
+      style={{ animation: 'llmSparklePulse 3s ease-in-out infinite' }}
+    />
+    <path
+      d="M14.8 6.8l0.3 0.7 0.7 0.3-0.7 0.3-0.3 0.7-0.3-0.7-0.7-0.3 0.7-0.3z"
+      fill="#2dd4bf"
+      stroke="none"
+      style={{ animation: 'llmSparklePulse 3s ease-in-out infinite', animationDelay: '0.35s' }}
+    />
+  </svg>
+);
+
+const PdfSelectedIcon = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9z" />
+    <polyline points="14 3 14 9 20 9" />
+    <line x1="9" y1="13" x2="15" y2="13" />
+    <line x1="9" y1="16" x2="14" y2="16" />
+  </svg>
+);
+
 export default function UploadPDF() {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [showInstructions, setInstructions] = useState(false);
   const [showMetadataModal, setShowMetadataModal] = useState(false);
   const [processing, setProcessing] = useState(null);
   const [activeJob, setActiveJob] = useState(null);
@@ -18,13 +74,29 @@ export default function UploadPDF() {
   });
   const fileInputRef = useRef(null);
   const currentJobId = processing?.job_id || activeJob?.jobId || null;
+  const currentJobToken = processing?.job_token || activeJob?.jobToken || null;
+  const statusMessage = (processing?.message || '').toLowerCase();
+  const isFormattingStep = statusMessage.includes('formatting') ||
+    statusMessage.includes('llm') ||
+    statusMessage.includes('cleanup') ||
+    statusMessage.includes('preparing question records') ||
+    statusMessage.includes('saving generated questions') ||
+    processing?.status === 'completed';
+  const isParsingStep = statusMessage.includes('parsing') ||
+    statusMessage.includes('ocr') ||
+    statusMessage.includes('fallback extractor') ||
+    statusMessage.includes('compatibility parser');
+  const pipelineStep = isFormattingStep ? 3 : (isParsingStep ? 2 : 1);
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const monitorUploadJob = async (jobId) => {
+  const monitorUploadJob = async (jobId, jobToken = null) => {
     while (true) {
-      const status = await getUploadStatus(jobId);
-      setProcessing(status);
+      const status = await getUploadStatus(jobId, jobToken);
+      setProcessing((prev) => ({
+        ...status,
+        job_token: prev?.job_token || jobToken || null,
+      }));
 
       if (status.status === 'completed') {
         return status;
@@ -45,8 +117,11 @@ export default function UploadPDF() {
     setCancelingJob(true);
     setError('');
     try {
-      const status = await cancelUploadJob(currentJobId);
-      setProcessing(status);
+      const status = await cancelUploadJob(currentJobId, currentJobToken);
+      setProcessing((prev) => ({
+        ...status,
+        job_token: prev?.job_token || currentJobToken || null,
+      }));
     } catch (err) {
       setError(err.message || 'Failed to request cancellation');
     } finally {
@@ -87,22 +162,25 @@ export default function UploadPDF() {
           throw new Error('Backend did not return a storage path');
         }
         const fileName = result.filename || file.name;
+        const jobToken = result.job_token || null;
         setActiveJob({
           jobId: result.job_id,
+          jobToken,
           sourcePath,
           fileName
         });
 
         setProcessing({
           job_id: result.job_id,
+          job_token: jobToken,
           status: "queued",
-          progress_percent: result.progress_percent || 5,
+          progress_percent: result.progress_percent || 10,
           message: "Queued for processing",
           expected_questions: null,
           created_questions: 0
         });
 
-        const finalStatus = await monitorUploadJob(result.job_id);
+        const finalStatus = await monitorUploadJob(result.job_id, jobToken);
         const savedCount = Number(finalStatus.created_questions || 0);
         if (finalStatus.status === 'canceled') {
           if (savedCount > 0) {
@@ -157,12 +235,110 @@ export default function UploadPDF() {
   };
 
   return (
-    <div style={{ maxWidth: '450px', margin: '0 auto', paddingTop: '6rem' }}>
+    <div style={{ maxWidth: '980px', margin: '0 auto', paddingTop: '1.5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
+      <button
+        type="button"
+        onClick={() => {
+          window.location.hash = 'questions';
+        }}
+        style={{
+          background: '#f1f5f9',
+          color: '#334155',
+          border: '1px solid #cbd5e1',
+          borderRadius: '8px',
+          padding: '0.45rem 0.75rem',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: '1rem'
+        }}
+      >
+        Back to Question Bank
+      </button>
       <h1 style={{ fontSize: '1.25rem', fontWeight: 500, marginBottom: '0.5rem' }}>Upload PDF for Processing</h1>
       <p style={{ color: '#666' }}>
         Upload a PDF file to extract questions. The file will be processed in the background
         and questions will appear in the Question Bank.
       </p>
+
+      <div
+        style={{
+          marginTop: '1rem',
+          marginBottom: '1rem',
+          padding: '1rem',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          background: '#f8fafc'
+        }}
+      >
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.75rem' }}>
+          How The Pipeline Works
+        </div>
+        <div style={{ fontSize: '0.82rem', color: '#475569', marginBottom: '0.8rem' }}>
+          Upload starts a multi-stage extraction pipeline. OCR reads raw text from each page, then our LLM
+          restructures that text into cleaner markdown-style prompts so question drafts are consistent and easier to review.
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '0.75rem'
+          }}
+        >
+          {[
+            {
+              step: 1,
+              title: '1. Upload PDF',
+              text: 'The file is uploaded to storage and queued for processing.',
+              icon: <UploadFlowIcon />,
+            },
+            {
+              step: 2,
+              title: '2. OCR Parsing',
+              text: 'OCR (optical character recognition) reads text from scanned pages and imperfect layouts.',
+              icon: <OcrFlowIcon />,
+            },
+            {
+              step: 3,
+              title: '3. LLM Cleanup',
+              text: 'The LLM reformats extracted content into cleaner, consistent question drafts for verification.',
+              icon: <LlmFlowIcon />,
+            },
+          ].map((item) => (
+            <div
+              key={item.step}
+              style={{
+                borderRadius: '10px',
+                border: pipelineStep === item.step ? '1px solid #60a5fa' : '1px solid #dbeafe',
+                background: pipelineStep === item.step ? '#eff6ff' : '#ffffff',
+                padding: '0.75rem'
+              }}
+            >
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  border: pipelineStep === item.step ? '1px solid #93c5fd' : '1px solid #dbeafe',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#ffffff',
+                  marginBottom: '0.5rem'
+                }}
+              >
+                {item.icon}
+              </div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '0.3rem' }}>
+                {item.title}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                {item.text}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {uploading && processing && (
         <div
@@ -178,10 +354,8 @@ export default function UploadPDF() {
           <div style={{ fontSize: '0.95rem', color: '#1e3a8a', marginBottom: '0.35rem', fontWeight: 600 }}>
             {processing.message || 'Processing upload'}
           </div>
-          <div style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '0.75rem' }}>
-            Questions to create: {processing.expected_questions == null ? 'Estimating...' : processing.expected_questions}
-            {' • '}
-            Created so far: {processing.created_questions || 0}
+          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.7rem' }}>
+            This pipeline can take 5-10 minutes (or longer) for large/scanned PDFs.
           </div>
           <div style={{ width: '100%', height: '10px', borderRadius: '999px', background: '#e2e8f0', overflow: 'hidden' }}>
             <div
@@ -214,14 +388,20 @@ export default function UploadPDF() {
                   opacity: (cancelingJob || processing.status === 'cancelling') ? 0.7 : 1
                 }}
               >
-                {processing.status === 'cancelling' ? 'Cancel Requested…' : (cancelingJob ? 'Canceling…' : 'Cancel Parsing')}
+                {processing.status === 'cancelling' || cancelingJob ? 'Stopping…' : 'Stop'}
               </button>
+            </div>
+          )}
+          {currentJobId && ['queued', 'running', 'cancelling'].includes(processing.status) && (
+            <div style={{ marginTop: '0.45rem', fontSize: '0.78rem', color: '#64748b', textAlign: 'right' }}>
+              Stopping keeps any questions parsed so far and opens review for those drafts.
             </div>
           )}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={{ marginTop: '2rem' }}>
+      {!uploading && (
+      <form onSubmit={handleSubmit} style={{ marginTop: '2rem', maxWidth: '460px', marginLeft: 'auto', marginRight: 'auto' }}>
         <div 
           style={{
             display: 'flex',
@@ -312,15 +492,11 @@ export default function UploadPDF() {
                 marginBottom: '0.75rem'
               }}
             >
-              <span style={{ fontSize: '1.5rem', color: '#4f46e5' }}>📄</span>
+              <PdfSelectedIcon />
             </div>
 
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1f2937' }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1f2937', maxWidth: '95%', wordBreak: 'break-word' }}>
               {file.name}
-            </div>
-
-            <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-              {(file.size / 1024).toFixed(2)} KB
             </div>
           </>
         )}
@@ -331,13 +507,15 @@ export default function UploadPDF() {
         type="submit"
         disabled={!file || uploading}
         style={{
-          width: '100%',
-          padding: '0.9rem',
+          width: '220px',
+          display: 'block',
+          margin: '0 auto',
+          padding: '0.65rem 0.9rem',
           background: !file || uploading ? '#cbd5e1' : '#4f46e5',
           color: 'white',
           border: 'none',
           borderRadius: '10px',
-          fontSize: '1rem',
+          fontSize: '0.9rem',
           fontWeight: '600',
           cursor: !file || uploading ? 'not-allowed' : 'pointer'
         }}
@@ -346,6 +524,7 @@ export default function UploadPDF() {
       </button>
 
       </form>
+      )}
 
       {message && (
         <div style={{
@@ -372,101 +551,6 @@ export default function UploadPDF() {
           {error}
         </div>
       )}
-
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          marginTop: '2rem'
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setInstructions(!showInstructions)}
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            color: '#475569',
-            fontSize: '0.95rem',
-            fontWeight: 500,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-        >
-          <span
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              color: '#64748b',
-              fontSize: '0.95rem',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#64748b"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-
-            <span>How it works</span>
-
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#64748b"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              style={{
-                marginLeft: '0.2rem',
-                transition: 'transform 0.2s ease',
-                transform: showInstructions ? 'rotate(180deg)' : 'rotate(0deg)'
-              }}
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </span>
-        </button>
-
-        {showInstructions && (
-          <div
-            style={{
-              marginTop: '1rem',
-              padding: '1rem',
-              background: '#f8fafc',
-              borderRadius: '8px',
-              color: '#475569'
-            }}
-          >
-            <ol style={{ paddingLeft: '1.25rem', margin: 0 }}>
-              <li>Select a PDF file from your computer</li>
-              <li>Click “Extract Questions” to send it to the backend</li>
-              <li>The backend processes the PDF in the background</li>
-              <li>Questions are extracted and stored in the database</li>
-              <li>Visit the Question Bank page to view the results</li>
-            </ol>
-          </div>
-        )}
-      </div>
 
       {showMetadataModal && (
         <div style={{
@@ -555,6 +639,21 @@ export default function UploadPDF() {
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes ocrSweep {
+          0% { transform: translateX(0px); opacity: 0.35; }
+          50% { transform: translateX(8.2px); opacity: 0.95; }
+          100% { transform: translateX(0px); opacity: 0.35; }
+        }
+
+        @keyframes llmSparklePulse {
+          0% { transform: scale(0.95); opacity: 0.45; }
+          20% { transform: scale(1.15); opacity: 1; }
+          55% { transform: scale(1); opacity: 0.75; }
+          100% { transform: scale(0.95); opacity: 0.45; }
+        }
+      `}</style>
 
     </div>
   );
