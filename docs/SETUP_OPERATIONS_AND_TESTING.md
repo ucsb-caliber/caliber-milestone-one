@@ -24,11 +24,19 @@ uvicorn app.main:app --reload --port 8000
 Required backend env values (`backend/.env`):
 - `DATABASE_URL`
 - `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 Optional backend env values:
+- `SUPABASE_STORAGE_PDF_BUCKET` (default: `question-pdfs`)
+- `SUPABASE_STORAGE_TIMEOUT_SEC` (default: `25`)
+- `M2_TESSERACT_TIMEOUT_SEC` (default: `45`, per-page OCR timeout safeguard)
+- `M2_RENDER_DPI` (default: `170`, lower = faster PDF rasterization/OCR)
 - `UPLOAD_DIR` (default: `uploads`)
 - `LLM_CLEANUP_ENABLED`, `LLM_CLEANUP_BASE_URL`, `LLM_CLEANUP_MODEL`, `LLM_CLEANUP_TIMEOUT_SEC`
+- `LLM_CLEANUP_MODEL_FALLBACKS` (comma-separated model fallback chain)
+- `LLM_CLEANUP_FORCE` (run LLM cleanup for every question)
+- `LLM_CLEANUP_STYLE_GUIDE_PATH` (override markdown style-guide file path)
+- `LLM_CLEANUP_DEBUG` (emit formatter logs)
 
 ### Frontend
 ```bash
@@ -46,9 +54,9 @@ Required frontend env values (`frontend/.env`):
 ## 2) Supabase Configuration
 
 ### Auth
-- Enable email/password auth in Supabase.
-- Use project URL + anon key in both backend and frontend env files.
-- Backend validates access tokens per request.
+- Keycloak/OIDC auth is used for API authentication.
+- Supabase Storage writes for PDF uploads are done server-side with `SUPABASE_SERVICE_ROLE_KEY`.
+- Frontend still uses Supabase client vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) for signed URL/image helpers.
 
 ### Storage buckets (private)
 Create both buckets as private:
@@ -56,9 +64,8 @@ Create both buckets as private:
 - `question-pdfs`
 
 Recommended RLS policies for each bucket:
-- INSERT (authenticated): owner folder only
-- SELECT (authenticated): allow read for signed URL generation
-- DELETE (authenticated): owner folder only
+- For `question-pdfs`: backend service-role writes bypass RLS, so end-user INSERT policy is not required.
+- For browser-managed buckets (for example `question-images`), keep owner-folder policies if you use Supabase-authenticated users.
 
 Policy shape (replace bucket ID as needed):
 ```sql
@@ -71,7 +78,7 @@ true
 (bucket_id = 'question-images'::text) AND (auth.uid()::text = (storage.foldername(name))[1])
 ```
 
-Use the same expressions for `question-pdfs` by replacing `'question-images'` with `'question-pdfs'`.
+If you still do direct browser uploads to `question-pdfs`, use the same expressions by replacing `'question-images'` with `'question-pdfs'`.
 
 ## 3) Database Migrations (Alembic)
 
@@ -127,8 +134,7 @@ alembic upgrade head
 - Restart Vite after env changes.
 
 ### Backend auth failures (401/invalid token)
-- Verify backend `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-- Verify frontend and backend point to the same Supabase project.
+- Verify backend `OIDC_ISSUER` / `OIDC_JWKS_URL` / `OIDC_AUDIENCE`.
 - Sign out/in to refresh token.
 
 ### Database connection issues
@@ -142,7 +148,8 @@ alembic upgrade head
 ### Storage upload/sign URL failures
 - Confirm bucket names exactly match (`question-images`, `question-pdfs`).
 - Confirm buckets are private.
-- Confirm RLS policies are present for authenticated role.
+- Confirm backend `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set for PDF uploads.
+- Confirm `question-pdfs` exists and backend can write to it.
 
 ## 6) UI Component Workflow (shadcn)
 - Components are copied into project source, not used as a runtime package.
