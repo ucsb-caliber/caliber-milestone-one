@@ -551,7 +551,7 @@ export default function StudentPreview({
 
   return (
     <div style={wrapperStyle}>
-      <div style={styles.container}>
+      <div style={containerStyle}>
         {/* Preview Mode Banner */}
         {isPreviewMode && (
           <div style={styles.previewBanner}>

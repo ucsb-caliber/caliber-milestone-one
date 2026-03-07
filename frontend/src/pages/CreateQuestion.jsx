@@ -45,14 +45,16 @@ export default function CreateQuestion() {
   // Load draft on initial component mount
   useEffect(() => {
     const savedDraft = localStorage.getItem('question_draft');
-    if (savedDraft) {
+    if (!savedDraft) return;
+    try {
       const parsedDraft = JSON.parse(savedDraft);
-      // Ask user if they want to restore (optional, or just do it automatically)
-      if (window.confirm("Found an unsaved draft. Would you like to restore it?")) {
+      if (window.confirm('Found an unsaved draft. Would you like to restore it?')) {
         setFormData(parsedDraft);
       } else {
         localStorage.removeItem('question_draft');
       }
+    } catch (e) {
+      localStorage.removeItem('question_draft');
     }
   }, []);
 
