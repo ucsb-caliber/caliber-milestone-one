@@ -225,88 +225,120 @@ export default function QuestionBank() {
   };
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h2 style={{ margin: 0 }}>Question Bank</h2>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {/* View Toggle */}
-          <div style={{
-            display: 'flex',
-            background: '#f3f4f6',
-            borderRadius: '8px',
-            padding: '0.25rem',
-            gap: '0.25rem'
-          }}>
-            <button
-              onClick={() => setViewMode('card')}
-              style={{
-                padding: '0.5rem 1rem',
-                background: viewMode === 'card' ? 'white' : 'transparent',
-                color: viewMode === 'card' ? '#111827' : '#6b7280',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: viewMode === 'card' ? '600' : '500',
-                boxShadow: viewMode === 'card' ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0.25rem 0.5rem 1.75rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          flexWrap: 'wrap',
+          marginBottom: '1.2rem'
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: '2.3rem',
+              fontWeight: '800',
+              color: '#0f172a',
+              letterSpacing: '-0.025em',
+              lineHeight: 1.08
+            }}
+          >
+            Question Bank
+          </h1>
+          <p style={{ margin: '0.45rem 0 0 0', color: '#475569', fontSize: '0.95rem' }}>
+            Search verified prompts quickly and use AI upload to generate new drafts from PDFs.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => window.location.hash = 'upload-pdf'}
+            style={{
+              padding: '0.72rem 1.1rem',
+              background: 'linear-gradient(125deg, #06b6d4 0%, #2563eb 45%, #7c3aed 100%)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: '700',
+              letterSpacing: '0.01em',
+              transition: 'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease',
+              boxShadow: '0 10px 22px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.filter = 'brightness(1.04)';
+              e.currentTarget.style.boxShadow = '0 12px 24px rgba(37,99,235,0.4), inset 0 1px 0 rgba(255,255,255,0.35)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.filter = 'brightness(1)';
+              e.currentTarget.style.boxShadow = '0 10px 22px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.35)';
+            }}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              Card View
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              style={{
-                padding: '0.5rem 1rem',
-                background: viewMode === 'table' ? 'white' : 'transparent',
-                color: viewMode === 'table' ? '#111827' : '#6b7280',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: viewMode === 'table' ? '600' : '500',
-                boxShadow: viewMode === 'table' ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Table View
-            </button>
-          </div>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            Upload Questions by PDF
+          </button>
+
           <button
             onClick={() => window.location.hash = 'create-question'}
             style={{
-              padding: '0.75rem 1.5rem',
-              background: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
+              padding: '0.72rem 1rem',
+              background: '#ffffff',
+              color: '#0f172a',
+              border: '1px solid #cbd5e1',
+              borderRadius: '10px',
               cursor: 'pointer',
-              fontSize: '1rem',
-              fontWeight: '600',
-              transition: 'background-color 0.15s ease'
+              fontSize: '0.88rem',
+              fontWeight: '700',
+              transition: 'background-color 0.15s ease',
+              boxShadow: '0 1px 2px rgba(15,23,42,0.08)'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#218838'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#28a745'}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffffff'}
           >
-            + Create New Question
+            Create Question
           </button>
+
           <button
             onClick={loadQuestions}
             disabled={loading}
             style={{
-              padding: '0.75rem 1.5rem',
-              background: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
+              padding: '0.72rem 1rem',
+              width: '132px',
+              background: loading ? '#e2e8f0' : '#eff6ff',
+              color: loading ? '#64748b' : '#1d4ed8',
+              border: '1px solid #bfdbfe',
+              borderRadius: '10px',
               cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: '500',
-              opacity: loading ? 0.6 : 1,
+              fontSize: '0.88rem',
+              fontWeight: '700',
+              opacity: loading ? 0.8 : 1,
+              whiteSpace: 'nowrap',
+              textAlign: 'center',
               transition: 'all 0.15s ease'
             }}
-            onMouseEnter={(e) => !loading && (e.currentTarget.style.backgroundColor = '#0056b3')}
-            onMouseLeave={(e) => !loading && (e.currentTarget.style.backgroundColor = '#007bff')}
           >
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
@@ -321,10 +353,10 @@ export default function QuestionBank() {
         onClearSearch={() => setSearchQuery('')}
         showResultCount={Boolean(searchQuery)}
         resultCount={filteredMyQuestions.length + filteredAllQuestions.length}
-        containerStyle={{ marginBottom: '2rem' }}
+        containerStyle={{ marginBottom: '1.7rem' }}
       />
 
-      {loading && <p>Loading questions...</p>}
+      {loading && <p style={{ color: '#64748b', fontWeight: 600 }}>Loading questions...</p>}
 
       {error && (
         <div style={{
@@ -396,6 +428,54 @@ export default function QuestionBank() {
 
       {!loading && (
         <>
+          <div style={{ marginBottom: '1rem' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                background: '#f8fafc',
+                border: '1px solid #dbe5f1',
+                borderRadius: '11px',
+                padding: '0.25rem',
+                gap: '0.25rem'
+              }}
+            >
+              <button
+                onClick={() => setViewMode('card')}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  background: viewMode === 'card' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'card' ? '#0f172a' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: viewMode === 'card' ? '700' : '600',
+                  boxShadow: viewMode === 'card' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Card View
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  background: viewMode === 'table' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'table' ? '#0f172a' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: viewMode === 'table' ? '700' : '600',
+                  boxShadow: viewMode === 'table' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Table View
+              </button>
+            </div>
+          </div>
+
           {/* My Questions Section */}
           <div style={{ marginBottom: '4rem' }}>
             <CollapsibleSection

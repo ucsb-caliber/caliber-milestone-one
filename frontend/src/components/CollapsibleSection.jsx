@@ -44,6 +44,16 @@ export default function CollapsibleSection({
   const endIndex = startIndex + itemsPerPage;
   const paginatedQuestions = questions.slice(startIndex, endIndex);
 
+  useEffect(() => {
+    if (totalPages <= 0 && currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   // Handle page input change
   const handlePageInputChange = (e) => {
     const onlyDigits = e.target.value.replace(/\D/g, "");
@@ -70,15 +80,29 @@ export default function CollapsibleSection({
     setCurrentPage(prev => Math.min(prev + 1, totalPages));
   };
 
+  const paginationButtonStyle = (disabled) => ({
+    padding: '0.5rem 0.8rem',
+    background: disabled ? '#f8fafc' : '#ffffff',
+    color: disabled ? '#94a3b8' : '#0f172a',
+    border: `1px solid ${disabled ? '#e2e8f0' : '#cbd5e1'}`,
+    borderRadius: '9px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    transition: 'all 0.15s ease'
+  });
+
   return (
     <div>
       <h3 
         onClick={onToggle}
         style={{ 
           marginBottom: '1rem',
-          paddingBottom: '0.5rem',
+          paddingBottom: '0.6rem',
           borderBottom: `2px solid ${borderColor}`,
-          color: '#333',
+          color: '#0f172a',
+          fontSize: '1.12rem',
+          letterSpacing: '-0.01em',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -116,24 +140,49 @@ export default function CollapsibleSection({
             ) : (
               <div>
                 {/* Pagination Controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '15px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    marginBottom: '0.95rem',
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>
+                    Showing {startIndex + 1}-{Math.min(endIndex, questions.length)} of {questions.length}
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.55rem',
+                      padding: '0.22rem',
+                      borderRadius: '11px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0'
+                    }}
+                  >
                   <button
                     onClick={goToPreviousPage}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      background: '#007bff',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                      fontWeight: 'bold'
-                    }}
+                    style={paginationButtonStyle(currentPage === 1)}
                     disabled={currentPage === 1}
                   >
-                    ←
+                    Previous
                   </button>
-                  <span>
-                    Page
+                  <span
+                    style={{
+                      fontSize: '0.82rem',
+                      color: '#475569',
+                      fontWeight: 600,
+                      padding: '0.15rem 0.15rem 0.15rem 0.35rem',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0'
+                    }}
+                  >
+                    Page{' '}
                     <input
                       type="text"
                       inputMode="numeric"
@@ -146,25 +195,29 @@ export default function CollapsibleSection({
                           handlePageInputSubmit();
                         }
                       }}
-                      style={{ width: "30px", margin: "0 6px", textAlign: "center" }}
+                      style={{
+                        width: '38px',
+                        margin: '0 5px',
+                        textAlign: 'center',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        padding: '0.2rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: '#0f172a',
+                        background: '#ffffff'
+                      }}
                     />
-                    of {totalPages}
+                    of {totalPages}{' '}
                   </span>
                   <button
                     onClick={goToNextPage}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      background: '#007bff',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                      fontWeight: 'bold'
-                    }}
+                    style={paginationButtonStyle(currentPage === totalPages)}
                     disabled={currentPage === totalPages}
                   >
-                    →
+                    Next
                   </button>
+                  </div>
                 </div>
 
                 {/* Card Grid */}

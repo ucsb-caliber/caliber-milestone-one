@@ -8,8 +8,7 @@ import { filterQuestionsBySearch } from '../utils/questionSearch';
 
 function parseAssignmentDate(dateStr) {
   if (!dateStr) return null;
-  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(dateStr);
-  return new Date(hasTimezone ? dateStr : `${dateStr}Z`);
+  return new Date(dateStr);
 }
 
 function formatDateForDateTimeLocal(dateStr) {
@@ -162,7 +161,9 @@ export default function CreateEditAssignment() {
       // Format dates to ISO strings or null
       const formatDateForSubmit = (dateStr) => {
         if (!dateStr) return null;
-        return new Date(dateStr).toISOString();
+        return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateStr)
+          ? `${dateStr}:00`
+          : dateStr;
       };
 
       const submitData = {

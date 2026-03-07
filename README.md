@@ -111,24 +111,39 @@ Notes:
 - The first PDF upload may take longer because model files are downloaded and cached.
 - The `torch` / `effdet` stack is required to run the copied `backend/app/m2/layout_ingest.py`.
 
-Then install ollama, which runs an llm to cleanup our pdf pipeline output:
+Then install Ollama, which runs a local LLM to clean PDF extraction output:
 ```bash
 brew install ollama
 ```
 
-You can then either run `ollama serve` in a new terminal, or just run `brew services start ollama` to run it in the background
+You can then either run `ollama serve` in a new terminal, or run `brew services start ollama` to run it in the background.
 
 Then in `backend/.env` set the following:
 ```env
 LLM_CLEANUP_ENABLED=true
 LLM_CLEANUP_BASE_URL=http://127.0.0.1:11434
 LLM_CLEANUP_MODEL=llama3.1:8b
+# Optional: stronger formatter model if your machine can run it.
+# LLM_CLEANUP_MODEL=qwen2.5:14b
+# Optional fallback chain:
+# LLM_CLEANUP_MODEL_FALLBACKS=qwen2.5:14b,qwen2.5:7b
+# Optional: force LLM formatting on every question (slower).
+# LLM_CLEANUP_FORCE=true
+# Optional: debug logs for formatter behavior.
+# LLM_CLEANUP_DEBUG=true
 ```
 
+Prompt style instructions are read from `backend/app/prompts/llm_cleanup_style.md`.
+You can override that by setting `LLM_CLEANUP_STYLE_GUIDE_PATH=/absolute/path/to/your-style-guide.md`.
+
 Edit your `backend/.env` file and replace placeholders:
-- `DATABASE_URL` with your local/dev Postgres URL (or use SQLite line from `.env.example`)
+- `DATABASE_URL` with your local/dev Postgres URL
 - `OIDC_ISSUER` and/or `OIDC_JWKS_URL` for your Keycloak realm
 - `OIDC_AUDIENCE` if your tokens enforce audience checks
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` so `/api/upload-pdf` can store files in `question-pdfs`
+- Optional: `M2_TESSERACT_TIMEOUT_SEC` to cap per-page OCR time (default `45`)
+- Optional: `M2_RENDER_DPI` to control PDF rasterization cost (default `170`)
+- Optional: configure `LLM_CLEANUP_*` and `ROSTER_*` values only if you plan to use those integrations locally
 
 **Run database migrations** (first time setup):
 ```bash
@@ -154,7 +169,7 @@ cp .env.example .env
 ```
 
 Edit your frontend `.env` file and replace the placeholders:
-- Replace `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for storage access
+- Replace `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for signed URL + image helpers
 - Set `VITE_API_BASE` to your backend URL (default: `http://localhost:8000`)
 - Use `VITE_BASE_PATH=/` for local dev
 - Set `VITE_OIDC_ISSUER` + `VITE_OIDC_CLIENT_ID` for direct local Keycloak login (recommended for `npm run dev`)
@@ -191,6 +206,8 @@ VITE_OIDC_SCOPES=openid profile email
 OIDC_ISSUER=https://app.caliber.cs.ucsb.edu/auth/realms/platform
 OIDC_JWKS_URL=https://app.caliber.cs.ucsb.edu/auth/realms/platform/protocol/openid-connect/certs
 OIDC_AUDIENCE=portal
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 If your Keycloak client does not already allow local redirects, add:

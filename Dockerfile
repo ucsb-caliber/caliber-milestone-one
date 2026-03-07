@@ -9,6 +9,20 @@ COPY frontend ./frontend
 WORKDIR /app/frontend
 RUN npm install
 
+# Production build-time env for deployed path routing.
+# These values are injected by Vite at build time and should not rely on a
+# developer's local frontend/.env values.
+ARG VITE_BASE_PATH=/caliber/
+ARG VITE_API_BASE=/caliber
+ARG VITE_OIDC_ISSUER=https://app.caliber.cs.ucsb.edu/auth/realms/platform
+ARG VITE_OIDC_CLIENT_ID=portal
+ARG VITE_OIDC_SCOPES=openid\ profile\ email
+ENV VITE_BASE_PATH=${VITE_BASE_PATH} \
+    VITE_API_BASE=${VITE_API_BASE} \
+    VITE_OIDC_ISSUER=${VITE_OIDC_ISSUER} \
+    VITE_OIDC_CLIENT_ID=${VITE_OIDC_CLIENT_ID} \
+    VITE_OIDC_SCOPES=${VITE_OIDC_SCOPES}
+
 # Build frontend
 RUN npm run build
 

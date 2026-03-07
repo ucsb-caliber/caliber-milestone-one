@@ -191,21 +191,33 @@ function loadStoredUser() {
 }
 
 async function fetchKeycloakUser() {
-  const headers = {};
+  let response;
   if (isTestModeEnabled()) {
-    headers.Authorization = 'Bearer test-token-1';
+    response = await fetch(`${API_BASE}/api/user`, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer test-token-1' },
+      credentials: 'include',
+    });
   } else {
-    const accessToken = await getValidAccessToken();
-    if (accessToken) {
-      headers.Authorization = `Bearer ${accessToken}`;
+    // Prefer cookie/session auth first so switching portal accounts takes effect immediately.
+    response = await fetch(`${API_BASE}/api/user`, {
+      method: 'GET',
+      headers: {},
+      credentials: 'include',
+    });
+
+    // Fallback to direct OIDC bearer only when cookie auth is unavailable.
+    if (response.status === 401) {
+      const accessToken = await getValidAccessToken();
+      if (accessToken) {
+        response = await fetch(`${API_BASE}/api/user`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${accessToken}` },
+          credentials: 'include',
+        });
+      }
     }
   }
-
-  const response = await fetch(`${API_BASE}/api/user`, {
-    method: 'GET',
-    headers,
-    credentials: 'include',
-  });
 
   if (response.status === 401) {
     return null;
@@ -273,7 +285,15 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        await handleDirectOidcCallbackIfPresent();
+        try {
+          await handleDirectOidcCallbackIfPresent();
+        } catch (callbackErr) {
+          // Continue with cookie-based auth fallback even if direct OIDC callback handling fails.
+          console.error('OIDC callback handling failed; falling back to cookie auth:', callbackErr);
+          clearOidcTokens();
+          clearOidcRequestState();
+        }
+
         const nextUser = await fetchKeycloakUser();
         if (!cancelled) {
           setUser(nextUser);
