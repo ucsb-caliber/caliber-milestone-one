@@ -97,10 +97,12 @@ export default function QuestionCard({
   showDeleteButton = false,
   showEditButton = false,
   showRemoveButton = false,
+  showStudentViewButton = false,
   actionLoading = false,
   onDelete,
   onEdit,
   onRemove,
+  onStudentView,
   compact = false,
   showUserIcon = true,
   questionNumber,
@@ -148,7 +150,8 @@ export default function QuestionCard({
     if (onEdit) {
       onEdit(question);
     } else {
-      window.location.hash = `edit-question?id=${question.id}`;
+      const returnTo = encodeURIComponent(window.location.hash.replace(/^#/, '') || 'questions');
+      window.location.hash = `edit-question?id=${question.id}&returnTo=${returnTo}`;
     }
   };
 
@@ -576,43 +579,44 @@ export default function QuestionCard({
       })()}
 
       {/* Action buttons */}
-      {(showDeleteButton || showEditButton || showRemoveButton) && (
+      {(showStudentViewButton || showDeleteButton || showEditButton || showRemoveButton) && (
         <div 
           onPointerDown={(e) => e.stopPropagation()}
-          style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.75rem' }}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}
         >
-          {showEditButton && (
-            <button
-              onClick={handleEdit}
-              disabled={actionLoading}
-              style={{
-                padding: '0.375rem 0.75rem',
-                background: '#4f46e5',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: actionLoading ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                opacity: actionLoading ? 0.6 : 1,
-                transition: 'background-color 0.15s ease'
-              }}
-              onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4338ca'; }}
-              onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4f46e5'; }}
-            >
-              {editButtonLabel}
-            </button>
-          )}
-          {showRemoveButton && onRemove && (
+          <div>
+            {showStudentViewButton && (
               <button
                 onClick={(e) => {
-                e.stopPropagation();
-                onRemove(question.id);
-              }}
+                  e.stopPropagation();
+                  if (onStudentView) onStudentView(question);
+                }}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#0ea5e9',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#0284c7'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0ea5e9'; }}
+              >
+                Student View
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            {showEditButton && (
+              <button
+                onClick={handleEdit}
                 disabled={actionLoading}
                 style={{
                   padding: '0.375rem 0.75rem',
-                  background: '#dc3545',
+                  background: '#4f46e5',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -622,32 +626,58 @@ export default function QuestionCard({
                   opacity: actionLoading ? 0.6 : 1,
                   transition: 'background-color 0.15s ease'
                 }}
-                onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#c82333'; }}
-                onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#dc3545'; }}
-            >
-              Remove
-            </button>
-          )}
-          {showDeleteButton && onDelete && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(question.id);
-              }}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#dc3545',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: 'bold'
-              }}
-            >
-              Delete
-            </button>
-          )}
+                onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4338ca'; }}
+                onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4f46e5'; }}
+              >
+                {editButtonLabel}
+              </button>
+            )}
+            {showRemoveButton && onRemove && (
+                <button
+                  onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(question.id);
+                }}
+                  disabled={actionLoading}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    background: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: actionLoading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    opacity: actionLoading ? 0.6 : 1,
+                    transition: 'background-color 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#c82333'; }}
+                  onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#dc3545'; }}
+              >
+                Remove
+              </button>
+            )}
+            {showDeleteButton && onDelete && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(question.id);
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                Delete
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -1,13 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { getQuestion, updateQuestion, uploadImage, getImageSignedUrl } from '../api';
+import StudentPreview from '../components/StudentPreview';
+
+const DEFAULT_RUBRIC_PARTS = [
+  {
+    part_label: 'Part A',
+    rubric_levels: [
+      { points: 6, criteria: '' },
+      { points: 3, criteria: '' },
+      { points: 0, criteria: '' }
+    ]
+  }
+];
 
 export default function EditQuestion() {
-  // Get question ID and returnTo from URL hash (e.g., #edit-question?id=123&returnTo=...)
   const getQuestionId = () => {
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.split('?')[1] || '');
@@ -17,8 +28,8 @@ export default function EditQuestion() {
   const getReturnTo = () => {
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.split('?')[1] || '');
-    const returnTo = params.get('returnTo');
-    return returnTo ? decodeURIComponent(returnTo) : null;
+    const destination = params.get('returnTo');
+    return destination ? decodeURIComponent(destination) : null;
   };
 
   const [questionId] = useState(getQuestionId());
@@ -29,128 +40,209 @@ export default function EditQuestion() {
     school: '',
     course: '',
     course_type: '',
-    question_type: '',
+    question_type: 'mcq',
     blooms_taxonomy: '',
     keywords: '',
     tags: '',
     answer_choices: ['', '', '', ''],
     correct_answer: '',
-    rubric_parts: [{ part_label: 'Part A', points: 10, rubric_text: '' }],
-    short_answer_expected: ''
+    rubric_parts: DEFAULT_RUBRIC_PARTS,
+    short_answer_expected: '',
   });
   const [originalImageUrl, setOriginalImageUrl] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageInputRef, setImageInputRef] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loadingQuestion, setLoadingQuestion] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [viewMode, setViewMode] = useState('edit');
 
-  // Load existing question data
   useEffect(() => {
+    let active = true;
+
     async function loadQuestion() {
       if (!questionId) {
         setError('No question ID provided');
-        setLoading(false);
+        setLoadingQuestion(false);
         return;
       }
 
       try {
         const question = await getQuestion(questionId);
-        
-        // Parse answer choices
+
         let answerChoices = [];
-        let rubricParts = [{ part_label: 'Part A', points: 10, rubric_text: '' }];
-        
+        let rubricParts = DEFAULT_RUBRIC_PARTS;
+
         try {
           const parsed = JSON.parse(question.answer_choices || '[]');
-          
-          // Check if it's rubric parts (array of objects) or answer choices (array of strings)
-          if (parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0].part_label !== undefined) {
-            // Migrate old format (points, rubric_text) to new format (rubric_levels)
-            let parts = parsed.map(p => {
-              if (p.rubric_levels && p.rubric_levels.length > 0) {
-                return p;
+
+          if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0].part_label !== undefined) {
+            const normalizedParts = parsed.map((part) => {
+              if (Array.isArray(part.rubric_levels) && part.rubric_levels.length > 0) {
+                return part;
               }
+
               return {
-                part_label: p.part_label || 'Part A',
-                rubric_levels: [{ points: p.points ?? 10, criteria: p.rubric_text || '' }]
+                part_label: part.part_label || 'Part A',
+                rubric_levels: [
+                  { points: part.points ?? 6, criteria: part.rubric_text || '' },
+                  { points: 3, criteria: '' },
+                  { points: 0, criteria: '' }
+                ]
               };
             });
-            // Short answer: only 1 part allowed
-            if (question.question_type === 'short_answer' && parts.length > 1) {
-              rubricParts = [parts[0]];
-            } else {
-              rubricParts = parts;
-            }
-            answerChoices = ['', '', '', ''];
-          } else if (question.question_type === 'short_answer' && question.correct_answer && question.correct_answer !== 'rubric') {
-            rubricParts = [{
-              part_label: 'Part A',
-              rubric_levels: [
-                { points: 6, criteria: 'correct answer with valid explanation' },
-                { points: 3, criteria: 'incorrect answer with understandable explanation' },
-                { points: 0, criteria: 'incorrect answer and explanation' }
-              ]
-            }];
-            answerChoices = ['', '', '', ''];
+
+            rubricParts = question.question_type === 'short_answer' && normalizedParts.length > 1
+              ? [normalizedParts[0]]
+              : normalizedParts;
           } else {
-            // It's regular answer choices
-            answerChoices = parsed;
+            answerChoices = Array.isArray(parsed) ? parsed : [];
           }
-        } catch (e) {
+        } catch (parseError) {
           answerChoices = [];
         }
-        
-        // For True/False, always use exactly ['True', 'False']
+
         if (question.question_type === 'true_false') {
           answerChoices = ['True', 'False'];
         }
-        
-        // Ensure at least 4 answer choice slots for MCQ (not True/False)
+
         while (answerChoices.length < 4 && question.question_type !== 'true_false') {
           answerChoices.push('');
         }
 
-        setFormData({
-          title: question.title || '',
-          text: question.text || '',
-          school: question.school || 'UCSB',
-          course: question.course || '',
-          course_type: question.course_type || '',
-          question_type: question.question_type || '',
-          blooms_taxonomy: question.blooms_taxonomy || '',
-          keywords: question.keywords || '',
-          tags: question.tags || '',
-          answer_choices: answerChoices,
-          correct_answer: question.question_type === 'short_answer' ? '' : (question.correct_answer || ''),
-          rubric_parts: rubricParts,
-          short_answer_expected: ''
-        });
+        if (active) {
+          setFormData({
+            title: question.title || '',
+            text: question.text || '',
+            school: question.school || 'UCSB',
+            course: question.course || '',
+            course_type: question.course_type || '',
+            question_type: question.question_type || 'mcq',
+            blooms_taxonomy: question.blooms_taxonomy || '',
+            keywords: question.keywords || '',
+            tags: question.tags || '',
+            answer_choices: answerChoices,
+            correct_answer: question.question_type === 'short_answer' ? '' : (question.correct_answer || ''),
+            rubric_parts: rubricParts,
+            short_answer_expected: ''
+          });
+        }
 
-        // Load existing image if present
         if (question.image_url) {
           setOriginalImageUrl(question.image_url);
           try {
             const signedUrl = await getImageSignedUrl(question.image_url);
-            if (signedUrl) {
+            if (active && signedUrl) {
               setImagePreview(signedUrl);
             }
-          } catch (imgError) {
-            console.error('Failed to load image preview:', imgError);
+          } catch (imageError) {
+            // Preserve editability even if the legacy image cannot be previewed.
+            console.error('Unable to load existing image preview', imageError);
           }
         }
       } catch (err) {
-        setError(err.message || 'Failed to load question');
+        if (active) {
+          setError(err.message || 'Failed to load question');
+        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoadingQuestion(false);
+        }
       }
     }
 
     loadQuestion();
+    return () => {
+      active = false;
+    };
   }, [questionId]);
+
+  const styles = {
+    container: {
+      backgroundColor: '#f4f7f9',
+      minHeight: '75vh',
+      borderRadius: '1rem',
+      padding: '40px 20px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+    },
+    wrapper: { maxWidth: '1200px', margin: '0 auto' },
+    header: { marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' },
+    grid: { display: 'grid', gridTemplateColumns: '1fr 350px', gap: '24px', alignItems: 'start' },
+    card: {
+      background: 'white',
+      borderRadius: '12px',
+      padding: '24px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+      marginBottom: '16px',
+      border: '1px solid #e1e4e8'
+    },
+    label: { display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' },
+    input: {
+      width: '100%',
+      padding: '12px',
+      borderRadius: '8px',
+      border: '1px solid #cbd5e0',
+      fontSize: '16px',
+      boxSizing: 'border-box',
+      outline: 'none',
+      transition: 'border-color 0.2s'
+    },
+    errorBanner: {
+      padding: '16px',
+      backgroundColor: '#fff5f5',
+      border: '1px solid #feb2b2',
+      borderRadius: '8px',
+      color: '#c53030',
+      marginBottom: '24px',
+      fontSize: '14px',
+      fontWeight: '500'
+    },
+    successBanner: {
+      padding: '16px',
+      backgroundColor: '#f0fff4',
+      border: '1px solid #9ae6b4',
+      borderRadius: '8px',
+      color: '#276749',
+      marginBottom: '24px',
+      fontSize: '14px',
+      fontWeight: '500'
+    },
+    sidebarSection: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #edf2f7' },
+    primaryBtn: {
+      backgroundColor: '#0066ff',
+      color: 'white',
+      padding: '12px 24px',
+      borderRadius: '8px',
+      border: 'none',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      transition: 'background 0.2s'
+    },
+    secondaryBtn: {
+      backgroundColor: 'white',
+      color: '#4a5568',
+      padding: '12px 24px',
+      borderRadius: '8px',
+      border: '1px solid #cbd5e0',
+      fontWeight: 'bold',
+      cursor: 'pointer'
+    },
+    choiceRow: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' },
+    radio: { width: '20px', height: '20px', cursor: 'pointer' },
+    badge: {
+      fontSize: '11px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      backgroundColor: '#ebf4ff',
+      color: '#0066ff',
+      padding: '4px 8px',
+      borderRadius: '4px',
+      marginBottom: '8px',
+      display: 'inline-block'
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -171,16 +263,18 @@ export default function EditQuestion() {
   };
 
   const handleTextareaKeyDown = (e) => {
+    // Enable Tab key for indentation in markdown editor
     if (e.key === 'Tab') {
       e.preventDefault();
       const { selectionStart, selectionEnd, value } = e.target;
       const newValue = value.substring(0, selectionStart) + '  ' + value.substring(selectionEnd);
-      
+
       setFormData(prev => ({
         ...prev,
         text: newValue
       }));
-      
+
+      // Set cursor position after the inserted spaces
       setTimeout(() => {
         e.target.selectionStart = e.target.selectionEnd = selectionStart + 2;
       }, 0);
@@ -190,10 +284,11 @@ export default function EditQuestion() {
   const handleAnswerChange = (index, value) => {
     const newAnswers = [...formData.answer_choices];
     newAnswers[index] = value;
-    setFormData(prev => ({
-      ...prev,
-      answer_choices: newAnswers
-    }));
+    setFormData(prev => ({ ...prev, answer_choices: newAnswers }));
+  };
+
+  const setCorrectAnswer = (value) => {
+    setFormData(prev => ({ ...prev, correct_answer: value }));
   };
 
   const addAnswerChoice = () => {
@@ -215,14 +310,14 @@ export default function EditQuestion() {
     }));
   };
 
-  // Part = sub-question. Rubric = grading levels for that part.
+  // Part = sub-question/section. Rubric = grading levels for that part.
   const addPart = () => {
     const nextLabel = `Part ${String.fromCharCode(65 + formData.rubric_parts.length)}`;
     setFormData(prev => ({
       ...prev,
-      rubric_parts: [...prev.rubric_parts, { 
-        part_label: nextLabel, 
-        rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] 
+      rubric_parts: [...prev.rubric_parts, {
+        part_label: nextLabel,
+        rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }]
       }]
     }));
   };
@@ -299,21 +394,27 @@ export default function EditQuestion() {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Validate file type
       if (!file.type.startsWith('image/')) {
         setError('Please select an image file');
         setImageFile(null);
+        setImagePreview(null);
         return;
       }
-      
+
+      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setError('Image size must be less than 5MB');
         setImageFile(null);
+        setImagePreview(null);
         return;
       }
-      
+
+      // Clear any previous errors
       setError('');
       setImageFile(file);
-      
+
+      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result);
@@ -333,20 +434,20 @@ export default function EditQuestion() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
+    setLoading(true);
     setError('');
     setSuccess(false);
 
     // Validation
     if (!formData.title.trim()) {
       setError('Question title is required');
-      setSaving(false);
+      setLoading(false);
       return;
     }
 
     if (!formData.text.trim()) {
       setError('Question text is required');
-      setSaving(false);
+      setLoading(false);
       return;
     }
 
@@ -355,19 +456,19 @@ export default function EditQuestion() {
       const validAnswers = formData.answer_choices.filter(a => a.trim());
       if (validAnswers.length < 2) {
         setError('Must have at least 2 answer choices');
-        setSaving(false);
+        setLoading(false);
         return;
       }
 
       if (!formData.correct_answer.trim()) {
         setError('Correct answer is required');
-        setSaving(false);
+        setLoading(false);
         return;
       }
 
       if (!formData.answer_choices.some(choice => choice.trim() === formData.correct_answer)) {
         setError('Correct answer must be one of the answer choices');
-        setSaving(false);
+        setLoading(false);
         return;
       }
     }
@@ -379,21 +480,21 @@ export default function EditQuestion() {
       });
       if (validParts.length === 0) {
         setError('Each part needs at least one rubric level with points or criteria');
-        setSaving(false);
+        setLoading(false);
         return;
       }
     }
 
     try {
       let imageUrl = originalImageUrl;
-      
-      // Upload new image if one was selected
+
+      // Upload image first if one is selected
       if (imageFile) {
         try {
           imageUrl = await uploadImage(imageFile);
         } catch (uploadError) {
           setError(`Failed to upload image: ${uploadError.message}`);
-          setSaving(false);
+          setLoading(false);
           return;
         }
       }
@@ -401,12 +502,13 @@ export default function EditQuestion() {
       // Prepare answer choices based on question type
       let answerChoicesData = '[]';
       let correctAnswerData = '';
-      
+
       if (needsAnswerChoices()) {
         const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
         answerChoicesData = JSON.stringify(validAnswers);
         correctAnswerData = formData.correct_answer;
       } else if (needsRubric()) {
+        // Store rubric parts for both free response and short answer
         answerChoicesData = JSON.stringify(formData.rubric_parts);
         correctAnswerData = 'rubric';
       }
@@ -427,628 +529,504 @@ export default function EditQuestion() {
       });
 
       setSuccess(true);
-      
-      // Redirect to return URL or question bank after a brief delay
       setTimeout(() => {
         window.location.hash = returnTo || 'questions';
-      }, 1500);
+      }, 1200);
     } catch (err) {
       setError(err.message || 'Failed to update question');
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
-  if (loading) {
+  const renderMetadataCard = () => (
+    <div style={styles.card}>
+      <h3 style={{
+        marginTop: 0,
+        fontSize: '16px',
+        marginBottom: '16px'
+      }}>Question Metadata</h3>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>School</label>
+        <input type="text" name="school" value={formData.school} onChange={handleInputChange} style={styles.input} />
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Course Info</label>
+        <input type="text" name="course" value={formData.course} placeholder="Name" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+        <input type="text" name="course_type" value={formData.course_type} placeholder="Type" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Question Type</label>
+        <select name="question_type" value={formData.question_type} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
+          <option value="mcq">Multiple Choice (MCQ)</option>
+          <option value="fr">Free Response (FR)</option>
+          <option value="short_answer">Short Answer</option>
+          <option value="true_false">True/False</option>
+        </select>
+        <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Bloom's Taxonomy</label>
+        <select name="blooms_taxonomy" value={formData.blooms_taxonomy} style={styles.input} onChange={handleInputChange}>
+          <option value="">Select Level</option>
+          <option value="Remembering">Remembering</option>
+          <option value="Understanding">Understanding</option>
+          <option value="Applying">Applying</option>
+          <option value="Analyzing">Analyzing</option>
+          <option value="Evaluating">Evaluating</option>
+          <option value="Creating">Creating</option>
+        </select>
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Tags</label>
+        <input type="text" name="tags" value={formData.tags} placeholder="midterm, chapter-1" style={styles.input} onChange={handleInputChange} />
+      </div>
+      <div>
+        <label style={styles.label}>Image (optional)</label>
+        <div style={{
+          border: '2px dashed #cbd5e0',
+          borderRadius: '8px',
+          padding: '20px',
+          textAlign: 'center',
+          cursor: 'pointer'
+        }}>
+          <input type="file" accept="image/*" onChange={handleImageChange} ref={setImageInputRef} />
+          {imagePreview && (
+            <div style={{
+              marginTop: '1rem',
+              position: 'relative'
+            }}>
+              <img src={imagePreview} alt="Preview" style={{ maxWidth: '100%', borderRadius: '4px' }} />
+              <button type="button" onClick={removeImage} style={{ position: 'absolute', top: '5px', right: '5px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✕</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (loadingQuestion) {
     return (
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
-        <p>Loading question...</p>
+      <div style={styles.container}>
+        <div style={{ ...styles.wrapper, textAlign: 'center', padding: '2rem 0' }}>
+          <div style={styles.card}>Loading question...</div>
+        </div>
       </div>
     );
   }
 
   if (!questionId) {
     return (
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <div style={{
-          padding: '1rem',
-          background: '#f8d7da',
-          border: '1px solid #f5c6cb',
-          borderRadius: '4px',
-          color: '#721c24',
-          marginBottom: '1rem'
-        }}>
-          No question ID provided. Please select a question to edit from the Question Bank.
+      <div style={styles.container}>
+        <div style={styles.wrapper}>
+          <div style={styles.errorBanner}>⚠️ No question ID provided.</div>
+          <button type="button" style={styles.secondaryBtn} onClick={() => { window.location.hash = returnTo || 'questions'; }}>
+            Back
+          </button>
         </div>
-        <a href="#questions" style={{ color: '#007bff', textDecoration: 'none' }}>
-          ← Back to Question Bank
-        </a>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '2rem' }}>
-        <h2>Edit Question</h2>
-        <a href="#questions" style={{ color: '#007bff', textDecoration: 'none' }}>
-          ← Back to Question Bank
-        </a>
-      </div>
+    <div style={styles.container}>
+      <div style={styles.wrapper}>
 
-      {error && (
-        <div style={{
-          padding: '1rem',
-          marginBottom: '1rem',
-          background: '#f8d7da',
-          border: '1px solid #f5c6cb',
-          borderRadius: '4px',
-          color: '#721c24'
-        }}>
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div style={{
-          padding: '1rem',
-          marginBottom: '1rem',
-          background: '#d4edda',
-          border: '1px solid #c3e6cb',
-          borderRadius: '4px',
-          color: '#155724'
-        }}>
-          Question updated successfully! Redirecting to question bank...
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Question Title *
-          </label>
-          <input
-            type="text"
-            name="title"
-            value={formData.title}
-            onChange={handleInputChange}
-            required
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-            placeholder="e.g. Invert a Linked List, Analyze Time Complexity, etc."
-          />
-        </div>
-
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <label style={{ fontWeight: 'bold' }}>
-              Question Text * <span style={{ fontSize: '0.875rem', fontWeight: 'normal', color: '#666' }}>(Supports Markdown, LaTeX, and code blocks)</span>
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowPreview(!showPreview)}
-              aria-pressed={showPreview}
-              aria-label={showPreview ? 'Switch to edit mode' : 'Switch to preview mode'}
-              style={{
-                padding: '0.5rem 1rem',
-                background: showPreview ? '#6c757d' : '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem'
-              }}
-            >
-              {showPreview ? 'Edit' : 'Preview'}
+        {/* Header */}
+        <header style={styles.header}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '28px', color: '#1a202c' }}>Edit Question</h1>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button type="button" style={styles.secondaryBtn} onClick={() => { window.location.hash = returnTo || 'questions'; }}>Cancel</button>
+            <button type="submit" onClick={handleSubmit} style={styles.primaryBtn} disabled={loading}>
+              {loading ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
-          <textarea
-            name="text"
-            value={formData.text}
-            onChange={handleInputChange}
-            onKeyDown={handleTextareaKeyDown}
-            required
-            rows={8}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem',
-              fontFamily: 'monospace',
-              display: showPreview ? 'none' : 'block'
-            }}
-            placeholder="Enter your question here... Use **bold**, *italic*, `code`, $math$, etc."
-          />
-          {showPreview && (
-            <div style={{
-              width: '100%',
-              minHeight: '200px',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem',
-              background: '#f8f9fa'
-            }}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-                components={{
-                  code({node, inline, className, children, ...props}) {
-                    return inline ? (
-                      <code style={{
-                        background: '#e9ecef',
-                        padding: '0.2rem 0.4rem',
-                        borderRadius: '3px',
-                        fontSize: '0.9em'
-                      }} {...props}>
-                        {children}
-                      </code>
-                    ) : (
-                      <pre style={{
-                        background: '#2d2d2d',
-                        color: '#f8f8f2',
-                        padding: '1rem',
-                        borderRadius: '4px',
-                        overflow: 'auto'
-                      }}>
-                        <code className={className} {...props}>
-                          {children}
-                        </code>
-                      </pre>
-                    );
-                  }
-                }}
-              >
-                {formData.text || '*Preview will appear here...*'}
-              </ReactMarkdown>
-            </div>
-          )}
-        </div>
+        </header>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            School
-          </label>
-          <select
-            name="school"
-            value={formData.school}
-            onChange={handleInputChange}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-          >
-            <option value="UCSB">UCSB</option>
-          </select>
-        </div>
+        {/* Validation Message */}
+        {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
+        {success && <div style={styles.successBanner}>✅ Question updated. Redirecting...</div>}
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Course
-          </label>
-          <input
-            type="text"
-            name="course"
-            value={formData.course}
-            onChange={handleInputChange}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-            placeholder="e.g., CS 101, Math 205"
-          />
-        </div>
+        <form onSubmit={handleSubmit} style={{
+          display: 'grid',
+          // Dynamically adjust grid: 1:1 for Split View, 1:Sidebar for others
+          gridTemplateColumns: viewMode === 'split' ? '1fr 1fr' : '1fr 350px',
+          gap: '24px',
+          alignItems: 'start'
+        }}>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Course Type
-          </label>
-          <input
-            type="text"
-            name="course_type"
-            value={formData.course_type}
-            onChange={handleInputChange}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-            placeholder="e.g., intro CS, intermediate CS, linear algebra"
-          />
-        </div>
+          {/* Main Column (Left Side) */}
+          <div style={{ width: '100%' }}>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Question Type
-          </label>
-          <select
-            name="question_type"
-            value={formData.question_type}
-            onChange={handleInputChange}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-          >
-            <option value="">Select question type</option>
-            <option value="mcq">Multiple Choice (MCQ)</option>
-            <option value="fr">Free Response (FR)</option>
-            <option value="short_answer">Short Answer</option>
-            <option value="true_false">True/False</option>
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Bloom's Taxonomy Level
-          </label>
-          <select
-            name="blooms_taxonomy"
-            value={formData.blooms_taxonomy}
-            onChange={handleInputChange}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-          >
-            <option value="">Select Bloom's level</option>
-            <option value="Remembering">Remembering</option>
-            <option value="Understanding">Understanding</option>
-            <option value="Applying">Applying</option>
-            <option value="Analyzing">Analyzing</option>
-            <option value="Evaluating">Evaluating</option>
-            <option value="Creating">Creating</option>
-          </select>
-        </div>
-
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Keywords (comma-separated)
-          </label>
-          <input
-            type="text"
-            name="keywords"
-            value={formData.keywords}
-            onChange={handleInputChange}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-            placeholder="e.g., algorithm, data structure, sorting"
-          />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Tags (comma-separated)
-          </label>
-          <input
-            type="text"
-            name="tags"
-            value={formData.tags}
-            onChange={handleInputChange}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-            placeholder="e.g., midterm, important, chapter-3"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="image-upload" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Image (optional)
-          </label>
-          <input
-            id="image-upload"
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
-            ref={(ref) => setImageInputRef(ref)}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '1rem'
-            }}
-          />
-          {imagePreview && (
-            <div style={{ marginTop: '1rem', position: 'relative', display: 'inline-block' }}>
-              <img 
-                src={imagePreview} 
-                alt="Preview" 
-                style={{ 
-                  maxWidth: '300px', 
-                  maxHeight: '300px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px'
-                }} 
+            {/* Title Card */}
+            <div style={styles.card}>
+              <label style={styles.label}>Question Title</label>
+              <input
+                type="text"
+                name="title"
+                placeholder="e.g., Analysis of Merge Sort"
+                style={{ ...styles.input, fontSize: '20px', fontWeight: '500', border: 'none', borderBottom: '2px solid #edf2f7', borderRadius: 0, padding: '8px 0' }}
+                value={formData.title}
+                onChange={handleInputChange}
               />
-              <button
-                type="button"
-                onClick={removeImage}
-                style={{
-                  position: 'absolute',
-                  top: '0.5rem',
-                  right: '0.5rem',
-                  padding: '0.5rem',
-                  background: '#dc3545',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem'
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Answer Choices - for MCQ and True/False */}
-        {needsAnswerChoices() && (
-          <>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                {isTrueFalse() ? 'Select the correct answer' : 'Answer Choices *'}
-              </label>
-              {isTrueFalse() ? (
-                /* True/False: locked to exactly True and False, no add/remove */
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {['True', 'False'].map((choice) => (
-                    <div key={choice} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input
-                        type="radio"
-                        name="correct-choice"
-                        checked={formData.correct_answer === choice}
-                        onChange={() => setFormData(prev => ({ ...prev, correct_answer: choice }))}
-                        style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                      />
-                      <span style={{ flex: 1, padding: '0.75rem', fontSize: '1rem' }}>{choice}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div>
-                  {formData.answer_choices.map((answer, index) => (
-                    <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                      <input
-                        type="text"
-                        value={answer}
-                        onChange={(e) => handleAnswerChange(index, e.target.value)}
-                        style={{
-                          flex: 1,
-                          padding: '0.75rem',
-                          border: '1px solid #ddd',
-                          borderRadius: '4px',
-                          fontSize: '1rem'
-                        }}
-                        placeholder={`Answer choice ${index + 1}`}
-                      />
-                      {formData.answer_choices.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => removeAnswerChoice(index)}
-                          style={{
-                            padding: '0.75rem 1rem',
-                            background: '#dc3545',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '1rem'
-                          }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={addAnswerChoice}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: '#28a745',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.875rem',
-                      marginTop: '0.5rem'
-                    }}
-                  >
-                    + Add Answer Choice
-                  </button>
-                </div>
-              )}
             </div>
 
-            {!isTrueFalse() && (
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  Correct Answer *
-                </label>
-                <select
-                  name="correct_answer"
-                  value={formData.correct_answer}
-                  onChange={handleInputChange}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '1rem'
-                  }}
-                >
-                  <option value="">Select the correct answer</option>
-                  {formData.answer_choices.filter(a => a.trim()).map((answer, index) => (
-                    <option key={index} value={answer}>
-                      {answer}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Parts & Rubric - for Free Response and Short Answer */}
-        {needsRubric() && (
-          <div>
-            {isFreeResponse() && (
-            <div style={{ 
-              padding: '0.75rem 1rem', 
-              background: '#eff6ff', 
-              border: '1px solid #bfdbfe', 
-              borderRadius: '6px', 
-              marginBottom: '1rem' 
-            }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1e40af', marginBottom: '0.25rem' }}>
-                📋 Parts vs Rubric
-              </div>
-              <div style={{ fontSize: '0.8rem', color: '#1e3a8a' }}>
-                <strong>Parts</strong> = Sub-questions (Part A, Part B). <strong>Rubric</strong> = Grading levels for each part (+6, +3, +0).
-              </div>
-            </div>
-            )}
-
-            {isShortAnswer() && (
-            <div style={{ padding: '0.75rem 1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', marginBottom: '1rem' }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#166534' }}>Short Answer — Grading Rubric</div>
-              <div style={{ fontSize: '0.8rem', color: '#166534' }}>One response. Define grading levels (+6, +3, +0).</div>
-            </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <label style={{ fontWeight: 'bold' }}>{isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}</label>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points
-              </span>
-            </div>
-            
-            {formData.rubric_parts.map((part, partIndex) => {
-              const levels = part.rubric_levels || [];
-              return (
-                <div key={partIndex} style={{ 
-                  background: '#f8fafc', 
-                  border: '1px solid #e2e8f0', 
-                  borderRadius: '8px', 
-                  padding: '1rem', 
-                  marginBottom: '1rem' 
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    {isFreeResponse() ? (
-                      <input
-                        type="text"
-                        value={part.part_label}
-                        onChange={(e) => updatePartLabel(partIndex, e.target.value)}
-                        style={{ width: '120px', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', fontWeight: '600' }}
-                        placeholder="Part A"
-                      />
-                    ) : (
-                      <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
-                    )}
-                    {isFreeResponse() && formData.rubric_parts.length > 1 && (
-                      <button type="button" onClick={() => removePart(partIndex)} style={{ padding: '0.5rem 0.75rem', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                        Remove Part
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', marginBottom: '0.5rem' }}>
-                      {isFreeResponse() ? `Rubric for ${part.part_label || `Part ${partIndex + 1}`}:` : 'Define point values and criteria:'}
-                    </div>
-                    {levels.map((level, levelIndex) => (
-                      <div key={levelIndex} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '0.8rem' }}>+</span>
-                        <input type="number" value={level.points} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'points', e.target.value)} style={{ width: '50px', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', textAlign: 'center' }} min="0" />
-                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>pts</span>
-                        <input type="text" value={level.criteria || ''} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)} placeholder="e.g., correct answer with valid explanation" style={{ flex: 1, padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }} />
-                        {levels.length > 1 && (
-                          <button type="button" onClick={() => removeRubricLevel(partIndex, levelIndex)} style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}>✕</button>
-                        )}
-                      </div>
-                    ))}
-                    <button type="button" onClick={() => addRubricLevel(partIndex)} style={{ padding: '0.4rem 0.75rem', background: '#e2e8f0', color: '#475569', border: '1px dashed #94a3b8', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                      + Add rubric level
+            {/* Editor Card */}
+            <div style={styles.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <label style={styles.label}>Question Body</label>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', background: '#f7fafc', padding: '2px', borderRadius: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('edit')}
+                      style={{ ...
+                        styles.secondaryBtn, 
+                        padding: '4px 12px', 
+                        border: 'none', 
+                        background: viewMode === 'edit' ? 'white' : 'transparent', 
+                        boxShadow: viewMode === 'edit' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                       }}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('preview')}
+                      style={{ ...
+                        styles.secondaryBtn, 
+                        padding: '4px 12px',
+                        border: 'none', 
+                        background: viewMode === 'preview' ? 'white' : 'transparent', 
+                        boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                        }}>
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('split')}
+                      style={{ ...
+                      styles.secondaryBtn, 
+                      padding: '4px 12px', 
+                      border: 'none', 
+                      background: viewMode === 'split' ? 'white' : 'transparent', 
+                      boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                      }}>
+                      Student View
                     </button>
                   </div>
                 </div>
-              );
-            })}
-            
-            {isFreeResponse() && (
-            <button type="button" onClick={addPart} style={{ padding: '0.5rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-              + Add Another Part
-            </button>
-            )}
-          </div>
-        )}
+              </div>
 
-        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-          <button
-            type="submit"
-            disabled={saving}
-            style={{
-              padding: '0.75rem 2rem',
-              background: saving ? '#6c757d' : '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold'
-            }}
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-          <button
-            type="button"
-            onClick={() => window.location.hash = returnTo || 'questions'}
-            style={{
-              padding: '0.75rem 2rem',
-              background: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '1rem'
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+              {viewMode === 'preview' ? (
+                <div style={{ ...
+                styles.input, 
+                minHeight: '300px', 
+                padding: '12px', 
+                border: '1px solid #edf2f7', 
+                borderRadius: '8px', 
+                overflow: 'auto' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      code({ node, inline, className, children, ...props }) {
+                        return inline ? (
+                          <code style={{ 
+                            background: '#e9ecef', 
+                            padding: '0.2rem 0.4rem', 
+                            borderRadius: '3px', 
+                            fontSize: '0.9em', 
+                            fontFamily: 'monospace' 
+                          }} 
+                            {...props}>{children}</code>
+                        ) : (
+                          <pre style={{ 
+                            background: '#2d2d2d', 
+                            color: '#f8f8f2', 
+                            padding: '1rem', 
+                            borderRadius: '4px',
+                             overflow: 'auto', 
+                             fontSize: '0.875rem' 
+                            }}>
+                            <code className={className} {...props}>{children}</code>
+                          </pre>
+                        );
+                      },
+                      p({ children }) { return <p 
+                        style={{ 
+                          margin: '0 0 0.5rem 0', 
+                          fontSize: '1rem', 
+                          lineHeight: '1.5'
+                         }}>
+                          {children}</p>; }
+                    }}
+                  >
+                    {formData.text || "*Nothing to preview yet...*"}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <textarea
+                  name="text"
+                  value={formData.text}
+                  onChange={handleInputChange}
+                  onKeyDown={handleTextareaKeyDown}
+                  placeholder="Supports Markdown & LaTeX: $E=mc^2$"
+                  style={{ ...
+                    styles.input, 
+                    minHeight: '300px', 
+                    padding: '12px', 
+                    fontFamily: 'monospace', 
+                    lineHeight: '1.5' 
+                  }}
+                />
+              )}
+            </div>
+
+            {/* Answer Section */}
+            {needsAnswerChoices() && (
+              <div style={styles.card}>
+                <label style={styles.label}>
+                  {isTrueFalse() ? 'Select the correct answer' : 'Answer Choices (Select the correct one)'}
+                </label>
+                {isTrueFalse() ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '12px' 
+                    }}>
+                    {['True', 'False'].map((choice) => (
+                      <div key={choice} style={styles.choiceRow}>
+                        <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice} onChange={() => setCorrectAnswer(choice)} />
+                        <span style={{ 
+                          flex: 1, 
+                          padding: '12px', 
+                          fontSize: '16px', 
+                          color: '#1a202c' 
+                          }}>{choice}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    {formData.answer_choices.map((choice, index) => (
+                      <div key={index} style={styles.choiceRow}>
+                        <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice && choice !== ''} onChange={() => setCorrectAnswer(choice)} />
+                        <input type="text" value={choice} placeholder={`Option ${index + 1}`} style={styles.input} onChange={(e) => handleAnswerChange(index, e.target.value)} />
+                        {formData.answer_choices.length > 2 && (
+                          <button type="button" style={{ 
+                            border: 'none', 
+                            background: 'none', 
+                            color: '#e53e3e', 
+                            cursor: 'pointer' 
+                          }} onClick={() => removeAnswerChoice(index)}>✕</button>
+                        )}
+                      </div>
+                    ))}
+                    <button type="button" style={{ ...
+                      styles.secondaryBtn,
+                      width: '100%', 
+                      marginTop: '12px', 
+                      borderStyle: 'dashed' 
+                      }} onClick={addAnswerChoice}>+ Add Another Option</button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Rubric Builder */}
+            {needsRubric() && (
+              <div style={styles.card}>
+                {isFreeResponse() && (
+                  <div style={{
+                    padding: '12px 16px', 
+                    background: '#eff6ff',
+                     border: '1px solid #bfdbfe', 
+                     borderRadius: '8px', 
+                     marginBottom: '20px' 
+                     }}>
+                    <div style={{ 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: '#1e40af', 
+                      marginBottom: '6px' 
+                      }}>
+                        📋 Parts vs Rubric</div>
+                    <ul style={{ 
+                      margin: 0, 
+                      paddingLeft: '20px', 
+                      fontSize: '13px', 
+                      color: '#1e3a8a', 
+                      lineHeight: 1.6 
+                      }}>
+                      <li><strong>Parts</strong> = Sub-questions.</li>
+                      <li><strong>Rubric</strong> = Grading criteria per part.</li>
+                    </ul>
+                  </div>
+                )}
+
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  marginBottom: '16px' 
+                  }}>
+                  <label style={styles.label}>{isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}</label>
+                  <span style={{ 
+                    fontSize: '14px', 
+                    color: '#6b7280' 
+                    }}>Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points</span>
+                </div>
+
+                {formData.rubric_parts.map((part, partIndex) => (
+                  <div key={partIndex} style={{ 
+                    background: '#f8fafc', 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: '8px', 
+                    padding: '16px', 
+                    marginBottom: '16px' 
+                    }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      marginBottom: '12px' 
+                      }}>
+                      {isFreeResponse() ? (
+                        <input type="text" value={part.part_label} onChange={(e) => updatePartLabel(partIndex, e.target.value)} style={{ ...styles.input, width: '140px', fontWeight: '600', background: 'white' }} placeholder="Part A" />
+                      ) : (
+                        <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
+                      )}
+                      {isFreeResponse() && formData.rubric_parts.length > 1 && (
+                        <button type="button" style={{ 
+                          border: 'none', 
+                          background: '#fee2e2', 
+                          color: '#dc2626', 
+                          cursor: 'pointer', 
+                          padding: '6px 12px', 
+                          borderRadius: '6px', 
+                          fontSize: '13px' 
+                        }} onClick={() => removePart(partIndex)}>Remove Part</button>
+                      )}
+                    </div>
+
+                    <div style={{ 
+                      marginTop: '12px', 
+                      paddingTop: '12px', 
+                      borderTop: '1px solid #e2e8f0' 
+                      }}>
+                      {part.rubric_levels.map((level, levelIndex) => (
+                        <div key={levelIndex} style={{ 
+                          display: 'flex', 
+                          alignItems: 'flex-start', 
+                          gap: '12px', 
+                          marginBottom: '10px', 
+                          background: 'white', 
+                          padding: '10px 12px', 
+                          borderRadius: '6px', 
+                          border: '1px solid #e2e8f0' 
+                          }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px', 
+                            flexShrink: 0 
+                            }}>
+                            <span style={{ fontWeight: '600' }}>+</span>
+                            <input type="number" value={level.points} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'points', e.target.value)} style={{ ...styles.input, width: '56px', textAlign: 'center' }} min="0" />
+                            <span style={{ fontSize: '13px' }}>pts</span>
+                          </div>
+                          <input type="text" value={level.criteria} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)} placeholder="Criteria..." style={{ ...styles.input, flex: 1 }} />
+                          {part.rubric_levels.length > 1 && (
+                            <button type="button" style={{ 
+                              border: 'none', 
+                              background: 'none', 
+                              color: '#94a3b8', 
+                              cursor: 'pointer'
+                            }} onClick={() => removeRubricLevel(partIndex, levelIndex)}>✕</button>
+                          )}
+                        </div>
+                      ))}
+                      <button type="button" style={{ ...
+                        styles.secondaryBtn, 
+                        padding: '8px 14px',
+                        fontSize: '13px', 
+                        borderStyle: 'dashed' 
+                        }} onClick={() => addRubricLevel(partIndex)}>+ Add level</button>
+                    </div>
+                  </div>
+                ))}
+
+                {isFreeResponse() && (
+                  <button type="button" style={{ ...
+                  styles.secondaryBtn,
+                  width: '100%', 
+                  borderStyle: 'dashed', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px'
+                  }} onClick={addPart}>
+                    <span style={{ fontSize: '18px' }}>+</span> Add Another Part
+                  </button>
+                )}
+              </div>
+            )}
+
+            {viewMode === 'split' && renderMetadataCard()}
+          </div>
+
+          {/* Sidebar / Split View (Right Column) */}
+          <aside style={{ 
+            position: 'sticky',
+            top: '20px' }}>
+            {viewMode === 'split' ? (
+              /* --- SPLIT VIEW PREVIEW --- */
+              <div style={styles.card}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  alignItems: 'center', 
+                  marginBottom: '16px' 
+                  }}>
+                  <h3 style={{ 
+                    margin: 0, 
+                    fontSize: '14px', 
+                    color: '#64748b', 
+                    textTransform: 'uppercase' 
+                    }}>Student View</h3>
+                </div>
+                <div style={{ 
+                  border: '1px solid #edf2f7', 
+                  borderRadius: '8px', 
+                  background: '#f8fafc', 
+                  overflow: 'hidden' 
+                  }}>
+                  <StudentPreview
+                    inline={true}
+                    isPreviewMode={false}
+                    forceReadOnly={true}
+                    showStatusBanner={false}
+                    showPrevNextButtons={false}
+                    assignmentTitle={formData.title || "Untitled Question"}
+                    questions={[{
+                      id: 'live-preview',
+                      title: formData.title,
+                      text: formData.text,
+                      question_type: formData.question_type,
+                      answer_choices: (formData.question_type === 'mcq' || formData.question_type === 'true_false')
+                        ? JSON.stringify(formData.answer_choices)
+                        : JSON.stringify(formData.rubric_parts),
+                      correct_answer: formData.correct_answer
+                    }]}
+                  />
+                </div>
+              </div>
+            ) : renderMetadataCard()}
+          </aside>
+        </form>
+      </div>
     </div>
   );
 }

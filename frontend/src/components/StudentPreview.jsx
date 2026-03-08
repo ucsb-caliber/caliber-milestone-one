@@ -36,11 +36,15 @@ export default function StudentPreview({
   initialSubmitted,
   forceReadOnly = false,
   readOnlyMessage = '',
+  showStatusBanner = true,
+  showHeader = true,
   onAnswersChange,
   onQuestionChange,
+  inline = false, //new prop
   onSubmit,
   isSubmitting = false,
-  submitButtonText = 'Submit Assignment'
+  submitButtonText = 'Submit Assignment',
+  showPrevNextButtons = true
 }) {
   const [currentIndex, setCurrentIndex] = useState(Number.isInteger(initialQuestionIndex) ? initialQuestionIndex : 0);
   const [answers, setAnswers] = useState(initialAnswers || {});
@@ -477,6 +481,12 @@ export default function StudentPreview({
       color: '#6b7280'
     }
   };
+  const wrapperStyle = inline 
+    ? { background: '#f3f4f6', height: '100%', overflowY: 'auto' } 
+    : styles.overlay;
+  const containerStyle = inline
+    ? { ...styles.container, maxWidth: '100%', padding: '1rem' }
+    : styles.container;
 
   if (questions.length === 0) {
     return (
@@ -541,10 +551,12 @@ export default function StudentPreview({
     ? answerChoices : [];
   const selectedAnswer = answers[currentQuestion.id];
   const isLastQuestion = currentIndex === totalQuestions - 1;
+  const showFinishPreviewButton = isLastQuestion && isPreviewMode && onClose;
+  const showNavigationFooter = showPrevNextButtons || showFinishPreviewButton;
 
   return (
-    <div style={styles.overlay}>
-      <div style={styles.container}>
+    <div style={wrapperStyle}>
+      <div style={containerStyle}>
         {/* Preview Mode Banner */}
         {isPreviewMode && (
           <div style={styles.previewBanner}>
@@ -609,7 +621,7 @@ export default function StudentPreview({
         )}
 
         {/* Submitted Banner */}
-        {(submitted || forceReadOnly) && (
+        {showStatusBanner && (submitted || forceReadOnly) && (
           <div style={forceReadOnly && !submitted ? styles.notSubmittedBanner : styles.submittedBanner}>
             {forceReadOnly && !submitted
               ? (readOnlyMessage || 'Assignment Was Not Submitted')
@@ -618,57 +630,59 @@ export default function StudentPreview({
         )}
 
         {/* Header with Progress */} 
-        <div style={styles.header}>
-          <div style={styles.titleRow}>
-            <h1 style={styles.title}>{assignmentTitle}</h1>
-            <span style={{
-              ...styles.typeBadge,
-              background: typeBadge.bg,
-              color: typeBadge.color
-            }}>
-              {assignmentType}
-            </span>
-          </div>
-          
-          <div style={styles.progressSection}>
-            <div style={styles.progressInfo}>
-              <span>Question {currentIndex + 1} of {totalQuestions}</span>
-              <span>{getAnsweredCount()} answered</span>
+        {showHeader && (
+          <div style={styles.header}>
+            <div style={styles.titleRow}>
+              <h1 style={styles.title}>{assignmentTitle}</h1>
+              <span style={{
+                ...styles.typeBadge,
+                background: typeBadge.bg,
+                color: typeBadge.color
+              }}>
+                {assignmentType}
+              </span>
             </div>
-            <div style={styles.progressBar}>
-              <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+            
+            <div style={styles.progressSection}>
+              <div style={styles.progressInfo}>
+                <span>Question {currentIndex + 1} of {totalQuestions}</span>
+                <span>{getAnsweredCount()} answered</span>
+              </div>
+              <div style={styles.progressBar}>
+                <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+              </div>
             </div>
-          </div>
 
-          {/* Question Navigation Dots */}
-          <div style={styles.questionNav}>
-            {questions.map((q, idx) => {
-              const isAnswered = isQuestionAnswered(q.id);
-              const isCurrent = idx === currentIndex;
-              return (
-                <button
-                  key={q.id}
-                  style={{
-                    ...styles.questionDot,
-                    ...(isCurrent ? styles.questionDotCurrent : {}),
-                    ...(!isCurrent && isAnswered ? styles.questionDotAnswered : {})
-                  }}
-                  onClick={() => {
-                    setCurrentIndex(idx);
-                    if (onQuestionChange) onQuestionChange(idx);
-                  }}
-                  title={`Question ${idx + 1}${isAnswered ? ' (answered)' : ''}`}
-                >
-                  {idx + 1}
-                </button>
-              );
-            })}
+            {/* Question Navigation Dots */}
+            <div style={styles.questionNav}>
+              {questions.map((q, idx) => {
+                const isAnswered = isQuestionAnswered(q.id);
+                const isCurrent = idx === currentIndex;
+                return (
+                  <button
+                    key={q.id}
+                    style={{
+                      ...styles.questionDot,
+                      ...(isCurrent ? styles.questionDotCurrent : {}),
+                      ...(!isCurrent && isAnswered ? styles.questionDotAnswered : {})
+                    }}
+                    onClick={() => {
+                      setCurrentIndex(idx);
+                      if (onQuestionChange) onQuestionChange(idx);
+                    }}
+                    title={`Question ${idx + 1}${isAnswered ? ' (answered)' : ''}`}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Question Card */}
         <div style={styles.questionCard}>
-          <div style={styles.questionNumber}>Question {currentIndex + 1}</div>
+          {showHeader && <div style={styles.questionNumber}>Question {currentIndex + 1}</div>}
           
           {currentQuestion.title && (
             <div style={styles.questionTitle}>{currentQuestion.title}</div>
@@ -934,56 +948,65 @@ export default function StudentPreview({
         </div>
 
         {/* Navigation */}
-        <div style={styles.navigation}>
-          <button
-            style={{
-              ...styles.navButton,
-              ...styles.navButtonPrev,
-              ...(currentIndex === 0 ? styles.navButtonDisabled : {})
-            }}
-            onClick={handlePrevious}
-            disabled={currentIndex === 0}
-            onMouseEnter={(e) => {
-              if (currentIndex > 0) e.currentTarget.style.background = '#e5e7eb';
-            }}
-            onMouseLeave={(e) => {
-              if (currentIndex > 0) e.currentTarget.style.background = '#f3f4f6';
-            }}
-          >
-            ← Previous
-          </button>
-
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            {isLastQuestion && isPreviewMode && onClose && (
+        {showNavigationFooter && (
+          <div style={{
+            ...styles.navigation,
+            justifyContent: showPrevNextButtons ? 'space-between' : 'center'
+          }}>
+            {showPrevNextButtons && (
               <button
-                style={styles.submitButton}
-                onClick={onClose}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+                style={{
+                  ...styles.navButton,
+                  ...styles.navButtonPrev,
+                  ...(currentIndex === 0 ? styles.navButtonDisabled : {})
+                }}
+                onClick={handlePrevious}
+                disabled={currentIndex === 0}
+                onMouseEnter={(e) => {
+                  if (currentIndex > 0) e.currentTarget.style.background = '#e5e7eb';
+                }}
+                onMouseLeave={(e) => {
+                  if (currentIndex > 0) e.currentTarget.style.background = '#f3f4f6';
+                }}
               >
-                Finish Preview
+                ← Previous
+              </button>
+            )}
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              {showFinishPreviewButton && (
+                <button
+                  style={styles.submitButton}
+                  onClick={onClose}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+                >
+                  Finish Preview
+                </button>
+              )}
+            </div>
+
+            {showPrevNextButtons && (
+              <button
+                style={{
+                  ...styles.navButton,
+                  ...styles.navButtonNext,
+                  ...(isLastQuestion ? styles.navButtonDisabled : {})
+                }}
+                onClick={handleNext}
+                disabled={isLastQuestion}
+                onMouseEnter={(e) => {
+                  if (!isLastQuestion) e.currentTarget.style.background = '#4338ca';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLastQuestion) e.currentTarget.style.background = '#4f46e5';
+                }}
+              >
+                Next →
               </button>
             )}
           </div>
-
-          <button
-            style={{
-              ...styles.navButton,
-              ...styles.navButtonNext,
-              ...(isLastQuestion ? styles.navButtonDisabled : {})
-            }}
-            onClick={handleNext}
-            disabled={isLastQuestion}
-            onMouseEnter={(e) => {
-              if (!isLastQuestion) e.currentTarget.style.background = '#4338ca';
-            }}
-            onMouseLeave={(e) => {
-              if (!isLastQuestion) e.currentTarget.style.background = '#4f46e5';
-            }}
-          >
-            Next →
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
