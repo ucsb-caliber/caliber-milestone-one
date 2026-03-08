@@ -191,7 +191,7 @@ export default function AssignmentView() {
   const [actionLoading, setActionLoading] = useState(false);
   const [userInfoCache, setUserInfoCache] = useState({});
   const [showPreview, setShowPreview] = useState(false);
-  const [viewMode, setViewMode] = useState('card'); // 'card' or 'table'
+  const [viewMode, setViewMode] = useState('table'); // 'card' or 'table'
 
   // Parse URL hash to get course ID and assignment ID
   const parseHash = () => {
@@ -682,19 +682,6 @@ export default function AssignmentView() {
 
           <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: '8px', padding: '0.25rem', gap: '0.25rem' }}>
             <button
-              onClick={() => setViewMode('card')}
-              style={{
-                padding: '0.5rem 1rem',
-                background: viewMode === 'card' ? 'white' : 'transparent',
-                color: viewMode === 'card' ? '#111827' : '#6b7280',
-                border: 'none', borderRadius: '6px', cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: viewMode === 'card' ? '600' : '500',
-                boxShadow: viewMode === 'card' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-            >Card View</button>
-            <button
               onClick={() => setViewMode('table')}
               style={{
                 padding: '0.5rem 1rem',
@@ -707,6 +694,19 @@ export default function AssignmentView() {
                 transition: 'all 0.15s ease'
               }}
             >Table View</button>
+            <button
+              onClick={() => setViewMode('card')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: viewMode === 'card' ? 'white' : 'transparent',
+                color: viewMode === 'card' ? '#111827' : '#6b7280',
+                border: 'none', borderRadius: '6px', cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: viewMode === 'card' ? '600' : '500',
+                boxShadow: viewMode === 'card' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >Card View</button>
           </div>
         </div>
         {questions.length > 0 && (
@@ -822,6 +822,7 @@ export default function AssignmentView() {
           onClose={() => setShowPreview(false)}
           isPreviewMode={true}
           showCorrectAnswers={true}
+          showPrevNextButtons={false}
         />
       )}
     </div>

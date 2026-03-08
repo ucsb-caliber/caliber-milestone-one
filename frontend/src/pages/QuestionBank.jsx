@@ -10,6 +10,7 @@ import QuestionCard from '../components/QuestionCard';
 import CollapsibleSection from '../components/CollapsibleSection';
 import QuestionTable from '../components/QuestionTable';
 import QuestionSearchBar from '../components/QuestionSearchBar';
+import StudentPreview from '../components/StudentPreview';
 import { filterQuestionsBySearch } from '../utils/questionSearch';
 
 // User Icon Component
@@ -90,12 +91,13 @@ export default function QuestionBank() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
-  const [viewMode, setViewMode] = useState('card'); // 'card' or 'table'
+  const [viewMode, setViewMode] = useState('table'); // 'card' or 'table'
   const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
   const [userInfoCache, setUserInfoCache] = useState({}); // Cache for user info
   const [isTeacher, setIsTeacher] = useState(false); // Track if current user is a teacher
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all'); // 'all', 'keywords', 'tags', 'course', 'text'
+  const [studentViewQuestion, setStudentViewQuestion] = useState(null);
 
   const itemsPerPage = 6;
 
@@ -204,6 +206,7 @@ export default function QuestionBank() {
         questions={questions}
         userInfoCache={userInfoCache}
         user={user}
+        showEditButton={isTeacher}
         showUniversity={true}
         onDelete={(id) => setDeleteConfirm(id)}
       />
@@ -219,7 +222,9 @@ export default function QuestionBank() {
         imageUrl={imageUrls[question.id]}
         showDeleteButton={showDeleteButton}
         showEditButton={showEditButton}
+        showStudentViewButton={true}
         onDelete={(id) => setDeleteConfirm(id)}
+        onStudentView={(q) => setStudentViewQuestion(q)}
       />
     );
   };
@@ -324,23 +329,59 @@ export default function QuestionBank() {
           <button
             onClick={loadQuestions}
             disabled={loading}
+            title={loading ? 'Refreshing questions' : 'Refresh questions'}
+            aria-label={loading ? 'Refreshing questions' : 'Refresh questions'}
             style={{
-              padding: '0.72rem 1rem',
-              width: '132px',
-              background: loading ? '#e2e8f0' : '#eff6ff',
-              color: loading ? '#64748b' : '#1d4ed8',
-              border: '1px solid #bfdbfe',
-              borderRadius: '10px',
+              padding: '0.25rem',
+              width: 'auto',
+              background: 'transparent',
+              color: loading ? '#94a3b8' : '#1d4ed8',
+              border: 'none',
+              borderRadius: '0',
               cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '0.88rem',
-              fontWeight: '700',
+              lineHeight: 0,
               opacity: loading ? 0.8 : 1,
-              whiteSpace: 'nowrap',
-              textAlign: 'center',
               transition: 'all 0.15s ease'
             }}
           >
-            {loading ? 'Refreshing...' : 'Refresh'}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+              style={{ transform: loading ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}
+            >
+              <path
+                d="M20 4v6h-6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M4 20v-6h6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M20 10a8 8 0 0 0-14-4L4 10"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M4 14a8 8 0 0 0 14 4l2-4"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
       </div>
@@ -426,6 +467,72 @@ export default function QuestionBank() {
         </div>
       )}
 
+      {studentViewQuestion && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 1200,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            overflowY: 'auto',
+            padding: '1rem'
+          }}
+          onClick={() => setStudentViewQuestion(null)}
+        >
+          <div
+            style={{ width: 'min(1050px, 100%)', background: 'transparent' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <div
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  fontSize: '1rem'
+                }}
+              >
+                Student View
+              </div>
+              <button
+                type="button"
+                onClick={() => setStudentViewQuestion(null)}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                Close
+              </button>
+            </div>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflowY: 'auto', background: '#f8fafc', height: '78vh', maxHeight: '78vh' }}>
+              <StudentPreview
+                inline={true}
+                isPreviewMode={false}
+                forceReadOnly={true}
+                showStatusBanner={false}
+                showHeader={false}
+                showPrevNextButtons={false}
+                assignmentTitle={studentViewQuestion.title || 'Untitled Question'}
+                assignmentType={studentViewQuestion.question_type?.toUpperCase() || 'Question'}
+                questions={[studentViewQuestion]}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {!loading && (
         <>
           <div style={{ marginBottom: '1rem' }}>
@@ -439,23 +546,6 @@ export default function QuestionBank() {
                 gap: '0.25rem'
               }}
             >
-              <button
-                onClick={() => setViewMode('card')}
-                style={{
-                  padding: '0.45rem 0.9rem',
-                  background: viewMode === 'card' ? '#ffffff' : 'transparent',
-                  color: viewMode === 'card' ? '#0f172a' : '#64748b',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.82rem',
-                  fontWeight: viewMode === 'card' ? '700' : '600',
-                  boxShadow: viewMode === 'card' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                Card View
-              </button>
               <button
                 onClick={() => setViewMode('table')}
                 style={{
@@ -472,6 +562,23 @@ export default function QuestionBank() {
                 }}
               >
                 Table View
+              </button>
+              <button
+                onClick={() => setViewMode('card')}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  background: viewMode === 'card' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'card' ? '#0f172a' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: viewMode === 'card' ? '700' : '600',
+                  boxShadow: viewMode === 'card' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Card View
               </button>
             </div>
           </div>

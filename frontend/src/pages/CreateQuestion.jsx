@@ -488,6 +488,72 @@ export default function CreateQuestion() {
     }
   };
 
+  const renderMetadataCard = () => (
+    <div style={styles.card}>
+      <h3 style={{
+        marginTop: 0,
+        fontSize: '16px',
+        marginBottom: '16px'
+      }}>Question Metadata</h3>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>School</label>
+        <input type="text" name="school" value={formData.school} onChange={handleInputChange} style={styles.input} />
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Course Info</label>
+        <input type="text" name="course" value={formData.course} placeholder="Name" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+        <input type="text" name="course_type" value={formData.course_type} placeholder="Type" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Question Type</label>
+        <select name="question_type" value={formData.question_type} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
+          <option value="mcq">Multiple Choice (MCQ)</option>
+          <option value="fr">Free Response (FR)</option>
+          <option value="short_answer">Short Answer</option>
+          <option value="true_false">True/False</option>
+        </select>
+        <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Bloom's Taxonomy</label>
+        <select name="blooms_taxonomy" value={formData.blooms_taxonomy} style={styles.input} onChange={handleInputChange}>
+          <option value="">Select Level</option>
+          <option value="Remembering">Remembering</option>
+          <option value="Understanding">Understanding</option>
+          <option value="Applying">Applying</option>
+          <option value="Analyzing">Analyzing</option>
+          <option value="Evaluating">Evaluating</option>
+          <option value="Creating">Creating</option>
+        </select>
+      </div>
+      <div style={styles.sidebarSection}>
+        <label style={styles.label}>Tags</label>
+        <input type="text" name="tags" value={formData.tags} placeholder="midterm, chapter-1" style={styles.input} onChange={handleInputChange} />
+      </div>
+      <div>
+        <label style={styles.label}>Image (optional)</label>
+        <div style={{
+          border: '2px dashed #cbd5e0',
+          borderRadius: '8px',
+          padding: '20px',
+          textAlign: 'center',
+          cursor: 'pointer'
+        }}>
+          <input type="file" accept="image/*" onChange={handleImageChange} ref={setImageInputRef} />
+          {imagePreview && (
+            <div style={{
+              marginTop: '1rem',
+              position: 'relative'
+            }}>
+              <img src={imagePreview} alt="Preview" style={{ maxWidth: '100%', borderRadius: '4px' }} />
+              <button type="button" onClick={removeImage} style={{ position: 'absolute', top: '5px', right: '5px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✕</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={styles.container}>
       <div style={styles.wrapper}>
@@ -536,11 +602,7 @@ export default function CreateQuestion() {
             <div style={styles.card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <label style={styles.label}>Question Body</label>
-                {/* NEW SECTION: Autosave indicator + Buttons */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <span style={{ fontSize: '12px', color: '#a0aec0', fontStyle: 'italic' }}>
-                    ✓ Autosaved
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
                   <div style={{ display: 'flex', background: '#f7fafc', padding: '2px', borderRadius: '6px' }}>
                     <button
                       type="button"
@@ -552,7 +614,7 @@ export default function CreateQuestion() {
                         background: viewMode === 'edit' ? 'white' : 'transparent', 
                         boxShadow: viewMode === 'edit' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
                        }}>
-                      Write
+                      Edit
                     </button>
                     <button
                       type="button"
@@ -564,7 +626,7 @@ export default function CreateQuestion() {
                         background: viewMode === 'preview' ? 'white' : 'transparent', 
                         boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
                         }}>
-                      Full Preview
+                      Preview
                     </button>
                     <button
                       type="button"
@@ -576,7 +638,7 @@ export default function CreateQuestion() {
                       background: viewMode === 'split' ? 'white' : 'transparent', 
                       boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
                       }}>
-                      Split View
+                      Student View
                     </button>
                   </div>
                 </div>
@@ -836,6 +898,8 @@ export default function CreateQuestion() {
                 )}
               </div>
             )}
+
+            {viewMode === 'split' && renderMetadataCard()}
           </div>
 
           {/* Sidebar / Split View (Right Column) */}
@@ -856,7 +920,7 @@ export default function CreateQuestion() {
                     fontSize: '14px', 
                     color: '#64748b', 
                     textTransform: 'uppercase' 
-                    }}>Live Student View</h3>
+                    }}>Student View</h3>
                 </div>
                 <div style={{ 
                   border: '1px solid #edf2f7', 
@@ -867,6 +931,9 @@ export default function CreateQuestion() {
                   <StudentPreview
                     inline={true}
                     isPreviewMode={false}
+                    forceReadOnly={true}
+                    showStatusBanner={false}
+                    showPrevNextButtons={false}
                     assignmentTitle={formData.title || "Untitled Question"}
                     questions={[{
                       id: 'live-preview',
@@ -881,72 +948,7 @@ export default function CreateQuestion() {
                   />
                 </div>
               </div>
-            ) : (
-              /* --- ORIGINAL METADATA SIDEBAR --- */
-              <div style={styles.card}>
-                <h3 style={{ 
-                  marginTop: 0, 
-                  fontSize: '16px',
-                  marginBottom: '16px'
-                  }}>Question Metadata</h3>
-                <div style={styles.sidebarSection}>
-                  <label style={styles.label}>School</label>
-                  <input type="text" name="school" value={formData.school} onChange={handleInputChange} style={styles.input} />
-                </div>
-                <div style={styles.sidebarSection}>
-                  <label style={styles.label}>Course Info</label>
-                  <input type="text" name="course" placeholder="Name" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
-                  <input type="text" name="course_type" placeholder="Type" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
-                </div>
-                <div style={styles.sidebarSection}>
-                  <label style={styles.label}>Question Type</label>
-                  <select name="question_type" value={formData.question_type} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
-                    <option value="mcq">Multiple Choice (MCQ)</option>
-                    <option value="fr">Free Response (FR)</option>
-                    <option value="short_answer">Short Answer</option>
-                    <option value="true_false">True/False</option>
-                  </select>
-                  <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
-                </div>
-                <div style={styles.sidebarSection}>
-                  <label style={styles.label}>Bloom's Taxonomy</label>
-                  <select name="blooms_taxonomy" style={styles.input} onChange={handleInputChange}>
-                    <option value="">Select Level</option>
-                    <option value="Remembering">Remembering</option>
-                    <option value="Understanding">Understanding</option>
-                    <option value="Applying">Applying</option>
-                    <option value="Analyzing">Analyzing</option>
-                    <option value="Evaluating">Evaluating</option>
-                    <option value="Creating">Creating</option>
-                  </select>
-                </div>
-                <div style={styles.sidebarSection}>
-                  <label style={styles.label}>Tags</label>
-                  <input type="text" name="tags" value={formData.tags} placeholder="midterm, chapter-1" style={styles.input} onChange={handleInputChange} />
-                </div>
-                <div>
-                  <label style={styles.label}>Image (optional)</label>
-                  <div style={{ 
-                    border: '2px dashed #cbd5e0', 
-                    borderRadius: '8px', 
-                    padding: '20px', 
-                    textAlign: 'center', 
-                    cursor: 'pointer' 
-                    }}>
-                    <input type="file" accept="image/*" onChange={handleImageChange} ref={setImageInputRef} />
-                    {imagePreview && (
-                      <div style={{ 
-                        marginTop: '1rem', 
-                        position: 'relative' 
-                        }}>
-                        <img src={imagePreview} alt="Preview" style={{ maxWidth: '100%', borderRadius: '4px' }} />
-                        <button type="button" onClick={removeImage} style={{ position: 'absolute', top: '5px', right: '5px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✕</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
+            ) : renderMetadataCard()}
           </aside>
         </form>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import QuestionCard from './QuestionCard';
+import StudentPreview from './StudentPreview';
 import { getImageSignedUrl } from '../api';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -205,7 +206,8 @@ const TableRow = ({
     if (onEdit) {
       onEdit(question);
     } else {
-      window.location.hash = `edit-question?id=${question.id}`;
+      const returnTo = encodeURIComponent(window.location.hash.replace(/^#/, '') || 'questions');
+      window.location.hash = `edit-question?id=${question.id}&returnTo=${returnTo}`;
     }
   };
 
@@ -219,6 +221,7 @@ const TableRow = ({
             type="checkbox"
             checked={selected}
             onChange={() => onToggle(question.id)}
+            onClick={(e) => e.stopPropagation()}
             style={{ cursor: 'pointer' }}
           />
         </td>
@@ -246,6 +249,7 @@ const TableRow = ({
             href={`#question-${question.id}`}
             onClick={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               onPreview(question);
             }}
             style={{
@@ -292,21 +296,25 @@ const TableRow = ({
       {hasActions && (
         <td 
           onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           style={{ padding: '0.75rem 1rem', textAlign: 'center' }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center' }}>
             {showEditButton && (
               <button
-                onClick={handleEdit}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEdit();
+                }}
                 disabled={actionLoading}
                 style={{
-                  padding: '0.3rem 0.6rem',
+                  padding: '0.375rem 0.75rem',
                   background: '#4f46e5',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
                   cursor: actionLoading ? 'not-allowed' : 'pointer',
-                  fontSize: '0.75rem',
+                  fontSize: '0.875rem',
                   fontWeight: '500',
                   opacity: actionLoading ? 0.6 : 1,
                   transition: 'background-color 0.15s ease'
@@ -319,7 +327,10 @@ const TableRow = ({
             )}
             {showRemoveButton && onRemove && (
               <button
-                onClick={() => onRemove(question.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(question.id);
+                }}
                 disabled={actionLoading}
                 style={{
                   padding: '0.3rem 0.6rem',
@@ -341,7 +352,10 @@ const TableRow = ({
             )}
             {canDelete && onDelete && (
               <button
-                onClick={() => onDelete(question.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(question.id);
+                }}
                 disabled={actionLoading}
                 style={{
                   padding: '0.375rem 0.75rem',
@@ -379,8 +393,10 @@ const TableRow = ({
     <tr
       style={{
         borderBottom: '1px solid #e5e7eb',
-        transition: 'background-color 0.15s ease'
+        transition: 'background-color 0.15s ease',
+        cursor: 'pointer'
       }}
+      onClick={() => onPreview(question)}
       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
     >
@@ -430,10 +446,12 @@ export default function QuestionTable({
 }) {
   const [previewQuestion, setPreviewQuestion] = useState(null);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
+  const [previewMode, setPreviewMode] = useState('details');
 
   const handlePreview = async (question) => {
     setPreviewQuestion(question);
     setPreviewImageUrl(null);
+    setPreviewMode('details');
 
     if (!question?.image_url) return;
 
@@ -444,6 +462,7 @@ export default function QuestionTable({
   const closePreview = () => {
     setPreviewQuestion(null);
     setPreviewImageUrl(null);
+    setPreviewMode('details');
   };
 
   if (questions.length === 0) {
@@ -636,7 +655,7 @@ export default function QuestionTable({
                   onDelete={onDelete}
                   showQID={hasQID}
                   showCourseType={hasCourseType}
-                  showEditButton={showEditButton}
+                  showEditButton={showEditButton && canDelete}
                   showRemoveButton={showRemoveButton}
                   onEdit={onEdit}
                   onRemove={onRemove}
@@ -677,7 +696,43 @@ export default function QuestionTable({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', gap: '0.75rem' }}>
+              <div style={{ display: 'inline-flex', gap: '0.25rem', padding: '0.2rem', borderRadius: '9px', background: '#f8fafc', border: '1px solid #d1d5db' }}>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('details')}
+                  style={{
+                    padding: '0.4rem 0.65rem',
+                    border: 'none',
+                    borderRadius: '7px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    fontSize: '0.82rem',
+                    background: previewMode === 'details' ? 'white' : 'transparent',
+                    color: previewMode === 'details' ? '#111827' : '#64748b',
+                    boxShadow: previewMode === 'details' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none'
+                  }}
+                >
+                  Question Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('student')}
+                  style={{
+                    padding: '0.4rem 0.65rem',
+                    border: 'none',
+                    borderRadius: '7px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    fontSize: '0.82rem',
+                    background: previewMode === 'student' ? 'white' : 'transparent',
+                    color: previewMode === 'student' ? '#111827' : '#64748b',
+                    boxShadow: previewMode === 'student' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none'
+                  }}
+                >
+                  Student View
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={closePreview}
@@ -695,14 +750,30 @@ export default function QuestionTable({
               </button>
             </div>
 
-            <QuestionCard
-              question={previewQuestion}
-              userInfo={userInfoCache[previewQuestion.user_id]}
-              imageUrl={previewImageUrl}
-              showDeleteButton={false}
-              showEditButton={false}
-              showRemoveButton={false}
-            />
+            {previewMode === 'details' ? (
+              <QuestionCard
+                question={previewQuestion}
+                userInfo={userInfoCache[previewQuestion.user_id]}
+                imageUrl={previewImageUrl}
+                showDeleteButton={false}
+                showEditButton={false}
+                showRemoveButton={false}
+              />
+            ) : (
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflowY: 'auto', background: '#f8fafc', height: '78vh', maxHeight: '78vh' }}>
+                <StudentPreview
+                  inline={true}
+                  isPreviewMode={false}
+                  forceReadOnly={true}
+                  showStatusBanner={false}
+                  showHeader={false}
+                  showPrevNextButtons={false}
+                  assignmentTitle={previewQuestion.title || 'Untitled Question'}
+                  assignmentType={previewQuestion.question_type?.toUpperCase() || 'Question'}
+                  questions={[previewQuestion]}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
