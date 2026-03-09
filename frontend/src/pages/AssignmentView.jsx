@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById } from '../api';
+import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus } from '../api';
 import QuestionCard from '../components/QuestionCard';
 import QuestionTable from '../components/QuestionTable';
 import StudentPreview from '../components/StudentPreview';
@@ -41,11 +41,32 @@ const DateTimeline = ({ assignment }) => {
   const getTimeLeft = (date) => {
     if (!date) return null;
     const diffMs = date - now;
-    const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    if (diffMs < 0) return { value: Math.abs(diffDays), unit: 'days', overdue: true };
-    if (diffDays <= 1) return { value: diffHours, unit: 'hours', overdue: false };
-    return { value: diffDays, unit: 'days', overdue: false };
+    const absMs = Math.abs(diffMs);
+    const secondMs = 1000;
+    const minuteMs = 60 * secondMs;
+    const hourMs = 60 * minuteMs;
+    const dayMs = 24 * hourMs;
+    const weekMs = 7 * dayMs;
+
+    // Keep overdue label simple and consistent with existing UI.
+    if (diffMs < 0) {
+      const overdueDays = Math.ceil(absMs / dayMs);
+      return { value: overdueDays, unit: 'days', overdue: true };
+    }
+
+    if (diffMs >= weekMs) {
+      return { value: Math.ceil(diffMs / weekMs), unit: 'weeks', overdue: false };
+    }
+    if (diffMs >= dayMs) {
+      return { value: Math.ceil(diffMs / dayMs), unit: 'days', overdue: false };
+    }
+    if (diffMs >= hourMs) {
+      return { value: Math.ceil(diffMs / hourMs), unit: 'hours', overdue: false };
+    }
+    if (diffMs >= minuteMs) {
+      return { value: Math.ceil(diffMs / minuteMs), unit: 'minutes', overdue: false };
+    }
+    return { value: Math.max(1, Math.ceil(diffMs / secondMs)), unit: 'seconds', overdue: false };
   };
 
   const start = release || now;
@@ -106,7 +127,15 @@ const DateTimeline = ({ assignment }) => {
                 const label = t.overdue
                   ? `${t.value}d overdue`
                   : t.value === 0 ? 'Due now'
-                  : `${t.value}${t.unit === 'hours' ? 'h' : 'd'} left`;
+                  : t.unit === 'weeks'
+                    ? `${t.value}w left`
+                    : t.unit === 'days'
+                      ? `${t.value}d left`
+                      : t.unit === 'hours'
+                        ? `${t.value}h left`
+                        : t.unit === 'minutes'
+                          ? `${t.value}m left`
+                          : `${t.value}s left`;
                 return (
                   <div style={{ fontSize: '0.75rem', fontWeight: '500', color }}>
                     {label}
@@ -192,6 +221,10 @@ export default function AssignmentView() {
   const [userInfoCache, setUserInfoCache] = useState({});
   const [showPreview, setShowPreview] = useState(false);
   const [viewMode, setViewMode] = useState('table'); // 'card' or 'table'
+  const [submissionStatusRows, setSubmissionStatusRows] = useState([]);
+  const [submissionStatusLoading, setSubmissionStatusLoading] = useState(false);
+  const [submissionStatusError, setSubmissionStatusError] = useState('');
+  const [assignmentPhase, setAssignmentPhase] = useState('');
 
   // Parse URL hash to get course ID and assignment ID
   const parseHash = () => {
@@ -295,6 +328,65 @@ export default function AssignmentView() {
 
     loadData();
   }, [assignmentId]);
+
+  useEffect(() => {
+    async function loadSubmissionStatus() {
+      if (!assignment || assignment.instructor_id !== user?.id) {
+        setSubmissionStatusRows([]);
+        setAssignmentPhase('');
+        return;
+      }
+
+      setSubmissionStatusLoading(true);
+      setSubmissionStatusError('');
+      try {
+        const [courseData, statusData] = await Promise.all([
+          getCourse(assignment.course_id),
+          getAssignmentSubmissionStatus(assignment.id),
+        ]);
+
+        const studentIds = courseData?.student_ids || [];
+        const statusByStudent = new Map((statusData?.students || []).map((row) => [row.student_id, row]));
+
+        const studentsWithStatus = await Promise.all(
+          studentIds.map(async (studentId) => {
+            let displayName = studentId;
+            try {
+              const studentInfo = await getUserById(studentId);
+              if (studentInfo?.first_name && studentInfo?.last_name) {
+                displayName = `${studentInfo.first_name} ${studentInfo.last_name}`;
+              } else {
+                displayName = studentInfo?.email || studentId;
+              }
+            } catch {
+              displayName = studentId;
+            }
+
+            const status = statusByStudent.get(studentId) || {
+              student_id: studentId,
+              submitted: false,
+              submitted_at: null,
+              timing_status: 'not_submitted',
+            };
+
+            return {
+              ...status,
+              student_name: displayName,
+            };
+          })
+        );
+
+        setSubmissionStatusRows(studentsWithStatus);
+        setAssignmentPhase(statusData?.assignment_phase || '');
+      } catch (err) {
+        setSubmissionStatusError(err.message || 'Failed to load student submission status');
+      } finally {
+        setSubmissionStatusLoading(false);
+      }
+    }
+
+    loadSubmissionStatus();
+  }, [assignment, user?.id]);
 
   // Handle removing a question from the assignment
   const handleRemoveQuestion = async (questionId) => {
@@ -403,6 +495,30 @@ export default function AssignmentView() {
       timeZone: PACIFIC_TIMEZONE,
       timeZoneName: 'short'
     });
+  };
+
+  const formatSubmissionDate = (dateStr) => {
+    const parsedDate = parseAssignmentDate(dateStr);
+    if (!parsedDate) return 'Not submitted';
+    return parsedDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: PACIFIC_TIMEZONE,
+      timeZoneName: 'short'
+    });
+  };
+
+  const getSubmissionPillStyle = (timingStatus) => {
+    if (timingStatus === 'on_time') {
+      return { bg: '#d1fae5', color: '#065f46', label: 'On Time' };
+    }
+    if (timingStatus === 'late') {
+      return { bg: '#fef3c7', color: '#92400e', label: 'Late' };
+    }
+    return { bg: '#fee2e2', color: '#b91c1c', label: 'Not Submitted' };
   };
 
   // Get type badge color
@@ -551,6 +667,27 @@ export default function AssignmentView() {
       textAlign: 'center',
       padding: '4rem',
       color: '#6b7280'
+    },
+    submissionTable: {
+      width: '100%',
+      borderCollapse: 'collapse'
+    },
+    submissionRow: {
+      borderBottom: '1px solid #f3f4f6'
+    },
+    submissionCell: {
+      padding: '0.75rem 0.5rem',
+      fontSize: '0.9rem',
+      color: '#374151'
+    },
+    submissionHeaderCell: {
+      textAlign: 'left',
+      padding: '0.5rem',
+      fontSize: '0.75rem',
+      fontWeight: '700',
+      letterSpacing: '0.03em',
+      textTransform: 'uppercase',
+      color: '#6b7280'
     }
   };
 
@@ -671,6 +808,66 @@ export default function AssignmentView() {
           </div>
         )}
       </div>
+
+      {canEditAssignment && (
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Student Submission Status</h2>
+          {assignmentPhase === 'interim' && (
+            <div style={{
+              marginBottom: '0.9rem',
+              padding: '0.65rem 0.8rem',
+              background: '#eef2ff',
+              color: '#3730a3',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              fontWeight: 600
+            }}>
+              Assignment is closed and currently in the interim phase.
+            </div>
+          )}
+
+          {submissionStatusLoading ? (
+            <p style={{ margin: 0, color: '#6b7280' }}>Loading student statuses...</p>
+          ) : submissionStatusError ? (
+            <div style={styles.errorBox}>{submissionStatusError}</div>
+          ) : submissionStatusRows.length === 0 ? (
+            <p style={{ margin: 0, color: '#6b7280' }}>No enrolled students found.</p>
+          ) : (
+            <table style={styles.submissionTable}>
+              <thead>
+                <tr style={styles.submissionRow}>
+                  <th style={styles.submissionHeaderCell}>Student</th>
+                  <th style={styles.submissionHeaderCell}>Status</th>
+                  <th style={styles.submissionHeaderCell}>Submitted At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {submissionStatusRows.map((row) => {
+                  const pill = getSubmissionPillStyle(row.timing_status);
+                  return (
+                    <tr key={row.student_id} style={styles.submissionRow}>
+                      <td style={styles.submissionCell}>{row.student_name}</td>
+                      <td style={styles.submissionCell}>
+                        <span style={{
+                          background: pill.bg,
+                          color: pill.color,
+                          borderRadius: '999px',
+                          padding: '0.2rem 0.55rem',
+                          fontSize: '0.78rem',
+                          fontWeight: '700'
+                        }}>
+                          {pill.label}
+                        </span>
+                      </td>
+                      <td style={styles.submissionCell}>{formatSubmissionDate(row.submitted_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {/* Questions Section */}
       <div style={styles.section}>

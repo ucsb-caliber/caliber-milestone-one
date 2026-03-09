@@ -235,6 +235,21 @@ def get_assignment_progress(session: Session, assignment_id: int, student_id: st
     ).first()
 
 
+def list_assignment_progress_for_students(session: Session, assignment_id: int, student_ids: List[str]):
+    """Get progress rows for an assignment filtered to student IDs."""
+    from .models import AssignmentProgress
+
+    if not student_ids:
+        return []
+
+    return list(session.exec(
+        select(AssignmentProgress).where(
+            AssignmentProgress.assignment_id == assignment_id,
+            AssignmentProgress.student_id.in_(student_ids)
+        )
+    ).all())
+
+
 def upsert_assignment_progress(
     session: Session,
     assignment_id: int,

@@ -387,3 +387,18 @@ class AssignmentProgressUpdate(BaseModel):
     answers: Optional[dict] = None
     current_question_index: Optional[int] = None
     submitted: Optional[bool] = None
+
+
+class AssignmentStudentSubmissionStatus(BaseModel):
+    """Per-student assignment submission timing status for instructors."""
+    student_id: str
+    submitted: bool
+    submitted_at: Optional[datetime] = None
+    timing_status: str  # on_time | late | not_submitted
+
+
+class AssignmentSubmissionStatusResponse(BaseModel):
+    """Instructor-facing submission status list for an assignment."""
+    assignment_id: int
+    assignment_phase: str  # unreleased | open | late_window | interim
+    students: List[AssignmentStudentSubmissionStatus] = []

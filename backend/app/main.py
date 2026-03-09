@@ -23,11 +23,13 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      AdminCourseOverviewResponse,
                      AssignmentResponse, AssignmentCreate, AssignmentUpdate, UploadStatusResponse,
                      VerifyBySourceRequest, VerifyBySourceResponse,
-                     AssignmentProgressResponse, AssignmentProgressUpdate)
+                     AssignmentProgressResponse, AssignmentProgressUpdate,
+                     AssignmentSubmissionStatusResponse, AssignmentStudentSubmissionStatus)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
                   get_questions_by_ids, update_question, delete_question,
                   get_course_assignments, create_assignment, get_assignment, update_assignment, 
                   delete_assignment, get_assignment_progress, upsert_assignment_progress,
+                  list_assignment_progress_for_students,
                   delete_unverified_questions_by_source)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
@@ -266,6 +268,31 @@ def build_assignment_response(
         assignment,
         instructor_email=instructor_email,
     )
+
+
+def _normalize_datetime_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """Normalize datetimes to timezone-aware UTC for safe comparisons."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _get_assignment_phase(assignment: Assignment, *, now: Optional[datetime] = None) -> str:
+    """Return assignment lifecycle phase for student availability rules."""
+    current = now or datetime.now(timezone.utc)
+    release_date = _normalize_datetime_utc(assignment.release_date)
+    soft_due = _normalize_datetime_utc(assignment.due_date_soft)
+    hard_due = _normalize_datetime_utc(assignment.due_date_hard)
+
+    if release_date and current < release_date:
+        return "unreleased"
+    if hard_due and current > hard_due:
+        return "interim"
+    if soft_due and current > soft_due:
+        return "late_window"
+    return "open"
 
 
 def _roster_call_for_user(
@@ -1454,6 +1481,13 @@ def save_student_assignment_progress(
     # Relying on student_ids here can be transiently stale immediately after auth/login.
     _ = course_payload
 
+    # Once the hard due date passes, student edits/submissions are locked.
+    if _get_assignment_phase(assignment) == "interim":
+        raise HTTPException(
+            status_code=403,
+            detail="Assignment is closed and in the interim phase before grades are released.",
+        )
+
     progress = upsert_assignment_progress(
         session=session,
         assignment_id=assignment_id,
@@ -1472,6 +1506,61 @@ def save_student_assignment_progress(
         submitted=progress.submitted,
         submitted_at=progress.submitted_at,
         updated_at=progress.updated_at
+    )
+
+
+@app.get("/api/assignments/{assignment_id}/submission-status", response_model=AssignmentSubmissionStatusResponse)
+def get_assignment_submission_status(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Instructor-only endpoint: per-student on-time/late submission status."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{assignment.course_id}",
+    )
+
+    if course_payload.get("instructor_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only the course instructor can view submission status")
+
+    student_ids = list(course_payload.get("student_ids") or [])
+    progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
+    progress_by_student_id = {row.student_id: row for row in progress_rows}
+
+    soft_due = _normalize_datetime_utc(assignment.due_date_soft)
+    students: list[AssignmentStudentSubmissionStatus] = []
+    for student_id in student_ids:
+        progress = progress_by_student_id.get(student_id)
+        submitted_at = _normalize_datetime_utc(progress.submitted_at) if progress else None
+        submitted = bool(progress and progress.submitted and submitted_at)
+
+        timing_status = "not_submitted"
+        if submitted:
+            if soft_due and submitted_at and submitted_at > soft_due:
+                timing_status = "late"
+            else:
+                timing_status = "on_time"
+
+        students.append(
+            AssignmentStudentSubmissionStatus(
+                student_id=student_id,
+                submitted=submitted,
+                submitted_at=submitted_at,
+                timing_status=timing_status,
+            )
+        )
+
+    return AssignmentSubmissionStatusResponse(
+        assignment_id=assignment_id,
+        assignment_phase=_get_assignment_phase(assignment),
+        students=students,
     )
 
 

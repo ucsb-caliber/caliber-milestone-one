@@ -1215,6 +1215,31 @@ export async function saveAssignmentProgress(assignmentId, progressData) {
 }
 
 /**
+ * Get per-student submission timing status for an assignment (instructor only)
+ */
+export async function getAssignmentSubmissionStatus(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/submission-status`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch assignment submission status');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Update an existing assignment
  */
 export async function updateAssignment(assignmentId, assignmentData) {
