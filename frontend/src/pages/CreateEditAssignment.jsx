@@ -61,6 +61,41 @@ export default function CreateEditAssignment() {
 
   const { courseId, assignmentId, isNew, isEdit } = parseHash();
 
+  const fetchAllQuestionsForPicker = async () => {
+    const pageSize = 200;
+    let skip = 0;
+    let total = null;
+    const collected = [];
+
+    while (total === null || collected.length < total) {
+      const page = await getAllQuestions({ skip, limit: pageSize });
+      const pageQuestions = page?.questions || [];
+      total = Number(page?.total ?? pageQuestions.length);
+      if (!pageQuestions.length) break;
+      collected.push(...pageQuestions);
+      skip += pageSize;
+      if (pageQuestions.length < pageSize) break;
+    }
+
+    return collected;
+  };
+
+  const prioritizeQuestionsForPicker = (questions) => {
+    const currentUserId = user?.id;
+    const toEpoch = (value) => {
+      const date = value ? new Date(value) : null;
+      const time = date?.getTime?.();
+      return Number.isFinite(time) ? time : 0;
+    };
+
+    return [...questions].sort((a, b) => {
+      const aMine = currentUserId && a.user_id === currentUserId ? 0 : 1;
+      const bMine = currentUserId && b.user_id === currentUserId ? 0 : 1;
+      if (aMine !== bMine) return aMine - bMine;
+      return toEpoch(b.created_at) - toEpoch(a.created_at);
+    });
+  };
+
   // Load data on mount
   useEffect(() => {
     async function loadData() {
@@ -71,11 +106,10 @@ export default function CreateEditAssignment() {
       }
 
       try {
-        // Load all questions for selection
-        const questionsData = await getAllQuestions();
-        setAllQuestions(questionsData.questions || []);
+        // Load all questions for selection (paginated fetch, not just first page)
+        const qs = await fetchAllQuestionsForPicker();
+        setAllQuestions(prioritizeQuestionsForPicker(qs));
 
-        const qs = questionsData.questions || [];
         const uniqueUserIds = [...new Set(qs.map(q => q.user_id).filter(Boolean))];
 
         const userPromises = uniqueUserIds.map(async (uid) => {
@@ -119,7 +153,7 @@ export default function CreateEditAssignment() {
     }
 
     loadData();
-  }, [courseId, assignmentId, isNew]);
+  }, [courseId, assignmentId, isNew, user?.id]);
 
   // Handle form submission
   const handleSubmit = async (e) => {

@@ -290,6 +290,49 @@ def upsert_assignment_progress(
     return progress
 
 
+def update_assignment_grading(
+    session: Session,
+    assignment_id: int,
+    student_id: str,
+    *,
+    grading_data: dict,
+    grade_submitted: Optional[bool] = None,
+    score_earned: Optional[float] = None,
+    score_total: Optional[float] = None,
+):
+    """Create/update persisted grading state for an assignment/student pair."""
+    from .models import AssignmentProgress
+
+    progress = get_assignment_progress(session, assignment_id, student_id)
+    if not progress:
+        progress = AssignmentProgress(
+            assignment_id=assignment_id,
+            student_id=student_id,
+            answers="{}",
+            grading_data="{}",
+            current_question_index=0,
+            submitted=False,
+        )
+        session.add(progress)
+        session.commit()
+        session.refresh(progress)
+
+    progress.grading_data = json.dumps(grading_data or {})
+    if score_earned is not None:
+        progress.score_earned = float(score_earned)
+    if score_total is not None:
+        progress.score_total = float(score_total)
+    if grade_submitted is not None:
+        progress.grade_submitted = bool(grade_submitted)
+        progress.grade_submitted_at = datetime.utcnow() if grade_submitted else None
+
+    progress.updated_at = datetime.utcnow()
+    session.add(progress)
+    session.commit()
+    session.refresh(progress)
+    return progress
+
+
 def get_course_assignments(session: Session, course_id: int) -> List['Assignment']:
     """Get list of assignments for a course."""
     from .models import Assignment

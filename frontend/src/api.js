@@ -1240,6 +1240,96 @@ export async function getAssignmentSubmissionStatus(assignmentId) {
 }
 
 /**
+ * Get grading state for one assignment/student (instructor only)
+ */
+export async function getAssignmentGradingState(assignmentId, studentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/grading/${encodeURIComponent(studentId)}`, {
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch assignment grading state');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Save draft/final grading for one assignment/student (instructor only)
+ */
+export async function saveAssignmentGradingState(assignmentId, studentId, payload) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/grading/${encodeURIComponent(studentId)}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(payload || {}),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to save assignment grading');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get current student's full grade breakdown for an assignment (when grades are released)
+ */
+export async function getMyAssignmentGrade(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/my-grade`, { headers });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to load grade');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Release grades for an assignment (instructor only)
+ */
+export async function releaseAssignmentGrades(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/release-grades`, {
+      method: 'POST',
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to release grades');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Update an existing assignment
  */
 export async function updateAssignment(assignmentId, assignmentData) {

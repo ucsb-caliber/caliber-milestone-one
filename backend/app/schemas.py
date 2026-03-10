@@ -256,6 +256,8 @@ class AssignmentResponse(BaseModel):
     due_date_soft: Optional[datetime]
     due_date_hard: Optional[datetime]
     late_policy_id: Optional[str]
+    grade_released: bool = False
+    grade_released_at: Optional[datetime] = None
     assignment_questions: List[int]  # Parsed from JSON string
     created_at: datetime
     updated_at: datetime
@@ -290,6 +292,8 @@ class AssignmentResponse(BaseModel):
             'due_date_soft': obj.due_date_soft,
             'due_date_hard': obj.due_date_hard,
             'late_policy_id': obj.late_policy_id,
+            'grade_released': bool(getattr(obj, "grade_released", False)),
+            'grade_released_at': getattr(obj, "grade_released_at", None),
             'assignment_questions': json.loads(obj.assignment_questions) if obj.assignment_questions else [],
             'created_at': obj.created_at,
             'updated_at': obj.updated_at,
@@ -379,6 +383,10 @@ class AssignmentProgressResponse(BaseModel):
     current_question_index: int = 0
     submitted: bool = False
     submitted_at: Optional[datetime] = None
+    grade_submitted: bool = False
+    grade_submitted_at: Optional[datetime] = None
+    score_earned: Optional[float] = None
+    score_total: Optional[float] = None
     updated_at: datetime
 
 
@@ -395,10 +403,79 @@ class AssignmentStudentSubmissionStatus(BaseModel):
     submitted: bool
     submitted_at: Optional[datetime] = None
     timing_status: str  # on_time | late | not_submitted
+    grade_submitted: bool = False
+    score_earned: Optional[float] = None
+    score_total: Optional[float] = None
+    score_percent: Optional[float] = None
 
 
 class AssignmentSubmissionStatusResponse(BaseModel):
     """Instructor-facing submission status list for an assignment."""
     assignment_id: int
     assignment_phase: str  # unreleased | open | late_window | interim
+    assignment_total_points: float = 0
+    grade_released: bool = False
+    all_students_graded: bool = False
     students: List[AssignmentStudentSubmissionStatus] = []
+
+
+class RubricPartGradeUpdate(BaseModel):
+    part_index: int
+    score: float
+    comment: Optional[str] = ""
+
+
+class QuestionGradeUpdate(BaseModel):
+    question_id: int
+    parts: List[RubricPartGradeUpdate] = []
+    question_comment: Optional[str] = ""
+
+
+class AssignmentGradeUpsertRequest(BaseModel):
+    question_grades: List[QuestionGradeUpdate] = []
+    submit_grade: bool = False
+
+
+class RubricLevelCriteria(BaseModel):
+    """Criteria text for a single rubric level."""
+    points: float
+    criteria: str = ""
+
+
+class RubricPartGradeResponse(BaseModel):
+    part_index: int
+    label: str
+    max_points: float
+    options: List[float] = []
+    level_criteria: List[RubricLevelCriteria] = []
+    selected_score: Optional[float] = None
+    comment: str = ""
+    graded: bool = False
+
+
+class AssignmentQuestionGradeResponse(BaseModel):
+    question_id: int
+    question_title: str
+    question_text: str = ""
+    question_type: str
+    max_points: float
+    earned_points: float
+    is_auto_graded: bool
+    requires_manual_grading: bool
+    is_fully_graded: bool
+    student_answer: Optional[str] = None
+    correct_answer: Optional[str] = None
+    question_comment: str = ""
+    rubric_parts: List[RubricPartGradeResponse] = []
+
+
+class AssignmentGradingResponse(BaseModel):
+    assignment_id: int
+    assignment_title: str
+    student_id: str
+    grade_submitted: bool
+    score_earned: float
+    score_total: float
+    score_percent: float
+    all_questions_fully_graded: bool
+    questions: List[AssignmentQuestionGradeResponse] = []

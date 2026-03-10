@@ -14,6 +14,7 @@ import AssignmentView from './pages/AssignmentView.jsx'
 import StudentCoursesPage from './pages/StudentCoursesPage.jsx'
 import StudentCourseDashboard from './pages/StudentCourseDashboard.jsx'
 import StudentAssignmentPage from './pages/StudentAssignmentPage.jsx'
+import GradeAssignmentPage from './pages/GradeAssignmentPage.jsx'
 import LoggedOut from './pages/LoggedOut.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
@@ -350,6 +351,11 @@ function App() {
             {isInstructorOrAdmin && page.includes('/assignment/') && page.includes('/view') && (
               <ProtectedRoute>
                 <AssignmentView />
+              </ProtectedRoute>
+            )}
+            {isInstructorOrAdmin && page.includes('/assignment/') && page.includes('/grade/') && (
+              <ProtectedRoute>
+                <GradeAssignmentPage />
               </ProtectedRoute>
             )}
             {isInstructorOrAdmin && page.includes('/assignment/') && (page.includes('/edit') || page.includes('/new')) && (

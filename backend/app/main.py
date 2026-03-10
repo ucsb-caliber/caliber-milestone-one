@@ -2,6 +2,7 @@ import os
 import threading
 import uuid
 import time
+import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Backgroun
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlmodel import Session, select, func
+from sqlalchemy import inspect, text
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
@@ -24,12 +26,15 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      AssignmentResponse, AssignmentCreate, AssignmentUpdate, UploadStatusResponse,
                      VerifyBySourceRequest, VerifyBySourceResponse,
                      AssignmentProgressResponse, AssignmentProgressUpdate,
-                     AssignmentSubmissionStatusResponse, AssignmentStudentSubmissionStatus)
+                     AssignmentSubmissionStatusResponse, AssignmentStudentSubmissionStatus,
+                     AssignmentGradingResponse, AssignmentGradeUpsertRequest,
+                     AssignmentQuestionGradeResponse, RubricPartGradeResponse, RubricLevelCriteria)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
                   get_questions_by_ids, update_question, delete_question,
                   get_course_assignments, create_assignment, get_assignment, update_assignment, 
                   delete_assignment, get_assignment_progress, upsert_assignment_progress,
                   list_assignment_progress_for_students,
+                  update_assignment_grading,
                   delete_unverified_questions_by_source)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
@@ -218,7 +223,86 @@ def _authorize_upload_job_access(
 def on_startup():
     """Initialize database on startup."""
     create_db_and_tables()
+    ensure_assignment_progress_grading_columns()
+    ensure_assignment_grade_release_columns()
     backfill_existing_assignment_dates()
+
+
+def ensure_assignment_progress_grading_columns():
+    """
+    Backward-compatible schema guard for grading columns.
+
+    If Alembic migration hasn't been run yet, add missing grading columns so
+    AssignmentProgress ORM queries don't crash on undefined columns.
+    """
+    with engine.connect() as connection:
+        inspector = inspect(connection)
+        table_names = set(inspector.get_table_names())
+        if "assignment_progress" not in table_names:
+            return
+
+        existing_columns = {col["name"] for col in inspector.get_columns("assignment_progress")}
+        dialect = connection.dialect.name
+
+        statements: list[str] = []
+        if "grading_data" not in existing_columns:
+            statements.append("ALTER TABLE assignment_progress ADD COLUMN grading_data TEXT NOT NULL DEFAULT '{}'")
+        if "grade_submitted" not in existing_columns:
+            if dialect == "postgresql":
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN grade_submitted BOOLEAN NOT NULL DEFAULT FALSE")
+            else:
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN grade_submitted BOOLEAN NOT NULL DEFAULT 0")
+        if "grade_submitted_at" not in existing_columns:
+            if dialect == "postgresql":
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN grade_submitted_at TIMESTAMP NULL")
+            else:
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN grade_submitted_at DATETIME NULL")
+        if "score_earned" not in existing_columns:
+            if dialect == "postgresql":
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN score_earned DOUBLE PRECISION NULL")
+            else:
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN score_earned REAL NULL")
+        if "score_total" not in existing_columns:
+            if dialect == "postgresql":
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN score_total DOUBLE PRECISION NULL")
+            else:
+                statements.append("ALTER TABLE assignment_progress ADD COLUMN score_total REAL NULL")
+
+        for stmt in statements:
+            connection.execute(text(stmt))
+
+        if statements:
+            connection.commit()
+
+
+def ensure_assignment_grade_release_columns():
+    """Backward-compatible schema guard for assignment-level grade release columns."""
+    with engine.connect() as connection:
+        inspector = inspect(connection)
+        table_names = set(inspector.get_table_names())
+        if "assignment" not in table_names:
+            return
+
+        existing_columns = {col["name"] for col in inspector.get_columns("assignment")}
+        dialect = connection.dialect.name
+        statements: list[str] = []
+
+        if "grade_released" not in existing_columns:
+            if dialect == "postgresql":
+                statements.append("ALTER TABLE assignment ADD COLUMN grade_released BOOLEAN NOT NULL DEFAULT FALSE")
+            else:
+                statements.append("ALTER TABLE assignment ADD COLUMN grade_released BOOLEAN NOT NULL DEFAULT 0")
+        if "grade_released_at" not in existing_columns:
+            if dialect == "postgresql":
+                statements.append("ALTER TABLE assignment ADD COLUMN grade_released_at TIMESTAMP NULL")
+            else:
+                statements.append("ALTER TABLE assignment ADD COLUMN grade_released_at DATETIME NULL")
+
+        for stmt in statements:
+            connection.execute(text(stmt))
+
+        if statements:
+            connection.commit()
 
 
 def backfill_existing_assignment_dates():
@@ -279,12 +363,29 @@ def _normalize_datetime_utc(value: Optional[datetime]) -> Optional[datetime]:
     return value.astimezone(timezone.utc)
 
 
+def _normalize_schedule_datetime_local(value: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normalize assignment schedule datetimes to local timezone.
+
+    Assignment release/due fields are commonly created from HTML datetime-local
+    inputs (timezone-naive, local wall-clock). Treating those values as UTC can
+    prematurely move assignments into the interim phase.
+    """
+    if value is None:
+        return None
+    local_tz = datetime.now().astimezone().tzinfo or timezone.utc
+    if value.tzinfo is None:
+        return value.replace(tzinfo=local_tz)
+    return value.astimezone(local_tz)
+
+
 def _get_assignment_phase(assignment: Assignment, *, now: Optional[datetime] = None) -> str:
     """Return assignment lifecycle phase for student availability rules."""
-    current = now or datetime.now(timezone.utc)
-    release_date = _normalize_datetime_utc(assignment.release_date)
-    soft_due = _normalize_datetime_utc(assignment.due_date_soft)
-    hard_due = _normalize_datetime_utc(assignment.due_date_hard)
+    local_tz = datetime.now().astimezone().tzinfo or timezone.utc
+    current = now or datetime.now(local_tz)
+    release_date = _normalize_schedule_datetime_local(assignment.release_date)
+    soft_due = _normalize_schedule_datetime_local(assignment.due_date_soft)
+    hard_due = _normalize_schedule_datetime_local(assignment.due_date_hard)
 
     if release_date and current < release_date:
         return "unreleased"
@@ -293,6 +394,214 @@ def _get_assignment_phase(assignment: Assignment, *, now: Optional[datetime] = N
     if soft_due and current > soft_due:
         return "late_window"
     return "open"
+
+
+def _safe_json_loads(raw: Any, default: Any):
+    if raw is None:
+        return default
+    if isinstance(raw, (dict, list)):
+        return raw
+    if not isinstance(raw, str):
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+
+def _is_auto_graded_question(question: Question) -> bool:
+    qtype = (question.question_type or "").strip().lower()
+    return qtype in {"mcq", "true_false"}
+
+
+def _is_manual_question(question: Question) -> bool:
+    qtype = (question.question_type or "").strip().lower()
+    return qtype in {"fr", "short_answer"}
+
+
+def _question_max_points(question: Question) -> float:
+    answer_choices = _safe_json_loads(question.answer_choices, [])
+    qtype = (question.question_type or "").strip().lower()
+
+    if qtype in {"mcq", "true_false"}:
+        return 1.0
+
+    if isinstance(answer_choices, list) and answer_choices and isinstance(answer_choices[0], dict):
+        total = 0.0
+        for part in answer_choices:
+            levels = part.get("rubric_levels") or []
+            if isinstance(levels, list) and levels:
+                max_pts = max(float(level.get("points") or 0) for level in levels)
+                total += max(0.0, max_pts)
+            else:
+                total += max(0.0, float(part.get("points") or 0))
+        return total if total > 0 else 1.0
+
+    return 1.0
+
+
+def _build_manual_rubric_parts(question: Question, selected_parts: dict[str, Any]) -> list[RubricPartGradeResponse]:
+    answer_choices = _safe_json_loads(question.answer_choices, [])
+    if not (isinstance(answer_choices, list) and answer_choices and isinstance(answer_choices[0], dict)):
+        return [
+            RubricPartGradeResponse(
+                part_index=0,
+                label="Part A",
+                max_points=1.0,
+                options=[1.0, 0.0],
+                level_criteria=[],
+                selected_score=float(selected_parts.get("0", {}).get("score")) if selected_parts.get("0", {}).get("score") is not None else None,
+                comment=str(selected_parts.get("0", {}).get("comment") or ""),
+                graded=selected_parts.get("0", {}).get("score") is not None,
+            )
+        ]
+
+    parts: list[RubricPartGradeResponse] = []
+    for idx, part in enumerate(answer_choices):
+        levels = part.get("rubric_levels") or []
+        part_key = str(idx)
+        selected = selected_parts.get(part_key, {}) if isinstance(selected_parts, dict) else {}
+        selected_score = selected.get("score")
+        options = []
+        if isinstance(levels, list) and levels:
+            options = sorted({float(level.get("points") or 0) for level in levels}, reverse=True)
+        else:
+            options = [float(part.get("points") or 0)]
+        if 0.0 not in options:
+            options.append(0.0)
+        options = sorted(set(options), reverse=True)
+
+        max_points = max(options) if options else 0.0
+        level_criteria_list: list[RubricLevelCriteria] = []
+        if isinstance(levels, list):
+            for lev in levels:
+                pts = float(lev.get("points") or 0)
+                criteria = str(lev.get("criteria") or "").strip()
+                level_criteria_list.append(RubricLevelCriteria(points=pts, criteria=criteria))
+            level_criteria_list.sort(key=lambda x: (-x.points, x.criteria))
+        parts.append(
+            RubricPartGradeResponse(
+                part_index=idx,
+                label=part.get("part_label") or f"Part {chr(ord('A') + idx)}",
+                max_points=max_points,
+                options=options,
+                level_criteria=level_criteria_list,
+                selected_score=float(selected_score) if selected_score is not None else None,
+                comment=str(selected.get("comment") or ""),
+                graded=selected_score is not None,
+            )
+        )
+    return parts
+
+
+def _build_grading_response(
+    *,
+    assignment: Assignment,
+    student_id: str,
+    questions: list[Question],
+    answers_by_question_id: dict[str, Any],
+    grading_data: dict[str, Any],
+    grade_submitted: bool,
+    stored_score_earned: Optional[float],
+    stored_score_total: Optional[float],
+) -> AssignmentGradingResponse:
+    question_cards: list[AssignmentQuestionGradeResponse] = []
+    total_earned = 0.0
+    total_points = 0.0
+
+    for question in questions:
+        qid = str(question.id)
+        student_answer = answers_by_question_id.get(qid)
+        max_points = _question_max_points(question)
+        total_points += max_points
+        question_grade = (grading_data or {}).get(qid, {}) if isinstance(grading_data, dict) else {}
+        question_comment = str(question_grade.get("question_comment") or "")
+
+        if _is_auto_graded_question(question):
+            normalized_student = str(student_answer).strip().lower() if student_answer is not None else ""
+            normalized_correct = str(question.correct_answer or "").strip().lower()
+            earned = max_points if normalized_student and normalized_student == normalized_correct else 0.0
+            total_earned += earned
+            question_cards.append(
+                AssignmentQuestionGradeResponse(
+                    question_id=question.id,
+                    question_title=question.title or f"Question {question.id}",
+                    question_text=question.text or "",
+                    question_type=question.question_type or "",
+                    max_points=max_points,
+                    earned_points=earned,
+                    is_auto_graded=True,
+                    requires_manual_grading=False,
+                    is_fully_graded=True,
+                    student_answer="" if student_answer is None else json.dumps(student_answer) if isinstance(student_answer, (dict, list)) else str(student_answer),
+                    correct_answer=question.correct_answer or "",
+                    question_comment=question_comment,
+                    rubric_parts=[],
+                )
+            )
+            continue
+
+        selected_parts = question_grade.get("parts", {}) if isinstance(question_grade, dict) else {}
+        rubric_parts = _build_manual_rubric_parts(question, selected_parts)
+        is_fully_graded = all(part.graded for part in rubric_parts)
+        earned = sum(float(part.selected_score or 0) for part in rubric_parts)
+        total_earned += earned
+        question_cards.append(
+            AssignmentQuestionGradeResponse(
+                question_id=question.id,
+                question_title=question.title or f"Question {question.id}",
+                question_text=question.text or "",
+                question_type=question.question_type or "",
+                max_points=max_points,
+                earned_points=earned,
+                is_auto_graded=False,
+                requires_manual_grading=_is_manual_question(question),
+                is_fully_graded=is_fully_graded,
+                student_answer="" if student_answer is None else json.dumps(student_answer) if isinstance(student_answer, (dict, list)) else str(student_answer),
+                correct_answer=None,
+                question_comment=question_comment,
+                rubric_parts=rubric_parts,
+            )
+        )
+
+    all_fully_graded = all(card.is_fully_graded for card in question_cards)
+    final_score_earned = float(stored_score_earned) if (grade_submitted and stored_score_earned is not None) else total_earned
+    final_score_total = float(stored_score_total) if (grade_submitted and stored_score_total is not None) else total_points
+    score_percent = (final_score_earned / final_score_total * 100.0) if final_score_total > 0 else 0.0
+
+    return AssignmentGradingResponse(
+        assignment_id=assignment.id,
+        assignment_title=assignment.title,
+        student_id=student_id,
+        grade_submitted=grade_submitted,
+        score_earned=round(final_score_earned, 4),
+        score_total=round(final_score_total, 4),
+        score_percent=round(score_percent, 4),
+        all_questions_fully_graded=all_fully_graded,
+        questions=question_cards,
+    )
+
+
+def _is_submission_late(assignment: Assignment, submitted_at: Optional[datetime]) -> bool:
+    if not submitted_at:
+        return False
+    soft_due_local = _normalize_schedule_datetime_local(assignment.due_date_soft)
+    soft_due_utc = soft_due_local.astimezone(timezone.utc) if soft_due_local else None
+    submitted_utc = _normalize_datetime_utc(submitted_at)
+    return bool(soft_due_utc and submitted_utc and submitted_utc > soft_due_utc)
+
+
+def _late_penalty_fraction(late_policy_id: Optional[str]) -> float:
+    raw = (str(late_policy_id or "")).strip()
+    if not raw:
+        return 0.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.0
+    if value > 1.0:
+        value = value / 100.0
+    return max(0.0, min(1.0, value))
 
 
 def _roster_call_for_user(
@@ -1434,7 +1743,8 @@ def get_student_assignment_progress(
     )
     # If roster grants access to this course endpoint, allow per-user progress access.
     # Relying on student_ids here can be transiently stale immediately after auth/login.
-    _ = course_payload
+    user_is_instructor = course_payload.get("instructor_id") == user_id
+    can_view_grade = bool(assignment.grade_released or user_is_instructor)
 
     progress = get_assignment_progress(session, assignment_id, user_id)
     if not progress:
@@ -1455,7 +1765,57 @@ def get_student_assignment_progress(
         current_question_index=progress.current_question_index,
         submitted=progress.submitted,
         submitted_at=progress.submitted_at,
+        grade_submitted=bool(progress.grade_submitted),
+        grade_submitted_at=progress.grade_submitted_at,
+        score_earned=progress.score_earned if can_view_grade else None,
+        score_total=progress.score_total if can_view_grade else None,
         updated_at=progress.updated_at
+    )
+
+
+@app.get("/api/assignments/{assignment_id}/my-grade", response_model=AssignmentGradingResponse)
+def get_my_assignment_grade(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Student-facing: get the authenticated student's full grade breakdown (points, rubrics, comments) when grades are released."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{assignment.course_id}",
+    )
+    user_is_instructor = course_payload.get("instructor_id") == user_id
+    student_ids = list(course_payload.get("student_ids") or [])
+    if not user_is_instructor and user_id not in student_ids:
+        raise HTTPException(status_code=404, detail="You are not enrolled in this course")
+
+    if not assignment.grade_released and not user_is_instructor:
+        raise HTTPException(
+            status_code=403,
+            detail="Grades are not released yet for this assignment.",
+        )
+
+    progress = get_assignment_progress(session, assignment_id, user_id)
+    answers = _safe_json_loads(progress.answers if progress else "{}", {})
+    grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
+    question_ids = _safe_json_loads(assignment.assignment_questions, [])
+    questions = get_questions_by_ids(session, question_ids)
+
+    return _build_grading_response(
+        assignment=assignment,
+        student_id=user_id,
+        questions=questions,
+        answers_by_question_id=answers if isinstance(answers, dict) else {},
+        grading_data=grading_data if isinstance(grading_data, dict) else {},
+        grade_submitted=bool(progress and progress.grade_submitted),
+        stored_score_earned=progress.score_earned if progress else None,
+        stored_score_total=progress.score_total if progress else None,
     )
 
 
@@ -1479,7 +1839,8 @@ def save_student_assignment_progress(
     )
     # If roster grants access to this course endpoint, allow per-user progress updates.
     # Relying on student_ids here can be transiently stale immediately after auth/login.
-    _ = course_payload
+    user_is_instructor = course_payload.get("instructor_id") == user_id
+    can_view_grade = bool(assignment.grade_released or user_is_instructor)
 
     # Once the hard due date passes, student edits/submissions are locked.
     if _get_assignment_phase(assignment) == "interim":
@@ -1505,6 +1866,10 @@ def save_student_assignment_progress(
         current_question_index=progress.current_question_index,
         submitted=progress.submitted,
         submitted_at=progress.submitted_at,
+        grade_submitted=bool(progress.grade_submitted),
+        grade_submitted_at=progress.grade_submitted_at,
+        score_earned=progress.score_earned if can_view_grade else None,
+        score_total=progress.score_total if can_view_grade else None,
         updated_at=progress.updated_at
     )
 
@@ -1533,9 +1898,12 @@ def get_assignment_submission_status(
     student_ids = list(course_payload.get("student_ids") or [])
     progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
     progress_by_student_id = {row.student_id: row for row in progress_rows}
+    assignment_question_ids = _safe_json_loads(assignment.assignment_questions, [])
+    assignment_questions = get_questions_by_ids(session, assignment_question_ids)
+    assignment_total_points = sum(_question_max_points(question) for question in assignment_questions)
 
-    soft_due = _normalize_datetime_utc(assignment.due_date_soft)
     students: list[AssignmentStudentSubmissionStatus] = []
+    all_students_graded = True
     for student_id in student_ids:
         progress = progress_by_student_id.get(student_id)
         submitted_at = _normalize_datetime_utc(progress.submitted_at) if progress else None
@@ -1543,10 +1911,25 @@ def get_assignment_submission_status(
 
         timing_status = "not_submitted"
         if submitted:
-            if soft_due and submitted_at and submitted_at > soft_due:
+            if _is_submission_late(assignment, submitted_at):
                 timing_status = "late"
             else:
                 timing_status = "on_time"
+
+        score_earned = progress.score_earned if progress else None
+        score_total = progress.score_total if progress else None
+        grade_submitted = bool(progress and progress.grade_submitted)
+        score_percent = None
+        if grade_submitted and score_earned is not None and score_total not in (None, 0):
+            score_percent = float(score_earned) / float(score_total) * 100.0
+        if timing_status == "not_submitted":
+            # Auto-assigned zero counts as graded.
+            grade_submitted = True
+            score_earned = 0.0
+            score_total = assignment_total_points
+            score_percent = 0.0 if assignment_total_points > 0 else None
+        elif not grade_submitted:
+            all_students_graded = False
 
         students.append(
             AssignmentStudentSubmissionStatus(
@@ -1554,14 +1937,207 @@ def get_assignment_submission_status(
                 submitted=submitted,
                 submitted_at=submitted_at,
                 timing_status=timing_status,
+                grade_submitted=grade_submitted,
+                score_earned=score_earned,
+                score_total=score_total,
+                score_percent=score_percent,
             )
         )
 
     return AssignmentSubmissionStatusResponse(
         assignment_id=assignment_id,
         assignment_phase=_get_assignment_phase(assignment),
+        assignment_total_points=assignment_total_points,
+        grade_released=bool(assignment.grade_released),
+        all_students_graded=all_students_graded,
         students=students,
     )
+
+
+@app.get("/api/assignments/{assignment_id}/grading/{student_id}", response_model=AssignmentGradingResponse)
+def get_assignment_grading_state(
+    assignment_id: int,
+    student_id: str,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Instructor-only endpoint to view/autograde + manual-grade one student submission."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{assignment.course_id}",
+    )
+    if course_payload.get("instructor_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only the course instructor can grade this assignment")
+    if student_id not in (course_payload.get("student_ids") or []):
+        raise HTTPException(status_code=404, detail="Student is not enrolled in this course")
+
+    progress = get_assignment_progress(session, assignment_id, student_id)
+    answers = _safe_json_loads(progress.answers if progress else "{}", {})
+    grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
+    question_ids = _safe_json_loads(assignment.assignment_questions, [])
+    questions = get_questions_by_ids(session, question_ids)
+
+    return _build_grading_response(
+        assignment=assignment,
+        student_id=student_id,
+        questions=questions,
+        answers_by_question_id=answers if isinstance(answers, dict) else {},
+        grading_data=grading_data if isinstance(grading_data, dict) else {},
+        grade_submitted=bool(progress and progress.grade_submitted),
+        stored_score_earned=progress.score_earned if progress else None,
+        stored_score_total=progress.score_total if progress else None,
+    )
+
+
+@app.put("/api/assignments/{assignment_id}/grading/{student_id}", response_model=AssignmentGradingResponse)
+def upsert_assignment_grading_state(
+    assignment_id: int,
+    student_id: str,
+    payload: AssignmentGradeUpsertRequest,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Instructor-only endpoint to save draft grading or submit final grade."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{assignment.course_id}",
+    )
+    if course_payload.get("instructor_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only the course instructor can grade this assignment")
+    if student_id not in (course_payload.get("student_ids") or []):
+        raise HTTPException(status_code=404, detail="Student is not enrolled in this course")
+
+    progress = get_assignment_progress(session, assignment_id, student_id)
+    answers = _safe_json_loads(progress.answers if progress else "{}", {})
+    existing_grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
+    if not isinstance(existing_grading_data, dict):
+        existing_grading_data = {}
+
+    updates = payload.question_grades or []
+    for update in updates:
+        qid = str(update.question_id)
+        existing_grading_data.setdefault(qid, {})
+        existing_grading_data[qid]["question_comment"] = update.question_comment or ""
+        parts_payload = {}
+        for part in update.parts:
+            parts_payload[str(part.part_index)] = {
+                "score": float(part.score),
+                "comment": part.comment or "",
+            }
+        existing_grading_data[qid]["parts"] = parts_payload
+
+    question_ids = _safe_json_loads(assignment.assignment_questions, [])
+    questions = get_questions_by_ids(session, question_ids)
+    computed = _build_grading_response(
+        assignment=assignment,
+        student_id=student_id,
+        questions=questions,
+        answers_by_question_id=answers if isinstance(answers, dict) else {},
+        grading_data=existing_grading_data,
+        grade_submitted=False,
+        stored_score_earned=None,
+        stored_score_total=None,
+    )
+
+    if payload.submit_grade and not computed.all_questions_fully_graded:
+        raise HTTPException(
+            status_code=400,
+            detail="All manual rubric parts must be graded before submitting the final grade.",
+        )
+
+    final_score_earned = computed.score_earned
+    final_score_total = computed.score_total
+    if payload.submit_grade and progress and _is_submission_late(assignment, progress.submitted_at):
+        penalty_fraction = _late_penalty_fraction(assignment.late_policy_id)
+        final_score_earned = max(0.0, final_score_earned * (1.0 - penalty_fraction))
+
+    # Only persist score_earned/score_total when submitting final grade; draft saves must not
+    # overwrite stored (possibly penalized) scores so that late penalty is preserved on update.
+    score_earned_to_write = final_score_earned if payload.submit_grade else None
+    score_total_to_write = final_score_total if payload.submit_grade else None
+
+    updated_progress = update_assignment_grading(
+        session=session,
+        assignment_id=assignment_id,
+        student_id=student_id,
+        grading_data=existing_grading_data,
+        grade_submitted=payload.submit_grade,
+        score_earned=score_earned_to_write,
+        score_total=score_total_to_write,
+    )
+
+    return _build_grading_response(
+        assignment=assignment,
+        student_id=student_id,
+        questions=questions,
+        answers_by_question_id=answers if isinstance(answers, dict) else {},
+        grading_data=existing_grading_data,
+        grade_submitted=bool(updated_progress.grade_submitted),
+        stored_score_earned=updated_progress.score_earned,
+        stored_score_total=updated_progress.score_total,
+    )
+
+
+@app.post("/api/assignments/{assignment_id}/release-grades")
+def release_assignment_grades(
+    assignment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Instructor-only endpoint to release grades after all students are graded."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{assignment.course_id}",
+    )
+    if course_payload.get("instructor_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only the course instructor can release grades")
+
+    student_ids = list(course_payload.get("student_ids") or [])
+    progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
+    progress_by_student_id = {row.student_id: row for row in progress_rows}
+
+    for sid in student_ids:
+        progress = progress_by_student_id.get(sid)
+        submitted = bool(progress and progress.submitted and progress.submitted_at)
+        if not submitted:
+            # Not submitted is auto-graded as zero, so it does not block release.
+            continue
+        if not (progress and progress.grade_submitted):
+            raise HTTPException(
+                status_code=400,
+                detail="All submitted student assignments must be graded before release.",
+            )
+
+    assignment.grade_released = True
+    assignment.grade_released_at = datetime.utcnow()
+    assignment.updated_at = datetime.utcnow()
+    session.add(assignment)
+    session.commit()
+    session.refresh(assignment)
+
+    return {
+        "assignment_id": assignment_id,
+        "grade_released": True,
+        "grade_released_at": assignment.grade_released_at,
+    }
 
 
 @app.get("/")

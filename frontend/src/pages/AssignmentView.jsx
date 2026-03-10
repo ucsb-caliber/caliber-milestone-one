@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus } from '../api';
+import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus, releaseAssignmentGrades } from '../api';
 import QuestionCard from '../components/QuestionCard';
 import QuestionTable from '../components/QuestionTable';
 import StudentPreview from '../components/StudentPreview';
+import AssignmentGradingStats from '../components/AssignmentGradingStats';
 
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -21,6 +22,7 @@ const DateTimeline = ({ assignment }) => {
 
   const release = parseAssignmentDate(assignment.release_date);
   const softDue = parseAssignmentDate(assignment.due_date_soft);
+  const hardDue = parseAssignmentDate(assignment.due_date_hard);
 
   const formatDate = (d) =>
     d.toLocaleDateString('en-US', {
@@ -41,36 +43,31 @@ const DateTimeline = ({ assignment }) => {
   const getTimeLeft = (date) => {
     if (!date) return null;
     const diffMs = date - now;
-    const absMs = Math.abs(diffMs);
     const secondMs = 1000;
     const minuteMs = 60 * secondMs;
     const hourMs = 60 * minuteMs;
     const dayMs = 24 * hourMs;
     const weekMs = 7 * dayMs;
 
-    // Keep overdue label simple and consistent with existing UI.
-    if (diffMs < 0) {
-      const overdueDays = Math.ceil(absMs / dayMs);
-      return { value: overdueDays, unit: 'days', overdue: true };
-    }
+    if (diffMs <= 0) return { value: 0, unit: 'seconds' };
 
     if (diffMs >= weekMs) {
-      return { value: Math.ceil(diffMs / weekMs), unit: 'weeks', overdue: false };
+      return { value: Math.ceil(diffMs / weekMs), unit: 'weeks' };
     }
     if (diffMs >= dayMs) {
-      return { value: Math.ceil(diffMs / dayMs), unit: 'days', overdue: false };
+      return { value: Math.ceil(diffMs / dayMs), unit: 'days' };
     }
     if (diffMs >= hourMs) {
-      return { value: Math.ceil(diffMs / hourMs), unit: 'hours', overdue: false };
+      return { value: Math.ceil(diffMs / hourMs), unit: 'hours' };
     }
     if (diffMs >= minuteMs) {
-      return { value: Math.ceil(diffMs / minuteMs), unit: 'minutes', overdue: false };
+      return { value: Math.ceil(diffMs / minuteMs), unit: 'minutes' };
     }
-    return { value: Math.max(1, Math.ceil(diffMs / secondMs)), unit: 'seconds', overdue: false };
+    return { value: Math.max(1, Math.ceil(diffMs / secondMs)), unit: 'seconds' };
   };
 
   const start = release || now;
-  const end = softDue || now;
+  const end = hardDue || softDue || now;
   const totalMs = end - start;
   const elapsedMs = now - start;
   const todayPct = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
@@ -81,6 +78,38 @@ const DateTimeline = ({ assignment }) => {
   };
 
   const softPct = getPct(softDue);
+  const hardPct = getPct(hardDue);
+  const softPassed = Boolean(softDue && now > softDue);
+  const hardPassed = Boolean(hardDue && now > hardDue);
+  const hasDistinctHardDue = Boolean(hardDue && softDue && hardDue.getTime() !== softDue.getTime());
+
+  const countdownTarget = hardPassed ? null : (softPassed ? hardDue : softDue);
+  const countdown = getTimeLeft(countdownTarget);
+  const countdownLabel = (() => {
+    if (hardPassed) return 'Submissions closed';
+    if (!countdown) return 'No due date';
+    if (countdown.value === 0) return 'Due now';
+    if (softPassed && hardDue) {
+      return countdown.unit === 'weeks'
+        ? `Late submissions due in ${countdown.value}w`
+        : countdown.unit === 'days'
+          ? `Late submissions due in ${countdown.value}d`
+          : countdown.unit === 'hours'
+            ? `Late submissions due in ${countdown.value}h`
+            : countdown.unit === 'minutes'
+              ? `Late submissions due in ${countdown.value}m`
+              : `Late submissions due in ${countdown.value}s`;
+    }
+    return countdown.unit === 'weeks'
+      ? `${countdown.value}w left`
+      : countdown.unit === 'days'
+        ? `${countdown.value}d left`
+        : countdown.unit === 'hours'
+          ? `${countdown.value}h left`
+          : countdown.unit === 'minutes'
+            ? `${countdown.value}m left`
+            : `${countdown.value}s left`;
+  })();
 
   return (
     <div>
@@ -103,6 +132,38 @@ const DateTimeline = ({ assignment }) => {
             background: '#4f46e5'
           }} />
 
+          {/* Soft due marker */}
+          {softDue && (
+            <div style={{
+              position: 'absolute',
+              left: `${softPct}%`,
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              background: '#4f46e5',
+              border: '2px solid white',
+              boxShadow: '0 0 0 1px rgba(79,70,229,0.35)'
+            }} />
+          )}
+
+          {/* Hard due marker */}
+          {hasDistinctHardDue && (
+            <div style={{
+              position: 'absolute',
+              left: `${hardPct}%`,
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              background: '#0f172a',
+              border: '2px solid white',
+              boxShadow: '0 0 0 1px rgba(15,23,42,0.35)'
+            }} />
+          )}
+
           {/* Today marker */}
           <div style={{ position: 'absolute', left: `${todayPct}%`, top: '50%', transform: 'translate(-50%, -50%)', zIndex: 3 }}>
             {/* Tooltip */}
@@ -121,27 +182,13 @@ const DateTimeline = ({ assignment }) => {
               whiteSpace: 'nowrap',
               textAlign: 'center'
             }}>
-              {softDue && (() => {
-                const t = getTimeLeft(softDue);
-                const color = t.overdue ? '#dc2626' : t.unit === 'hours' ? '#f7832a' : '#6acc20';
-                const label = t.overdue
-                  ? `${t.value}d overdue`
-                  : t.value === 0 ? 'Due now'
-                  : t.unit === 'weeks'
-                    ? `${t.value}w left`
-                    : t.unit === 'days'
-                      ? `${t.value}d left`
-                      : t.unit === 'hours'
-                        ? `${t.value}h left`
-                        : t.unit === 'minutes'
-                          ? `${t.value}m left`
-                          : `${t.value}s left`;
-                return (
-                  <div style={{ fontSize: '0.75rem', fontWeight: '500', color }}>
-                    {label}
-                  </div>
-                );
-              })()}
+              <div style={{
+                fontSize: '0.75rem',
+                fontWeight: '500',
+                color: hardPassed ? '#b91c1c' : (softPassed ? '#b45309' : '#6acc20')
+              }}>
+                {countdownLabel}
+              </div>
               <div style={{
                 position: 'absolute',
                 bottom: '-5px',
@@ -176,6 +223,12 @@ const DateTimeline = ({ assignment }) => {
             <div style={{ position: 'absolute', left: `${softPct}%`, top: '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
               <div style={{ minWidth: 'max-content', fontSize: '0.8rem', fontWeight: '600', color: '#111827', marginBottom: '0.15rem' }}>Due Date</div>
               <div style={{ minWidth: 'max-content', whiteSpace: 'pre-line', fontSize: '0.75rem', color: '#9ca3af' }}>{formatDate(softDue)}</div>
+            </div>
+          )}
+          {hasDistinctHardDue && (
+            <div style={{ position: 'absolute', left: `${hardPct}%`, top: '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
+              <div style={{ minWidth: 'max-content', fontSize: '0.8rem', fontWeight: '600', color: '#111827', marginBottom: '0.15rem' }}>Late Submissions Due</div>
+              <div style={{ minWidth: 'max-content', whiteSpace: 'pre-line', fontSize: '0.75rem', color: '#9ca3af' }}>{formatDate(hardDue)}</div>
             </div>
           )}
         </div>
@@ -225,6 +278,10 @@ export default function AssignmentView() {
   const [submissionStatusLoading, setSubmissionStatusLoading] = useState(false);
   const [submissionStatusError, setSubmissionStatusError] = useState('');
   const [assignmentPhase, setAssignmentPhase] = useState('');
+  const [assignmentTotalPoints, setAssignmentTotalPoints] = useState(0);
+  const [allStudentsGraded, setAllStudentsGraded] = useState(false);
+  const [gradeReleased, setGradeReleased] = useState(false);
+  const [releasingGrades, setReleasingGrades] = useState(false);
 
   // Parse URL hash to get course ID and assignment ID
   const parseHash = () => {
@@ -334,6 +391,8 @@ export default function AssignmentView() {
       if (!assignment || assignment.instructor_id !== user?.id) {
         setSubmissionStatusRows([]);
         setAssignmentPhase('');
+        setAllStudentsGraded(false);
+        setGradeReleased(false);
         return;
       }
 
@@ -378,6 +437,9 @@ export default function AssignmentView() {
 
         setSubmissionStatusRows(studentsWithStatus);
         setAssignmentPhase(statusData?.assignment_phase || '');
+        setAssignmentTotalPoints(Number(statusData?.assignment_total_points || 0));
+        setAllStudentsGraded(Boolean(statusData?.all_students_graded));
+        setGradeReleased(Boolean(statusData?.grade_released));
       } catch (err) {
         setSubmissionStatusError(err.message || 'Failed to load student submission status');
       } finally {
@@ -519,6 +581,18 @@ export default function AssignmentView() {
       return { bg: '#fef3c7', color: '#92400e', label: 'Late' };
     }
     return { bg: '#fee2e2', color: '#b91c1c', label: 'Not Submitted' };
+  };
+
+  const fallbackQuestionCountPoints = Math.max(0, Number(assignment?.assignment_questions?.length || 0));
+  const effectiveTotalPoints = assignmentTotalPoints > 0 ? assignmentTotalPoints : fallbackQuestionCountPoints;
+
+  const getSubmittedGradeStyle = (percent) => {
+    const safePercent = Number(percent || 0);
+    if (safePercent >= 99.999) return { bg: '#166534', color: '#ecfdf5' }; // dark green
+    if (safePercent >= 80) return { bg: '#86efac', color: '#14532d' }; // light green
+    if (safePercent >= 70) return { bg: '#fde68a', color: '#92400e' }; // yellow
+    if (safePercent >= 60) return { bg: '#fdba74', color: '#9a3412' }; // orange
+    return { bg: '#fca5a5', color: '#7f1d1d' }; // red
   };
 
   // Get type badge color
@@ -688,6 +762,21 @@ export default function AssignmentView() {
       letterSpacing: '0.03em',
       textTransform: 'uppercase',
       color: '#6b7280'
+    },
+    gradeButton: {
+      border: 'none',
+      borderRadius: '8px',
+      background: '#4f46e5',
+      color: 'white',
+      padding: '0.35rem 0.7rem',
+      fontSize: '0.78rem',
+      fontWeight: '700',
+      cursor: 'pointer'
+    },
+    autoGradeText: {
+      fontSize: '0.84rem',
+      fontWeight: '700',
+      color: '#374151'
     }
   };
 
@@ -811,7 +900,50 @@ export default function AssignmentView() {
 
       {canEditAssignment && (
         <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Student Submission Status</h2>
+          <AssignmentGradingStats
+            submissionStatusRows={submissionStatusRows}
+            assignmentTotalPoints={assignmentTotalPoints}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: allStudentsGraded && !gradeReleased ? '0.75rem' : 0 }}>
+            <h2 style={styles.sectionTitle}>Student Submission Status</h2>
+            {allStudentsGraded && !gradeReleased && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!assignment?.id || releasingGrades) return;
+                  setReleasingGrades(true);
+                  try {
+                    await releaseAssignmentGrades(assignment.id);
+                    const statusData = await getAssignmentSubmissionStatus(assignment.id);
+                    setGradeReleased(Boolean(statusData?.grade_released));
+                    setAllStudentsGraded(Boolean(statusData?.all_students_graded));
+                    const statusByStudent = new Map((statusData?.students || []).map((row) => [row.student_id, row]));
+                    setSubmissionStatusRows((prev) => prev.map((row) => {
+                      const s = statusByStudent.get(row.student_id);
+                      return s ? { ...row, ...s } : row;
+                    }));
+                  } catch (err) {
+                    alert(err.message || 'Failed to release grades');
+                  } finally {
+                    setReleasingGrades(false);
+                  }
+                }}
+                disabled={releasingGrades}
+                style={{
+                  background: 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '0.55rem 0.95rem',
+                  cursor: releasingGrades ? 'not-allowed' : 'pointer',
+                  fontWeight: 700,
+                  fontSize: '0.9rem',
+                }}
+              >
+                {releasingGrades ? 'Releasing...' : 'Release Grades'}
+              </button>
+            )}
+          </div>
           {assignmentPhase === 'interim' && (
             <div style={{
               marginBottom: '0.9rem',
@@ -839,11 +971,14 @@ export default function AssignmentView() {
                   <th style={styles.submissionHeaderCell}>Student</th>
                   <th style={styles.submissionHeaderCell}>Status</th>
                   <th style={styles.submissionHeaderCell}>Submitted At</th>
+                  <th style={styles.submissionHeaderCell}>Grade</th>
                 </tr>
               </thead>
               <tbody>
                 {submissionStatusRows.map((row) => {
                   const pill = getSubmissionPillStyle(row.timing_status);
+                  const canGrade = row.timing_status === 'on_time' || row.timing_status === 'late';
+                  const hasSubmittedGrade = Boolean(row.grade_submitted) && row.score_earned != null && row.score_total != null;
                   return (
                     <tr key={row.student_id} style={styles.submissionRow}>
                       <td style={styles.submissionCell}>{row.student_name}</td>
@@ -860,6 +995,63 @@ export default function AssignmentView() {
                         </span>
                       </td>
                       <td style={styles.submissionCell}>{formatSubmissionDate(row.submitted_at)}</td>
+                      <td style={styles.submissionCell}>
+                        {hasSubmittedGrade ? (
+                          gradeReleased ? (
+                            <span style={{
+                              display: 'inline-block',
+                              borderRadius: '999px',
+                              padding: '0.25rem 0.6rem',
+                              fontSize: '0.8rem',
+                              fontWeight: '700',
+                              ...(getSubmittedGradeStyle(row.score_percent))
+                            }}>
+                              {`${Math.round(Number(row.score_earned) * 100) / 100} / ${Math.round(Number(row.score_total) * 100) / 100}`}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                window.location.hash = `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(row.student_id)}`;
+                              }}
+                              style={{
+                                display: 'inline-block',
+                                border: 'none',
+                                borderRadius: '999px',
+                                padding: '0.25rem 0.6rem',
+                                fontSize: '0.8rem',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                background: 'transparent',
+                                ...(getSubmittedGradeStyle(row.score_percent))
+                              }}
+                              title="Click to edit grade"
+                            >
+                              {`${Math.round(Number(row.score_earned) * 100) / 100} / ${Math.round(Number(row.score_total) * 100) / 100}`}
+                            </button>
+                          )
+                        ) : canGrade ? (
+                          <button
+                            type="button"
+                            style={styles.gradeButton}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              window.location.hash = `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(row.student_id)}`;
+                            }}
+                          >
+                            Grade
+                          </button>
+                        ) : (
+                          <span style={styles.autoGradeText}>
+                            {assignmentPhase === 'interim'
+                              ? `${0} / ${effectiveTotalPoints}`
+                              : '—'}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

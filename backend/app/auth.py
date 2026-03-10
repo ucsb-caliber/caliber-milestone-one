@@ -16,6 +16,9 @@ load_dotenv()
 OIDC_ISSUER = (os.getenv("OIDC_ISSUER") or "").rstrip("/")
 OIDC_JWKS_URL = (os.getenv("OIDC_JWKS_URL") or "").strip()
 OIDC_AUDIENCE = (os.getenv("OIDC_AUDIENCE") or "").strip() or None
+# Allow a fixed test token for local/frontend test-mode (e.g. ?test-mode=true) when OIDC is not required
+TEST_TOKEN_ALLOWED = os.getenv("TEST_TOKEN_ALLOWED", "true").lower() in ("1", "true", "yes")
+TEST_TOKEN_USER_ID = os.getenv("TEST_TOKEN_USER_ID", "test-user-1")
 
 _oidc_jwks_client = None
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
@@ -155,7 +158,13 @@ async def get_current_user(
             detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Accept test-mode token from frontend when allowed (e.g. local dev without Keycloak)
+    if TEST_TOKEN_ALLOWED and token.strip() == "test-token-1":
+        _current_user_email.set(None)
+        _current_user_name.set(None)
+        return TEST_TOKEN_USER_ID
+
     # Verify the token using the common verification function
     user_id, email, full_name = verify_jwt_token(token)
     _current_user_email.set(email)

@@ -152,11 +152,13 @@ export default function StudentCourseDashboard() {
               assignment.id,
               {
                 submitted: isSubmitted,
-                submitted_at: progress?.submitted_at || (isSubmitted ? progress?.updated_at : null) || null
+                submitted_at: progress?.submitted_at || (isSubmitted ? progress?.updated_at : null) || null,
+                score_earned: progress?.score_earned,
+                score_total: progress?.score_total,
               }
             ];
           } catch (err) {
-            return [assignment.id, { submitted: false, submitted_at: null }];
+            return [assignment.id, { submitted: false, submitted_at: null, score_earned: null, score_total: null }];
           }
         })
       );
@@ -470,7 +472,7 @@ export default function StudentCourseDashboard() {
   };
 
   const getSubmissionMeta = (assignmentId) => (
-    submissionByAssignmentId[assignmentId] || { submitted: false, submitted_at: null }
+    submissionByAssignmentId[assignmentId] || { submitted: false, submitted_at: null, score_earned: null, score_total: null }
   );
 
   const formatTimestamp = (timestamp) => {
@@ -723,6 +725,11 @@ export default function StudentCourseDashboard() {
                                     {submissionBadge.label}
                                   </span>
                                 )}
+                                {item.assignment.grade_released && (
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46', background: '#d1fae5', borderRadius: '999px', padding: '0.16rem 0.46rem' }}>
+                                    Grades released
+                                  </span>
+                                )}
                               </div>
                             </div>
 
@@ -765,6 +772,11 @@ export default function StudentCourseDashboard() {
 
                           <div style={styles.dueLabel}>Due Date</div>
                           <div style={styles.dueValue}>{formatDueSummary(item.softDueDate || item.dueDate)}</div>
+                          {item.assignment.grade_released && progress.score_earned != null && progress.score_total != null && (
+                            <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', fontWeight: 700, color: '#1e40af' }}>
+                              Score: {Math.round(Number(progress.score_earned) * 100) / 100} / {Math.round(Number(progress.score_total) * 100) / 100}
+                            </div>
+                          )}
 
                           <div style={styles.actionButtons}>
                             {canStart && (
@@ -808,6 +820,28 @@ export default function StudentCourseDashboard() {
                                 }}
                               >
                                 View
+                              </button>
+                            )}
+
+                            {item.assignment.grade_released && (
+                              <button
+                                style={{ ...styles.viewButton, background: '#059669', color: 'white' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.location.hash = `#student-course/${courseId}/assignment/${item.assignment.id}?view=grade`;
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#047857';
+                                  e.currentTarget.style.transform = 'translateY(-1px)';
+                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(5, 150, 105, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#059669';
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
+                              >
+                                View grade
                               </button>
                             )}
 

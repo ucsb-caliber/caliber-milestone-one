@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getAssignment, getQuestionsBatch, getAssignmentProgress, saveAssignmentProgress } from '../api';
 import StudentPreview from '../components/StudentPreview';
+import StudentGradeReport from '../components/StudentGradeReport';
 import { useAuth } from '../AuthContext';
 
 function parseAssignmentDate(dateStr) {
@@ -34,16 +35,18 @@ export default function StudentAssignmentPage() {
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const resubmitRequested = hash.includes("resubmit=1");
     const readOnlyRequested = hash.includes("readonly=1");
+    const viewGradeRequested = hash.includes("view=grade");
 
     return {
       courseId: courseMatch ? parseInt(courseMatch[1], 10) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1], 10) : null,
       resubmitRequested,
       readOnlyRequested,
+      viewGradeRequested,
     };
   };
 
-  const { courseId, assignmentId, resubmitRequested, readOnlyRequested } = parseHash();
+  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash();
   const hardDueDate = parseAssignmentDate(assignment?.due_date_hard);
   const isInterimPhase = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
 
@@ -306,7 +309,64 @@ export default function StudentAssignmentPage() {
     );
   }
 
+  const gradeReleased = Boolean(assignment.grade_released);
+  const showGradeReport = gradeReleased && viewGradeRequested && !isInstructorPreview;
+
+  if (showGradeReport) {
+    return (
+      <StudentGradeReport
+        assignmentId={assignmentId}
+        courseId={courseId}
+        assignmentTitle={assignment.title}
+        onBack={() => {
+          const base = `#student-course/${courseId}/assignment/${assignmentId}`;
+          const params = new URLSearchParams();
+          if (readOnlyRequested) params.set('readonly', '1');
+          window.location.hash = params.toString() ? `${base}?${params}` : base;
+        }}
+      />
+    );
+  }
+
   return (
+    <>
+      {gradeReleased && !isInstructorPreview && (
+        <div style={{
+          maxWidth: '1000px', margin: '0 auto 1rem auto', padding: '0.75rem 1.25rem',
+          background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+          border: '1px solid #6ee7b7',
+          borderRadius: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+        }}>
+          <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.95rem' }}>
+            Grades have been released for this assignment.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const base = `#student-course/${courseId}/assignment/${assignmentId}`;
+              const sep = window.location.hash.includes('?') ? '&' : '?';
+              window.location.hash = `${base}${sep}view=grade`;
+            }}
+            style={{
+              border: 'none',
+              borderRadius: '8px',
+              background: '#059669',
+              color: 'white',
+              padding: '0.45rem 0.9rem',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+            }}
+          >
+            View your grade
+          </button>
+        </div>
+      )}
     <StudentPreview
       questions={questions}
       assignmentTitle={assignment.title}
@@ -351,5 +411,6 @@ export default function StudentAssignmentPage() {
       isSubmitting={submitting}
       submitButtonText={resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment'}
     />
+    </>
   );
 }
