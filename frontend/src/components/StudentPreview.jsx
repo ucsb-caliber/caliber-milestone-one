@@ -51,6 +51,12 @@ export default function StudentPreview({
   const [submitted, setSubmitted] = useState(Boolean(initialSubmitted));
   const [imageUrls, setImageUrls] = useState({});
   const isReadOnly = submitted || forceReadOnly;
+  const isSubmitAction = !isPreviewMode && !isReadOnly && typeof onSubmit === 'function';
+  const primaryButtonText = isSubmitAction
+    ? (isSubmitting
+      ? (submitButtonText === 'Resubmit Assignment' ? 'Resubmitting...' : 'Submitting...')
+      : submitButtonText)
+    : closeButtonText;
 
   useEffect(() => {
     if (initialAnswers === undefined) return;
@@ -495,7 +501,7 @@ export default function StudentPreview({
           {isPreviewMode && (
             <div style={styles.previewBanner}>
               <div style={styles.bannerText}>
-                👁️ Preview Mode - This is how students will see the assignment
+                Preview Mode - This is how students will see the assignment
               </div>
               {onClose && (
                 <button
@@ -561,7 +567,7 @@ export default function StudentPreview({
         {isPreviewMode && (
           <div style={styles.previewBanner}>
             <div style={styles.bannerText}>
-              👁️ Preview Mode - This is how students will see the assignment
+              Preview Mode - This is how students will see the assignment
             </div>
             {onClose && (
               <button
@@ -598,23 +604,25 @@ export default function StudentPreview({
               <button
                 style={{
                   ...styles.closeButton,
-                  ...((closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  ...(isSubmitAction
                     ? { background: '#10b981' }
                     : {})
                 }}
-                onClick={onClose}
+                onClick={isSubmitAction ? onSubmit : onClose}
+                disabled={isSubmitting}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  if (isSubmitting) return;
+                  e.currentTarget.style.background = isSubmitAction
                     ? '#059669'
                     : 'rgba(255,255,255,0.3)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = (closeButtonText === 'Resubmit Assignment' || closeButtonText === 'Submit Assignment')
+                  e.currentTarget.style.background = isSubmitAction
                     ? '#10b981'
                     : 'rgba(255,255,255,0.2)';
                 }}
               >
-                {closeButtonText}
+                {primaryButtonText}
               </button>
             </div>
           </div>

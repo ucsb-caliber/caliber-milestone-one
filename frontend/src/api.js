@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { getValidAccessToken } from './oidcTokens';
+import { triggerAuthRecovery } from './authRecovery';
 
 // API base URL - can be overridden with VITE_API_BASE environment variable
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -71,6 +72,24 @@ async function apiFetch(url, options = {}) {
         ...requestOptions,
         headers: retryHeaders,
       });
+    }
+  }
+
+  // If auth still fails after retry, force a clean sign-out + redirect to sign-in flow.
+  if (!isTestMode && response.status === 401) {
+    triggerAuthRecovery('api-401');
+  }
+
+  // Some backends report token failures as 403; only trigger for token/session-like failures.
+  if (!isTestMode && response.status === 403) {
+    try {
+      const errorText = (await response.clone().text()).toLowerCase();
+      const looksLikeTokenFailure = /(?:invalid|expired|missing|malformed).*(?:token|jwt)|(?:token|jwt).*(?:invalid|expired|missing)|authentication credentials were not provided|not authenticated|invalid signature/.test(errorText);
+      if (looksLikeTokenFailure) {
+        triggerAuthRecovery('api-403-token');
+      }
+    } catch {
+      // Ignore body parsing failures; leave caller error handling unchanged.
     }
   }
 
@@ -1215,6 +1234,121 @@ export async function saveAssignmentProgress(assignmentId, progressData) {
 }
 
 /**
+ * Get per-student submission timing status for an assignment (instructor only)
+ */
+export async function getAssignmentSubmissionStatus(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/submission-status`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch assignment submission status');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get grading state for one assignment/student (instructor only)
+ */
+export async function getAssignmentGradingState(assignmentId, studentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/grading/${encodeURIComponent(studentId)}`, {
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch assignment grading state');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Save draft/final grading for one assignment/student (instructor only)
+ */
+export async function saveAssignmentGradingState(assignmentId, studentId, payload) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/grading/${encodeURIComponent(studentId)}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(payload || {}),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to save assignment grading');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get current student's full grade breakdown for an assignment (when grades are released)
+ */
+export async function getMyAssignmentGrade(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/my-grade`, { headers });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to load grade');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Release grades for an assignment (instructor only)
+ */
+export async function releaseAssignmentGrades(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/release-grades`, {
+      method: 'POST',
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to release grades');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Update an existing assignment
  */
 export async function updateAssignment(assignmentId, assignmentData) {
@@ -1283,8 +1417,15 @@ export async function deleteAssignment(assignmentId) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete assignment');
+      const errorText = await response.text();
+      let message = 'Failed to delete assignment';
+      try {
+        const error = JSON.parse(errorText);
+        message = error.detail || message;
+      } catch {
+        message = errorText || message;
+      }
+      throw new Error(message);
     }
 
     return { success: true };

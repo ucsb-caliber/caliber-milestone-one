@@ -16,6 +16,10 @@ load_dotenv()
 OIDC_ISSUER = (os.getenv("OIDC_ISSUER") or "").rstrip("/")
 OIDC_JWKS_URL = (os.getenv("OIDC_JWKS_URL") or "").strip()
 OIDC_AUDIENCE = (os.getenv("OIDC_AUDIENCE") or "").strip() or None
+# Optional local-dev bypass for frontend test-mode. Disabled by default and
+# only honored when OIDC validation is not configured for this backend.
+TEST_TOKEN_ALLOWED = os.getenv("TEST_TOKEN_ALLOWED", "false").lower() in ("1", "true", "yes")
+TEST_TOKEN_USER_ID = os.getenv("TEST_TOKEN_USER_ID", "test-user-1")
 
 _oidc_jwks_client = None
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
@@ -42,6 +46,10 @@ def _get_oidc_jwks_client() -> PyJWKClient:
             raise ValueError("OIDC_ISSUER or OIDC_JWKS_URL must be configured")
         _oidc_jwks_client = PyJWKClient(jwks_url)
     return _oidc_jwks_client
+
+
+def _is_local_test_token_enabled() -> bool:
+    return TEST_TOKEN_ALLOWED and not (OIDC_ISSUER or OIDC_JWKS_URL)
 
 
 # Security scheme for Bearer token (optional to allow cookie auth)
@@ -155,7 +163,13 @@ async def get_current_user(
             detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Only allow the fixed test token in explicit local-dev mode.
+    if _is_local_test_token_enabled() and token.strip() == "test-token-1":
+        _current_user_email.set(None)
+        _current_user_name.set(None)
+        return TEST_TOKEN_USER_ID
+
     # Verify the token using the common verification function
     user_id, email, full_name = verify_jwt_token(token)
     _current_user_email.set(email)
@@ -185,6 +199,11 @@ async def get_optional_user(
     
     if not token:
         return None
+
+    if _is_local_test_token_enabled() and token.strip() == "test-token-1":
+        _current_user_email.set(None)
+        _current_user_name.set(None)
+        return TEST_TOKEN_USER_ID
     
     try:
         user_id, email, full_name = verify_jwt_token(token)

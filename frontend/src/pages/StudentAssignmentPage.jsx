@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getAssignment, getQuestionsBatch, getAssignmentProgress, saveAssignmentProgress } from '../api';
 import StudentPreview from '../components/StudentPreview';
+import StudentGradeReport from '../components/StudentGradeReport';
 import { useAuth } from '../AuthContext';
-
-function parseAssignmentDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr);
-}
+import { parseScheduleDate } from '../utils/datetime';
 
 export default function StudentAssignmentPage() {
   const { user } = useAuth();
@@ -34,16 +31,20 @@ export default function StudentAssignmentPage() {
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const resubmitRequested = hash.includes("resubmit=1");
     const readOnlyRequested = hash.includes("readonly=1");
+    const viewGradeRequested = hash.includes("view=grade");
 
     return {
       courseId: courseMatch ? parseInt(courseMatch[1], 10) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1], 10) : null,
       resubmitRequested,
       readOnlyRequested,
+      viewGradeRequested,
     };
   };
 
-  const { courseId, assignmentId, resubmitRequested, readOnlyRequested } = parseHash();
+  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash();
+  const hardDueDate = parseScheduleDate(assignment?.due_date_hard);
+  const isSubmissionClosed = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
 
   useEffect(() => {
     async function loadData() {
@@ -75,7 +76,7 @@ export default function StudentAssignmentPage() {
           const loadedAnswers = progressData?.answers || {};
           const loadedIndex = progressData?.current_question_index || 0;
           const hasPriorSubmission = Boolean(progressData?.submitted || progressData?.submitted_at);
-          const hardDue = parseAssignmentDate(assignmentData?.due_date_hard);
+          const hardDue = parseScheduleDate(assignmentData?.due_date_hard);
           const canResubmitBeforeHardDue = !hardDue || Date.now() <= hardDue.getTime();
           const allowResubmitMode = hasPriorSubmission && resubmitRequested && canResubmitBeforeHardDue;
           const loadedSubmitted = hasPriorSubmission && !allowResubmitMode;
@@ -110,7 +111,7 @@ export default function StudentAssignmentPage() {
     loadData();
   }, [assignmentId, readOnlyRequested, resubmitRequested, user?.id]);
 
-  const isReadOnlyView = initialSubmitted || readOnlyUnsubmitted;
+  const isReadOnlyView = initialSubmitted || readOnlyUnsubmitted || isSubmissionClosed;
 
   useEffect(() => {
     latestProgressRef.current = {
@@ -120,7 +121,7 @@ export default function StudentAssignmentPage() {
   }, [liveAnswers, liveQuestionIndex]);
 
   useEffect(() => {
-    if (!assignmentId || !progressReady || isInstructorPreview || isReadOnlyView || resubmitRequested) return;
+    if (!assignmentId || !progressReady || isInstructorPreview || isReadOnlyView || resubmitRequested || isSubmissionClosed) return;
     const timer = setTimeout(async () => {
       try {
         await saveAssignmentProgress(assignmentId, {
@@ -132,18 +133,17 @@ export default function StudentAssignmentPage() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested]);
+  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested, isSubmissionClosed]);
 
-  const saveAndSubmitOnExit = useCallback(async () => {
-    if (isInstructorPreview || isReadOnlyView || !assignmentId || !progressReady || isSubmittingOnExitRef.current) {
+  const saveDraftOnExit = useCallback(async () => {
+    if (isInstructorPreview || !assignmentId || !progressReady || isSubmittingOnExitRef.current) {
       return null;
     }
     isSubmittingOnExitRef.current = true;
     try {
       const savedProgress = await saveAssignmentProgress(assignmentId, {
         answers: latestProgressRef.current.answers || {},
-        current_question_index: latestProgressRef.current.questionIndex || 0,
-        submitted: true
+        current_question_index: latestProgressRef.current.questionIndex || 0
       });
       return savedProgress;
     } catch (err) {
@@ -152,10 +152,14 @@ export default function StudentAssignmentPage() {
     } finally {
       isSubmittingOnExitRef.current = false;
     }
-  }, [assignmentId, isReadOnlyView, isInstructorPreview, progressReady]);
+  }, [assignmentId, isInstructorPreview, progressReady]);
 
   const submitAssignment = useCallback(async () => {
     if (submitting || isReadOnlyView || !assignmentId || !progressReady || isInstructorPreview) return;
+    if (isSubmissionClosed) {
+      setReadOnlyUnsubmitted(true);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -180,10 +184,11 @@ export default function StudentAssignmentPage() {
       }
     } catch (err) {
       console.error('Submit failed:', err);
+      setError(err.message || 'Failed to submit assignment');
     } finally {
       setSubmitting(false);
     }
-  }, [assignment?.title, assignmentId, courseId, isReadOnlyView, isInstructorPreview, progressReady, submitting, wasPreviouslySubmitted]);
+  }, [assignment?.title, assignmentId, courseId, isReadOnlyView, isInstructorPreview, progressReady, submitting, wasPreviouslySubmitted, isSubmissionClosed]);
 
   const cancelResubmission = useCallback(() => {
     // Do not trigger unmount auto-submit when cancelling resubmission.
@@ -209,8 +214,7 @@ export default function StudentAssignmentPage() {
     isSubmittingOnExitRef.current = true;
     void saveAssignmentProgress(assignmentId, {
       answers: latestProgressRef.current.answers || {},
-      current_question_index: latestProgressRef.current.questionIndex || 0,
-      submitted: true
+      current_question_index: latestProgressRef.current.questionIndex || 0
     }).catch((err) => {
       console.error('Unmount save failed:', err);
     }).finally(() => {
@@ -300,7 +304,64 @@ export default function StudentAssignmentPage() {
     );
   }
 
+  const gradeReleased = Boolean(assignment.grade_released);
+  const showGradeReport = gradeReleased && viewGradeRequested && !isInstructorPreview;
+
+  if (showGradeReport) {
+    return (
+      <StudentGradeReport
+        assignmentId={assignmentId}
+        courseId={courseId}
+        assignmentTitle={assignment.title}
+        onBack={() => {
+          const base = `#student-course/${courseId}/assignment/${assignmentId}`;
+          const params = new URLSearchParams();
+          if (readOnlyRequested) params.set('readonly', '1');
+          window.location.hash = params.toString() ? `${base}?${params}` : base;
+        }}
+      />
+    );
+  }
+
   return (
+    <>
+      {gradeReleased && !isInstructorPreview && (
+        <div style={{
+          maxWidth: '1000px', margin: '0 auto 1rem auto', padding: '0.75rem 1.25rem',
+          background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+          border: '1px solid #6ee7b7',
+          borderRadius: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+        }}>
+          <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.95rem' }}>
+            Grades have been released for this assignment.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const base = `#student-course/${courseId}/assignment/${assignmentId}`;
+              const sep = window.location.hash.includes('?') ? '&' : '?';
+              window.location.hash = `${base}${sep}view=grade`;
+            }}
+            style={{
+              border: 'none',
+              borderRadius: '8px',
+              background: '#059669',
+              color: 'white',
+              padding: '0.45rem 0.9rem',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+            }}
+          >
+            View your grade
+          </button>
+        </div>
+      )}
     <StudentPreview
       questions={questions}
       assignmentTitle={assignment.title}
@@ -311,21 +372,14 @@ export default function StudentAssignmentPage() {
       secondaryActionText={!isReadOnlyView && resubmitRequested ? 'Cancel' : ''}
       onSecondaryAction={!isReadOnlyView && resubmitRequested ? cancelResubmission : null}
       onClose={async () => {
+        skipUnmountSubmitRef.current = true;
         if (isReadOnlyView) {
           window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
           return;
         }
-        const savedProgress = await saveAndSubmitOnExit();
-        skipUnmountSubmitRef.current = true;
+        await saveDraftOnExit();
         if (courseId) {
-          if (savedProgress?.submitted_at) {
-            const submissionType = wasPreviouslySubmitted ? 'resubmitted' : 'submitted';
-            const submittedAt = encodeURIComponent(savedProgress.submitted_at);
-            const assignmentTitle = encodeURIComponent(assignment?.title || 'Assignment');
-            window.location.hash = `#student-course/${courseId}?submission=${submissionType}&submitted_at=${submittedAt}&assignment_title=${assignmentTitle}`;
-          } else {
-            window.location.hash = `#student-course/${courseId}`;
-          }
+          window.location.hash = `#student-course/${courseId}`;
         } else {
           window.location.hash = '#student-courses';
         }
@@ -334,7 +388,7 @@ export default function StudentAssignmentPage() {
       initialQuestionIndex={initialQuestionIndex}
       initialSubmitted={initialSubmitted}
       forceReadOnly={readOnlyUnsubmitted}
-      readOnlyMessage={readOnlyUnsubmitted ? 'Assignment Was Not Submitted' : ''}
+      readOnlyMessage={isSubmissionClosed ? 'Assignment Closed' : (readOnlyUnsubmitted ? 'Assignment Was Not Submitted' : '')}
       onAnswersChange={(answers) => {
         setLiveAnswers(answers || {});
       }}
@@ -345,5 +399,6 @@ export default function StudentAssignmentPage() {
       isSubmitting={submitting}
       submitButtonText={resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment'}
     />
+    </>
   );
 }

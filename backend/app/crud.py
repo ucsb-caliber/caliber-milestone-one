@@ -2,7 +2,7 @@ from datetime import datetime
 import json
 from typing import List, Optional
 
-from sqlmodel import Session, func, select
+from sqlmodel import Session, delete, func, select
 
 from .models import Question
 
@@ -235,6 +235,21 @@ def get_assignment_progress(session: Session, assignment_id: int, student_id: st
     ).first()
 
 
+def list_assignment_progress_for_students(session: Session, assignment_id: int, student_ids: List[str]):
+    """Get progress rows for an assignment filtered to student IDs."""
+    from .models import AssignmentProgress
+
+    if not student_ids:
+        return []
+
+    return list(session.exec(
+        select(AssignmentProgress).where(
+            AssignmentProgress.assignment_id == assignment_id,
+            AssignmentProgress.student_id.in_(student_ids)
+        )
+    ).all())
+
+
 def upsert_assignment_progress(
     session: Session,
     assignment_id: int,
@@ -273,6 +288,69 @@ def upsert_assignment_progress(
     session.commit()
     session.refresh(progress)
     return progress
+
+
+def update_assignment_grading(
+    session: Session,
+    assignment_id: int,
+    student_id: str,
+    *,
+    grading_data: dict,
+    grade_submitted: Optional[bool] = None,
+    score_earned: Optional[float] = None,
+    score_total: Optional[float] = None,
+):
+    """Create/update persisted grading state for an assignment/student pair."""
+    from .models import AssignmentProgress
+
+    progress = get_assignment_progress(session, assignment_id, student_id)
+    if not progress:
+        progress = AssignmentProgress(
+            assignment_id=assignment_id,
+            student_id=student_id,
+            answers="{}",
+            grading_data="{}",
+            current_question_index=0,
+            submitted=False,
+        )
+        session.add(progress)
+        session.commit()
+        session.refresh(progress)
+
+    progress.grading_data = json.dumps(grading_data or {})
+    if score_earned is not None:
+        progress.score_earned = float(score_earned)
+    if score_total is not None:
+        progress.score_total = float(score_total)
+    if grade_submitted is not None:
+        next_grade_submitted = bool(grade_submitted)
+        if next_grade_submitted != bool(progress.grade_submitted):
+            progress.grade_submitted = next_grade_submitted
+            progress.grade_submitted_at = datetime.utcnow() if next_grade_submitted else None
+
+    progress.updated_at = datetime.utcnow()
+    session.add(progress)
+    session.commit()
+    session.refresh(progress)
+    return progress
+
+
+def reset_assignment_grading_state(session: Session, assignment_id: int) -> None:
+    """Clear finalized grading state while preserving saved rubric data/comments."""
+    from .models import AssignmentProgress
+
+    progress_rows = session.exec(
+        select(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
+    ).all()
+    reset_at = datetime.utcnow()
+
+    for progress in progress_rows:
+        progress.grade_submitted = False
+        progress.grade_submitted_at = None
+        progress.score_earned = None
+        progress.score_total = None
+        progress.updated_at = reset_at
+        session.add(progress)
 
 
 def get_course_assignments(session: Session, course_id: int) -> List['Assignment']:
@@ -364,28 +442,56 @@ def update_assignment(session: Session, assignment_id: int, instructor_id: str,
     assignment = session.get(Assignment, assignment_id)
     if not assignment or assignment.instructor_id != instructor_id:
         return None
-    
+
+    assignment_changed = False
+    grading_logic_changed = False
+
     if title is not None:
         trimmed_title = title.strip()
-        if trimmed_title:
+        if trimmed_title and trimmed_title != assignment.title:
             assignment.title = trimmed_title
+            assignment_changed = True
     if type is not None:
-        assignment.type = type
+        if type != assignment.type:
+            assignment.type = type
+            assignment_changed = True
     if description is not None:
-        assignment.description = description
+        if description != assignment.description:
+            assignment.description = description
+            assignment_changed = True
     if node_id is not None:
-        assignment.node_id = node_id
+        if node_id != assignment.node_id:
+            assignment.node_id = node_id
+            assignment_changed = True
     if release_date is not None:
-        assignment.release_date = release_date
+        if release_date != assignment.release_date:
+            assignment.release_date = release_date
+            assignment_changed = True
     if due_date_soft is not None:
-        assignment.due_date_soft = due_date_soft
+        if due_date_soft != assignment.due_date_soft:
+            assignment.due_date_soft = due_date_soft
+            assignment_changed = True
     if due_date_hard is not None:
-        assignment.due_date_hard = due_date_hard
+        if due_date_hard != assignment.due_date_hard:
+            assignment.due_date_hard = due_date_hard
+            assignment_changed = True
     if late_policy_id is not None:
-        assignment.late_policy_id = late_policy_id
+        if late_policy_id != assignment.late_policy_id:
+            assignment.late_policy_id = late_policy_id
+            assignment_changed = True
+            grading_logic_changed = True
     if assignment_questions is not None:
-        assignment.assignment_questions = json.dumps(assignment_questions)
-    
+        next_assignment_questions = json.dumps(assignment_questions)
+        if next_assignment_questions != assignment.assignment_questions:
+            assignment.assignment_questions = next_assignment_questions
+            assignment_changed = True
+            grading_logic_changed = True
+
+    if grading_logic_changed:
+        reset_assignment_grading_state(session, assignment_id)
+        assignment.grade_released = False
+        assignment.grade_released_at = None
+
     assignment.updated_at = datetime.utcnow()
     session.add(assignment)
     session.commit()
@@ -401,12 +507,9 @@ def delete_assignment(session: Session, assignment_id: int, instructor_id: str) 
     if not assignment or assignment.instructor_id != instructor_id:
         return False
 
-    progress_rows = session.exec(
-        select(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
-    ).all()
-    for row in progress_rows:
-        session.delete(row)
-    
+    session.exec(
+        delete(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
+    )
     session.delete(assignment)
     session.commit()
     return True
