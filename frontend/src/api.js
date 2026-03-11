@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { getValidAccessToken } from './oidcTokens';
+import { triggerAuthRecovery } from './authRecovery';
 
 // API base URL - can be overridden with VITE_API_BASE environment variable
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -71,6 +72,24 @@ async function apiFetch(url, options = {}) {
         ...requestOptions,
         headers: retryHeaders,
       });
+    }
+  }
+
+  // If auth still fails after retry, force a clean sign-out + redirect to sign-in flow.
+  if (!isTestMode && response.status === 401) {
+    triggerAuthRecovery('api-401');
+  }
+
+  // Some backends report token failures as 403; only trigger for token/session-like failures.
+  if (!isTestMode && response.status === 403) {
+    try {
+      const errorText = (await response.clone().text()).toLowerCase();
+      const looksLikeTokenFailure = /(?:invalid|expired|missing|malformed).*(?:token|jwt)|(?:token|jwt).*(?:invalid|expired|missing)|authentication credentials were not provided|not authenticated|invalid signature/.test(errorText);
+      if (looksLikeTokenFailure) {
+        triggerAuthRecovery('api-403-token');
+      }
+    } catch {
+      // Ignore body parsing failures; leave caller error handling unchanged.
     }
   }
 

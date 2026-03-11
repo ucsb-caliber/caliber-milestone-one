@@ -323,8 +323,10 @@ def update_assignment_grading(
     if score_total is not None:
         progress.score_total = float(score_total)
     if grade_submitted is not None:
-        progress.grade_submitted = bool(grade_submitted)
-        progress.grade_submitted_at = datetime.utcnow() if grade_submitted else None
+        next_grade_submitted = bool(grade_submitted)
+        if next_grade_submitted != bool(progress.grade_submitted):
+            progress.grade_submitted = next_grade_submitted
+            progress.grade_submitted_at = datetime.utcnow() if next_grade_submitted else None
 
     progress.updated_at = datetime.utcnow()
     session.add(progress)

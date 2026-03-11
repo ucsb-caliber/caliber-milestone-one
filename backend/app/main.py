@@ -2057,23 +2057,27 @@ def upsert_assignment_grading_state(
             detail="All manual rubric parts must be graded before submitting the final grade.",
         )
 
+    already_submitted_grade = bool(progress and progress.grade_submitted)
+    should_submit_grade = bool(payload.submit_grade or already_submitted_grade)
+
     final_score_earned = computed.score_earned
     final_score_total = computed.score_total
-    if payload.submit_grade and progress and _is_submission_late(assignment, progress.submitted_at):
+    if should_submit_grade and progress and _is_submission_late(assignment, progress.submitted_at):
         penalty_fraction = _late_penalty_fraction(assignment.late_policy_id)
         final_score_earned = max(0.0, final_score_earned * (1.0 - penalty_fraction))
 
-    # Only persist score_earned/score_total when submitting final grade; draft saves must not
-    # overwrite stored (possibly penalized) scores so that late penalty is preserved on update.
-    score_earned_to_write = final_score_earned if payload.submit_grade else None
-    score_total_to_write = final_score_total if payload.submit_grade else None
+    # Once a grade has been submitted, subsequent saves must keep it finalized
+    # so autosave/edit flows do not silently revert the assignment to ungraded.
+    score_earned_to_write = final_score_earned if should_submit_grade else None
+    score_total_to_write = final_score_total if should_submit_grade else None
+    grade_submitted_state = should_submit_grade if (payload.submit_grade or already_submitted_grade) else None
 
     updated_progress = update_assignment_grading(
         session=session,
         assignment_id=assignment_id,
         student_id=student_id,
         grading_data=existing_grading_data,
-        grade_submitted=payload.submit_grade,
+        grade_submitted=grade_submitted_state,
         score_earned=score_earned_to_write,
         score_total=score_total_to_write,
     )
