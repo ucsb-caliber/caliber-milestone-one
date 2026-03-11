@@ -281,20 +281,6 @@ export default function CourseDashboard() {
     return Number.POSITIVE_INFINITY;
   };
 
-  const completedAssignments = allAssignments.filter((assignment) => {
-    const dueDate = getRelevantDueDate(assignment);
-    return dueDate ? dueDate < now : false;
-  });
-
-  const releasedAssignments = allAssignments.filter((assignment) => {
-    if (!assignment.release_date) return false;
-    const releaseDate = parseAssignmentDate(assignment.release_date);
-    const dueDate = getRelevantDueDate(assignment);
-    const isReleased = releaseDate ? releaseDate <= now : false;
-    const isCompleted = dueDate ? dueDate < now : false;
-    return isReleased && !isCompleted;
-  });
-
   const unreleasedAssignments = allAssignments.filter((assignment) => {
     if (!assignment.release_date) return true;
     const releaseDate = parseAssignmentDate(assignment.release_date);
@@ -385,12 +371,15 @@ export default function CourseDashboard() {
       remainingTimePrefix: isLate ? 'Time Remaining (LATE):' : 'Time Remaining:'
     };
   });
+  const isAssignmentGraded = (assignment) => Boolean(assignment?.grade_released);
   const inProgressCount = timelineWithMeta.filter((item) => item.isInProgress || item.isLate).length;
-  const completedCount = timelineWithMeta.filter((item) => item.isClosed).length;
   const unreleasedIdSet = new Set(unreleasedAssignments.map((assignment) => assignment.id));
   const timelineInProgressOrLate = timelineWithMeta.filter((item) => (item.isInProgress || item.isLate) && !unreleasedIdSet.has(item.assignment.id));
-  const timelineCompleted = timelineWithMeta.filter((item) => item.isClosed);
+  const timelinePendingGrading = timelineWithMeta.filter((item) => item.isClosed && !isAssignmentGraded(item.assignment));
+  const timelineGraded = timelineWithMeta.filter((item) => item.isClosed && isAssignmentGraded(item.assignment));
   const timelineUnreleased = timelineWithMeta.filter((item) => unreleasedIdSet.has(item.assignment.id));
+  const pendingGradingCount = timelinePendingGrading.length;
+  const gradedCount = timelineGraded.length;
 
   return (
     <div style={styles.container}>
@@ -435,7 +424,8 @@ export default function CourseDashboard() {
           {[
             { label: 'Total Assignments', value: allAssignments.length },
             { label: 'In Progress', value: inProgressCount },
-            { label: 'Completed', value: completedCount }
+            { label: 'Ungraded', value: pendingGradingCount },
+            { label: 'Graded', value: gradedCount }
           ].map((metric) => (
             <div key={metric.label} style={{
               background: '#ffffff',
@@ -472,7 +462,8 @@ export default function CourseDashboard() {
           <div>
             {[
               { key: 'in-progress', title: 'In Progress', emptyLabel: 'No In Progress assignments.', items: timelineInProgressOrLate },
-              { key: 'completed', title: 'Completed', emptyLabel: 'No Completed assignments.', items: timelineCompleted },
+              { key: 'pending-grading', title: 'Ungraded', emptyLabel: 'No ungraded assignments.', items: timelinePendingGrading },
+              { key: 'graded', title: 'Graded', emptyLabel: 'No graded assignments.', items: timelineGraded },
               { key: 'unreleased', title: 'Unreleased', emptyLabel: 'No Unreleased assignments.', items: timelineUnreleased }
             ].map((section, sectionIndex) => (
               <div key={section.key}>
@@ -516,8 +507,19 @@ export default function CourseDashboard() {
                               </span>
                             )}
                             {item.isClosed && (
-                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7f1d1d', background: '#fee2e2', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                Completed
+                              section.key === 'pending-grading' ? (
+                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
+                                  Ungraded
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
+                                  Graded
+                                </span>
+                              )
+                            )}
+                            {item.assignment.grade_released && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46', background: '#d1fae5', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
+                                Released
                               </span>
                             )}
                             <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#1d4ed8', background: '#dbeafe', borderRadius: '6px', padding: '0.15rem 0.4rem' }}>
@@ -591,7 +593,7 @@ export default function CourseDashboard() {
                     </div>
                   ))
                 )}
-                {sectionIndex < 2 && (
+                {sectionIndex < 3 && (
                   <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '0.85rem 0 1rem 0' }} />
                 )}
               </div>

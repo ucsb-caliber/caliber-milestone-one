@@ -335,6 +335,24 @@ def update_assignment_grading(
     return progress
 
 
+def reset_assignment_grading_state(session: Session, assignment_id: int) -> None:
+    """Clear finalized grading state while preserving saved rubric data/comments."""
+    from .models import AssignmentProgress
+
+    progress_rows = session.exec(
+        select(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
+    ).all()
+    reset_at = datetime.utcnow()
+
+    for progress in progress_rows:
+        progress.grade_submitted = False
+        progress.grade_submitted_at = None
+        progress.score_earned = None
+        progress.score_total = None
+        progress.updated_at = reset_at
+        session.add(progress)
+
+
 def get_course_assignments(session: Session, course_id: int) -> List['Assignment']:
     """Get list of assignments for a course."""
     from .models import Assignment
@@ -424,28 +442,56 @@ def update_assignment(session: Session, assignment_id: int, instructor_id: str,
     assignment = session.get(Assignment, assignment_id)
     if not assignment or assignment.instructor_id != instructor_id:
         return None
-    
+
+    assignment_changed = False
+    grading_logic_changed = False
+
     if title is not None:
         trimmed_title = title.strip()
-        if trimmed_title:
+        if trimmed_title and trimmed_title != assignment.title:
             assignment.title = trimmed_title
+            assignment_changed = True
     if type is not None:
-        assignment.type = type
+        if type != assignment.type:
+            assignment.type = type
+            assignment_changed = True
     if description is not None:
-        assignment.description = description
+        if description != assignment.description:
+            assignment.description = description
+            assignment_changed = True
     if node_id is not None:
-        assignment.node_id = node_id
+        if node_id != assignment.node_id:
+            assignment.node_id = node_id
+            assignment_changed = True
     if release_date is not None:
-        assignment.release_date = release_date
+        if release_date != assignment.release_date:
+            assignment.release_date = release_date
+            assignment_changed = True
     if due_date_soft is not None:
-        assignment.due_date_soft = due_date_soft
+        if due_date_soft != assignment.due_date_soft:
+            assignment.due_date_soft = due_date_soft
+            assignment_changed = True
     if due_date_hard is not None:
-        assignment.due_date_hard = due_date_hard
+        if due_date_hard != assignment.due_date_hard:
+            assignment.due_date_hard = due_date_hard
+            assignment_changed = True
     if late_policy_id is not None:
-        assignment.late_policy_id = late_policy_id
+        if late_policy_id != assignment.late_policy_id:
+            assignment.late_policy_id = late_policy_id
+            assignment_changed = True
+            grading_logic_changed = True
     if assignment_questions is not None:
-        assignment.assignment_questions = json.dumps(assignment_questions)
-    
+        next_assignment_questions = json.dumps(assignment_questions)
+        if next_assignment_questions != assignment.assignment_questions:
+            assignment.assignment_questions = next_assignment_questions
+            assignment_changed = True
+            grading_logic_changed = True
+
+    if grading_logic_changed:
+        reset_assignment_grading_state(session, assignment_id)
+        assignment.grade_released = False
+        assignment.grade_released_at = None
+
     assignment.updated_at = datetime.utcnow()
     session.add(assignment)
     session.commit()

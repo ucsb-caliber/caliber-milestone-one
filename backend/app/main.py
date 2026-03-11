@@ -16,7 +16,7 @@ from sqlalchemy import inspect, text
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine
-from .models import Question, Assignment
+from .models import Question, Assignment, AssignmentProgress
 from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionUpdate,
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
                      UserListResponse,
@@ -346,11 +346,13 @@ def build_assignment_response(
     assignment: Assignment,
     *,
     instructor_email: Optional[str] = None,
+    all_students_graded: Optional[bool] = None,
 ) -> AssignmentResponse:
     """Build assignment response with roster-sourced instructor email when available."""
     return AssignmentResponse.from_assignment(
         assignment,
         instructor_email=instructor_email,
+        all_students_graded=all_students_graded,
     )
 
 
@@ -369,7 +371,7 @@ def _normalize_schedule_datetime_local(value: Optional[datetime]) -> Optional[da
 
     Assignment release/due fields are commonly created from HTML datetime-local
     inputs (timezone-naive, local wall-clock). Treating those values as UTC can
-    prematurely move assignments into the interim phase.
+    prematurely move assignments past their real local deadlines.
     """
     if value is None:
         return None
@@ -379,21 +381,42 @@ def _normalize_schedule_datetime_local(value: Optional[datetime]) -> Optional[da
     return value.astimezone(local_tz)
 
 
-def _get_assignment_phase(assignment: Assignment, *, now: Optional[datetime] = None) -> str:
-    """Return assignment lifecycle phase for student availability rules."""
+def _late_due_deadline_local(assignment: Assignment) -> Optional[datetime]:
+    """Return the late-submission deadline in local time."""
+    return (
+        _normalize_schedule_datetime_local(assignment.due_date_hard)
+        or _normalize_schedule_datetime_local(assignment.due_date_soft)
+    )
+
+
+def _has_late_due_passed(assignment: Assignment, *, now: Optional[datetime] = None) -> bool:
     local_tz = datetime.now().astimezone().tzinfo or timezone.utc
     current = now or datetime.now(local_tz)
-    release_date = _normalize_schedule_datetime_local(assignment.release_date)
-    soft_due = _normalize_schedule_datetime_local(assignment.due_date_soft)
-    hard_due = _normalize_schedule_datetime_local(assignment.due_date_hard)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=local_tz)
+    else:
+        current = current.astimezone(local_tz)
+    late_due = _late_due_deadline_local(assignment)
+    return bool(late_due and current > late_due)
 
+
+def _get_assignment_phase(assignment: Assignment, *, now: Optional[datetime] = None) -> str:
+    """Return assignment lifecycle phase for release/visibility rules."""
+    local_tz = datetime.now().astimezone().tzinfo or timezone.utc
+    current = now or datetime.now(local_tz)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=local_tz)
+    else:
+        current = current.astimezone(local_tz)
+    release_date = _normalize_schedule_datetime_local(assignment.release_date)
+
+    if assignment.grade_released:
+        return "graded"
     if release_date and current < release_date:
         return "unreleased"
-    if hard_due and current > hard_due:
-        return "interim"
-    if soft_due and current > soft_due:
-        return "late_window"
-    return "open"
+    if _has_late_due_passed(assignment, now=current):
+        return "ungraded"
+    return "in_progress"
 
 
 def _safe_json_loads(raw: Any, default: Any):
@@ -604,6 +627,136 @@ def _late_penalty_fraction(late_policy_id: Optional[str]) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _all_students_graded_for_assignment(
+    session: Session,
+    *,
+    assignment: Assignment,
+    student_ids: list[str],
+) -> bool:
+    if _get_assignment_phase(assignment) not in {"ungraded", "graded"}:
+        return False
+
+    if not student_ids:
+        return True
+
+    progress_rows = list_assignment_progress_for_students(session, assignment.id, student_ids)
+    progress_by_student_id = {row.student_id: row for row in progress_rows}
+
+    for student_id in student_ids:
+        progress = progress_by_student_id.get(student_id)
+        submitted_at = _normalize_datetime_utc(progress.submitted_at) if progress else None
+        submitted = bool(progress and progress.submitted and submitted_at)
+        if not submitted:
+            continue
+        if not bool(progress.grade_submitted):
+            return False
+
+    return True
+
+
+def _sync_assignment_post_due_grading(
+    session: Session,
+    *,
+    assignment: Assignment,
+    student_ids: list[str],
+) -> None:
+    """
+    After the late due date, persist grades for any submission that can already be finalized.
+
+    This covers:
+    - non-submissions, which become auto-zeroes
+    - fully auto-graded submissions
+    - manually graded submissions whose rubric parts are already complete
+    """
+    if assignment.grade_released or not student_ids or not _has_late_due_passed(assignment):
+        return
+
+    progress_rows = list_assignment_progress_for_students(session, assignment.id, student_ids)
+    progress_by_student_id = {row.student_id: row for row in progress_rows}
+    question_ids = _safe_json_loads(assignment.assignment_questions, [])
+    questions = get_questions_by_ids(session, question_ids)
+    assignment_total_points = sum(_question_max_points(question) for question in questions)
+
+    changed = False
+    updated_at = datetime.utcnow()
+    finalized_at = datetime.utcnow()
+
+    for student_id in student_ids:
+        progress = progress_by_student_id.get(student_id)
+        submitted_at = _normalize_datetime_utc(progress.submitted_at) if progress else None
+        submitted = bool(progress and progress.submitted and submitted_at)
+        answers = _safe_json_loads(progress.answers if progress else "{}", {})
+        grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
+        normalized_grading_data = grading_data if isinstance(grading_data, dict) else {}
+
+        next_score_earned: Optional[float] = None
+        next_score_total: Optional[float] = None
+        should_finalize = False
+
+        if not submitted:
+            should_finalize = True
+            next_score_earned = 0.0
+            next_score_total = assignment_total_points
+        else:
+            computed = _build_grading_response(
+                assignment=assignment,
+                student_id=student_id,
+                questions=questions,
+                answers_by_question_id=answers if isinstance(answers, dict) else {},
+                grading_data=normalized_grading_data,
+                grade_submitted=False,
+                stored_score_earned=None,
+                stored_score_total=None,
+            )
+            if computed.all_questions_fully_graded:
+                should_finalize = True
+                next_score_earned = computed.score_earned
+                next_score_total = computed.score_total
+                if _is_submission_late(assignment, submitted_at):
+                    penalty_fraction = _late_penalty_fraction(assignment.late_policy_id)
+                    next_score_earned = max(0.0, next_score_earned * (1.0 - penalty_fraction))
+
+        if not should_finalize:
+            continue
+
+        if not progress:
+            progress = AssignmentProgress(
+                assignment_id=assignment.id,
+                student_id=student_id,
+                answers="{}",
+                grading_data=json.dumps(normalized_grading_data),
+                current_question_index=0,
+                submitted=False,
+            )
+            session.add(progress)
+            progress_by_student_id[student_id] = progress
+            changed = True
+
+        score_changed = (
+            progress.score_earned is None
+            or progress.score_total is None
+            or abs(float(progress.score_earned) - float(next_score_earned)) > 1e-6
+            or abs(float(progress.score_total) - float(next_score_total)) > 1e-6
+        )
+        submission_changed = not bool(progress.grade_submitted)
+
+        if not (score_changed or submission_changed or progress.grade_submitted_at is None):
+            continue
+
+        progress.grading_data = json.dumps(normalized_grading_data)
+        progress.grade_submitted = True
+        if progress.grade_submitted_at is None:
+            progress.grade_submitted_at = finalized_at
+        progress.score_earned = float(next_score_earned)
+        progress.score_total = float(next_score_total)
+        progress.updated_at = updated_at
+        session.add(progress)
+        changed = True
+
+    if changed:
+        session.commit()
+
+
 def _roster_call_for_user(
     session: Session,
     user_id: str,
@@ -630,6 +783,7 @@ def _build_course_response_from_roster(session: Session, payload: dict[str, Any]
     # Keep roster as source-of-truth for course/user metadata and Caliber DB for assignments.
     course_id = int(payload["id"])
     instructor_email = payload.get("instructor_email")
+    student_ids = payload.get("student_ids") or []
     assignments = get_course_assignments(session, course_id)
     return CourseResponse(
         id=course_id,
@@ -638,9 +792,18 @@ def _build_course_response_from_roster(session: Session, payload: dict[str, Any]
         school_name=payload.get("school_name") or "",
         instructor_id=payload.get("instructor_id") or "",
         instructor_email=instructor_email,
-        student_ids=payload.get("student_ids") or [],
+        student_ids=student_ids,
         assignments=[
-            build_assignment_response(session, a, instructor_email=instructor_email)
+            build_assignment_response(
+                session,
+                a,
+                instructor_email=instructor_email,
+                all_students_graded=_all_students_graded_for_assignment(
+                    session,
+                    assignment=a,
+                    student_ids=student_ids,
+                ),
+            )
             for a in assignments
         ],
         created_at=payload.get("created_at"),
@@ -1677,6 +1840,12 @@ def update_existing_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to update it")
 
+    _sync_assignment_post_due_grading(
+        session,
+        assignment=assignment,
+        student_ids=list(course_payload.get("student_ids") or []),
+    )
+
     instructor_email = course_payload.get("instructor_email")
 
     return build_assignment_response(session, assignment, instructor_email=instructor_email)
@@ -1842,11 +2011,11 @@ def save_student_assignment_progress(
     user_is_instructor = course_payload.get("instructor_id") == user_id
     can_view_grade = bool(assignment.grade_released or user_is_instructor)
 
-    # Once the hard due date passes, student edits/submissions are locked.
-    if _get_assignment_phase(assignment) == "interim":
+    # Once the late due date passes, student edits/submissions are locked.
+    if _has_late_due_passed(assignment):
         raise HTTPException(
             status_code=403,
-            detail="Assignment is closed and in the interim phase before grades are released.",
+            detail="Assignment is closed because the late due date has passed.",
         )
 
     progress = upsert_assignment_progress(
@@ -1896,6 +2065,7 @@ def get_assignment_submission_status(
         raise HTTPException(status_code=403, detail="Only the course instructor can view submission status")
 
     student_ids = list(course_payload.get("student_ids") or [])
+    _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=student_ids)
     progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
     progress_by_student_id = {row.student_id: row for row in progress_rows}
     assignment_question_ids = _safe_json_loads(assignment.assignment_questions, [])
@@ -1903,7 +2073,8 @@ def get_assignment_submission_status(
     assignment_total_points = sum(_question_max_points(question) for question in assignment_questions)
 
     students: list[AssignmentStudentSubmissionStatus] = []
-    all_students_graded = True
+    assignment_phase = _get_assignment_phase(assignment)
+    all_students_graded = assignment_phase == "graded"
     for student_id in student_ids:
         progress = progress_by_student_id.get(student_id)
         submitted_at = _normalize_datetime_utc(progress.submitted_at) if progress else None
@@ -1923,12 +2094,12 @@ def get_assignment_submission_status(
         if grade_submitted and score_earned is not None and score_total not in (None, 0):
             score_percent = float(score_earned) / float(score_total) * 100.0
         if timing_status == "not_submitted":
-            # Auto-assigned zero counts as graded.
-            grade_submitted = True
-            score_earned = 0.0
-            score_total = assignment_total_points
-            score_percent = 0.0 if assignment_total_points > 0 else None
-        elif not grade_submitted:
+            if assignment_phase in {"ungraded", "graded"}:
+                grade_submitted = True
+                score_earned = 0.0 if score_earned is None else score_earned
+                score_total = assignment_total_points if score_total is None else score_total
+                score_percent = 0.0 if assignment_total_points > 0 else None
+        if assignment_phase == "ungraded" and not grade_submitted:
             all_students_graded = False
 
         students.append(
@@ -1946,7 +2117,7 @@ def get_assignment_submission_status(
 
     return AssignmentSubmissionStatusResponse(
         assignment_id=assignment_id,
-        assignment_phase=_get_assignment_phase(assignment),
+        assignment_phase=assignment_phase,
         assignment_total_points=assignment_total_points,
         grade_released=bool(assignment.grade_released),
         all_students_graded=all_students_graded,
@@ -2115,6 +2286,13 @@ def release_assignment_grades(
         raise HTTPException(status_code=403, detail="Only the course instructor can release grades")
 
     student_ids = list(course_payload.get("student_ids") or [])
+    if _get_assignment_phase(assignment) != "ungraded":
+        raise HTTPException(
+            status_code=400,
+            detail="Grades can only be released after the late due date has passed.",
+        )
+
+    _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=student_ids)
     progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
     progress_by_student_id = {row.student_id: row for row in progress_rows}
 

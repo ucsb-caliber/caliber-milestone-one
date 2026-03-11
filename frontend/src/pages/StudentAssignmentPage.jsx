@@ -48,7 +48,7 @@ export default function StudentAssignmentPage() {
 
   const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash();
   const hardDueDate = parseAssignmentDate(assignment?.due_date_hard);
-  const isInterimPhase = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
+  const isSubmissionClosed = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
 
   useEffect(() => {
     async function loadData() {
@@ -115,7 +115,7 @@ export default function StudentAssignmentPage() {
     loadData();
   }, [assignmentId, readOnlyRequested, resubmitRequested, user?.id]);
 
-  const isReadOnlyView = initialSubmitted || readOnlyUnsubmitted || isInterimPhase;
+  const isReadOnlyView = initialSubmitted || readOnlyUnsubmitted || isSubmissionClosed;
 
   useEffect(() => {
     latestProgressRef.current = {
@@ -125,7 +125,7 @@ export default function StudentAssignmentPage() {
   }, [liveAnswers, liveQuestionIndex]);
 
   useEffect(() => {
-    if (!assignmentId || !progressReady || isInstructorPreview || isReadOnlyView || resubmitRequested || isInterimPhase) return;
+    if (!assignmentId || !progressReady || isInstructorPreview || isReadOnlyView || resubmitRequested || isSubmissionClosed) return;
     const timer = setTimeout(async () => {
       try {
         await saveAssignmentProgress(assignmentId, {
@@ -137,18 +137,17 @@ export default function StudentAssignmentPage() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested, isInterimPhase]);
+  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested, isSubmissionClosed]);
 
-  const saveAndSubmitOnExit = useCallback(async () => {
-    if (isInstructorPreview || isReadOnlyView || !assignmentId || !progressReady || isSubmittingOnExitRef.current || isInterimPhase) {
+  const saveDraftOnExit = useCallback(async () => {
+    if (isInstructorPreview || !assignmentId || !progressReady || isSubmittingOnExitRef.current) {
       return null;
     }
     isSubmittingOnExitRef.current = true;
     try {
       const savedProgress = await saveAssignmentProgress(assignmentId, {
         answers: latestProgressRef.current.answers || {},
-        current_question_index: latestProgressRef.current.questionIndex || 0,
-        submitted: true
+        current_question_index: latestProgressRef.current.questionIndex || 0
       });
       return savedProgress;
     } catch (err) {
@@ -157,11 +156,11 @@ export default function StudentAssignmentPage() {
     } finally {
       isSubmittingOnExitRef.current = false;
     }
-  }, [assignmentId, isReadOnlyView, isInstructorPreview, progressReady, isInterimPhase]);
+  }, [assignmentId, isInstructorPreview, progressReady]);
 
   const submitAssignment = useCallback(async () => {
     if (submitting || isReadOnlyView || !assignmentId || !progressReady || isInstructorPreview) return;
-    if (isInterimPhase) {
+    if (isSubmissionClosed) {
       setReadOnlyUnsubmitted(true);
       return;
     }
@@ -189,10 +188,11 @@ export default function StudentAssignmentPage() {
       }
     } catch (err) {
       console.error('Submit failed:', err);
+      setError(err.message || 'Failed to submit assignment');
     } finally {
       setSubmitting(false);
     }
-  }, [assignment?.title, assignmentId, courseId, isReadOnlyView, isInstructorPreview, progressReady, submitting, wasPreviouslySubmitted, isInterimPhase]);
+  }, [assignment?.title, assignmentId, courseId, isReadOnlyView, isInstructorPreview, progressReady, submitting, wasPreviouslySubmitted, isSubmissionClosed]);
 
   const cancelResubmission = useCallback(() => {
     // Do not trigger unmount auto-submit when cancelling resubmission.
@@ -218,8 +218,7 @@ export default function StudentAssignmentPage() {
     isSubmittingOnExitRef.current = true;
     void saveAssignmentProgress(assignmentId, {
       answers: latestProgressRef.current.answers || {},
-      current_question_index: latestProgressRef.current.questionIndex || 0,
-      submitted: true
+      current_question_index: latestProgressRef.current.questionIndex || 0
     }).catch((err) => {
       console.error('Unmount save failed:', err);
     }).finally(() => {
@@ -377,21 +376,14 @@ export default function StudentAssignmentPage() {
       secondaryActionText={!isReadOnlyView && resubmitRequested ? 'Cancel' : ''}
       onSecondaryAction={!isReadOnlyView && resubmitRequested ? cancelResubmission : null}
       onClose={async () => {
+        skipUnmountSubmitRef.current = true;
         if (isReadOnlyView) {
           window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
           return;
         }
-        const savedProgress = await saveAndSubmitOnExit();
-        skipUnmountSubmitRef.current = true;
+        await saveDraftOnExit();
         if (courseId) {
-          if (savedProgress?.submitted_at) {
-            const submissionType = wasPreviouslySubmitted ? 'resubmitted' : 'submitted';
-            const submittedAt = encodeURIComponent(savedProgress.submitted_at);
-            const assignmentTitle = encodeURIComponent(assignment?.title || 'Assignment');
-            window.location.hash = `#student-course/${courseId}?submission=${submissionType}&submitted_at=${submittedAt}&assignment_title=${assignmentTitle}`;
-          } else {
-            window.location.hash = `#student-course/${courseId}`;
-          }
+          window.location.hash = `#student-course/${courseId}`;
         } else {
           window.location.hash = '#student-courses';
         }
@@ -400,7 +392,7 @@ export default function StudentAssignmentPage() {
       initialQuestionIndex={initialQuestionIndex}
       initialSubmitted={initialSubmitted}
       forceReadOnly={readOnlyUnsubmitted}
-      readOnlyMessage={isInterimPhase ? 'Assignment Closed (Interim Phase)' : (readOnlyUnsubmitted ? 'Assignment Was Not Submitted' : '')}
+      readOnlyMessage={isSubmissionClosed ? 'Assignment Closed' : (readOnlyUnsubmitted ? 'Assignment Was Not Submitted' : '')}
       onAnswersChange={(answers) => {
         setLiveAnswers(answers || {});
       }}

@@ -822,6 +822,8 @@ export default function AssignmentView() {
 
   const canEditAssignment = assignment.instructor_id === user?.id;
   const typeBadgeColors = getTypeBadgeStyle(assignment.type);
+  const canShowReleaseControls = canEditAssignment && assignmentPhase === 'ungraded' && !gradeReleased;
+  const canReleaseGrades = canShowReleaseControls && allStudentsGraded && !releasingGrades;
 
   return (
     <div style={styles.container}>
@@ -904,13 +906,13 @@ export default function AssignmentView() {
             submissionStatusRows={submissionStatusRows}
             assignmentTotalPoints={assignmentTotalPoints}
           />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: allStudentsGraded && !gradeReleased ? '0.75rem' : 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: canShowReleaseControls || gradeReleased ? '0.75rem' : 0 }}>
             <h2 style={styles.sectionTitle}>Student Submission Status</h2>
-            {allStudentsGraded && !gradeReleased && (
+            {canShowReleaseControls && (
               <button
                 type="button"
                 onClick={async () => {
-                  if (!assignment?.id || releasingGrades) return;
+                  if (!assignment?.id || !canReleaseGrades) return;
                   setReleasingGrades(true);
                   try {
                     await releaseAssignmentGrades(assignment.id);
@@ -928,33 +930,49 @@ export default function AssignmentView() {
                     setReleasingGrades(false);
                   }
                 }}
-                disabled={releasingGrades}
+                disabled={!canReleaseGrades}
                 style={{
-                  background: 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)',
+                  background: canReleaseGrades ? 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)' : '#cbd5e1',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
                   padding: '0.55rem 0.95rem',
-                  cursor: releasingGrades ? 'not-allowed' : 'pointer',
+                  cursor: canReleaseGrades ? 'pointer' : 'not-allowed',
                   fontWeight: 700,
                   fontSize: '0.9rem',
+                  opacity: canReleaseGrades ? 1 : 0.8,
                 }}
               >
                 {releasingGrades ? 'Releasing...' : 'Release Grades'}
               </button>
             )}
           </div>
-          {assignmentPhase === 'interim' && (
+          {canShowReleaseControls && (
             <div style={{
               marginBottom: '0.9rem',
-              padding: '0.65rem 0.8rem',
-              background: '#eef2ff',
-              color: '#3730a3',
+              padding: '0.75rem 0.9rem',
+              background: allStudentsGraded ? '#ecfdf5' : '#eef2ff',
+              color: allStudentsGraded ? '#065f46' : '#3730a3',
               borderRadius: '8px',
               fontSize: '0.85rem',
               fontWeight: 600
             }}>
-              Assignment is closed and currently in the interim phase.
+              {allStudentsGraded
+                ? 'All student submissions are graded. You can now release grades.'
+                : 'Student submissions still need to be graded before grades can be released.'}
+            </div>
+          )}
+          {gradeReleased && (
+            <div style={{
+              marginBottom: '0.9rem',
+              padding: '0.75rem 0.9rem',
+              background: '#ecfdf5',
+              color: '#065f46',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              fontWeight: 600
+            }}>
+              Grades have been released for this assignment.
             </div>
           )}
 
@@ -1046,7 +1064,7 @@ export default function AssignmentView() {
                           </button>
                         ) : (
                           <span style={styles.autoGradeText}>
-                            {assignmentPhase === 'interim'
+                            {assignmentPhase === 'ungraded'
                               ? `${0} / ${effectiveTotalPoints}`
                               : '—'}
                           </span>

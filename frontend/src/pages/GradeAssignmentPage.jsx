@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -39,6 +39,20 @@ export default function GradeAssignmentPage() {
   const [data, setData] = useState(null);
   const [statusData, setStatusData] = useState(null);
   const [questionIndex, setQuestionIndex] = useState(0);
+  const latestQuestionsRef = useRef([]);
+  const persistSequenceRef = useRef(0);
+
+  const setQuestions = (nextQuestionsOrUpdater) => {
+    setData((prev) => {
+      const previousQuestions = prev?.questions || [];
+      const nextQuestions =
+        typeof nextQuestionsOrUpdater === 'function'
+          ? nextQuestionsOrUpdater(previousQuestions)
+          : nextQuestionsOrUpdater;
+      latestQuestionsRef.current = nextQuestions || [];
+      return { ...(prev || {}), questions: nextQuestions || [] };
+    });
+  };
 
   useEffect(() => {
     async function load() {
@@ -53,6 +67,7 @@ export default function GradeAssignmentPage() {
           getAssignmentSubmissionStatus(assignmentId),
         ]);
         setData(response);
+        latestQuestionsRef.current = response?.questions || [];
         setStatusData(statuses);
         setQuestionIndex(0);
       } catch (err) {
@@ -85,6 +100,8 @@ export default function GradeAssignmentPage() {
 
   const persistDraft = async (nextQuestions, submitGrade = false) => {
     if (!assignmentId || !studentId) return;
+    const requestId = persistSequenceRef.current + 1;
+    persistSequenceRef.current = requestId;
     setSaving(true);
     try {
       const payload = {
@@ -104,6 +121,7 @@ export default function GradeAssignmentPage() {
         submit_grade: submitGrade,
       };
       const updated = await saveAssignmentGradingState(assignmentId, studentId, payload);
+      if (requestId !== persistSequenceRef.current) return;
       setData((prev) => {
         const base = prev || {};
         const prevQuestions = base.questions || [];
@@ -121,15 +139,20 @@ export default function GradeAssignmentPage() {
             }),
           };
         });
+        latestQuestionsRef.current = mergedQuestions;
         return { ...base, ...updated, questions: mergedQuestions };
       });
       const statuses = await getAssignmentSubmissionStatus(assignmentId);
+      if (requestId !== persistSequenceRef.current) return;
       setStatusData(statuses);
       setQuestionIndex((idx) => Math.min(idx, (updated.questions || []).length - 1));
     } catch (err) {
+      if (requestId !== persistSequenceRef.current) return;
       setError(err.message || 'Failed to save grading');
     } finally {
-      setSaving(false);
+      if (requestId === persistSequenceRef.current) {
+        setSaving(false);
+      }
     }
   };
 
@@ -143,17 +166,17 @@ export default function GradeAssignmentPage() {
           p.part_index === partIndex
             ? { ...p, selected_score: score, graded: true }
             : p
-        ),
+          ),
       };
     });
-    setData((prev) => ({ ...prev, questions: nextQuestions }));
+    setQuestions(nextQuestions);
     persistDraft(nextQuestions, false);
   };
 
   const updatePartComment = (partIndex, comment) => {
     if (!currentQuestion) return;
-    setData((prev) => {
-      const nextQuestions = (prev?.questions || []).map((q, idx) => {
+    setQuestions((previousQuestions) =>
+      previousQuestions.map((q, idx) => {
         if (idx !== questionIndex) return q;
         return {
           ...q,
@@ -161,13 +184,12 @@ export default function GradeAssignmentPage() {
             p.part_index === partIndex ? { ...p, comment } : p
           ),
         };
-      });
-      return { ...prev, questions: nextQuestions };
-    });
+      })
+    );
   };
 
   const onCommentBlur = () => {
-    persistDraft(questions, false);
+    persistDraft(latestQuestionsRef.current, false);
   };
 
   const canMoveNext = !currentQuestion

@@ -226,6 +226,9 @@ export default function CreateEditAssignment() {
       // Navigate to assignment view page
       if (savedAssignmentId) {
         window.location.hash = `#course/${courseId}/assignment/${savedAssignmentId}/view`;
+        if (isEditMode) {
+          window.location.reload();
+        }
       } else {
         window.location.hash = `#course/${courseId}`;
       }

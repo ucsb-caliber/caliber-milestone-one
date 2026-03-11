@@ -258,6 +258,7 @@ class AssignmentResponse(BaseModel):
     late_policy_id: Optional[str]
     grade_released: bool = False
     grade_released_at: Optional[datetime] = None
+    all_students_graded: Optional[bool] = None
     assignment_questions: List[int]  # Parsed from JSON string
     created_at: datetime
     updated_at: datetime
@@ -275,7 +276,12 @@ class AssignmentResponse(BaseModel):
         return v if v else []
 
     @classmethod
-    def from_assignment(cls, obj, instructor_email: Optional[str] = None):
+    def from_assignment(
+        cls,
+        obj,
+        instructor_email: Optional[str] = None,
+        all_students_graded: Optional[bool] = None,
+    ):
         """Build assignment response while sourcing PII externally."""
         import json
         data = {
@@ -294,6 +300,7 @@ class AssignmentResponse(BaseModel):
             'late_policy_id': obj.late_policy_id,
             'grade_released': bool(getattr(obj, "grade_released", False)),
             'grade_released_at': getattr(obj, "grade_released_at", None),
+            'all_students_graded': all_students_graded,
             'assignment_questions': json.loads(obj.assignment_questions) if obj.assignment_questions else [],
             'created_at': obj.created_at,
             'updated_at': obj.updated_at,
@@ -412,7 +419,7 @@ class AssignmentStudentSubmissionStatus(BaseModel):
 class AssignmentSubmissionStatusResponse(BaseModel):
     """Instructor-facing submission status list for an assignment."""
     assignment_id: int
-    assignment_phase: str  # unreleased | open | late_window | interim
+    assignment_phase: str  # unreleased | in_progress | ungraded | graded
     assignment_total_points: float = 0
     grade_released: bool = False
     all_students_graded: bool = False
