@@ -501,7 +501,7 @@ export default function StudentPreview({
           {isPreviewMode && (
             <div style={styles.previewBanner}>
               <div style={styles.bannerText}>
-                👁️ Preview Mode - This is how students will see the assignment
+                Preview Mode - This is how students will see the assignment
               </div>
               {onClose && (
                 <button
@@ -567,7 +567,7 @@ export default function StudentPreview({
         {isPreviewMode && (
           <div style={styles.previewBanner}>
             <div style={styles.bannerText}>
-              👁️ Preview Mode - This is how students will see the assignment
+              Preview Mode - This is how students will see the assignment
             </div>
             {onClose && (
               <button

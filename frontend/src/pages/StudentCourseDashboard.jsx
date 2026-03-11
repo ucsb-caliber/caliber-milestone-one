@@ -1,25 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { getCourse, getAllUsers, getAssignmentProgress } from '../api';
+import { formatPacificDateTime, parseScheduleDate, parseUtcTimestamp } from '../utils/datetime';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
-const PACIFIC_TIMEZONE = 'America/Los_Angeles';
-
-function parseAssignmentDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr);
-}
 
 function formatDateObject(dateObj) {
-  if (!dateObj) return 'Not set';
-  return dateObj.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: PACIFIC_TIMEZONE,
-    timeZoneName: 'short'
-  });
+  return formatPacificDateTime(dateObj, { kind: 'schedule' }) || 'Not set';
 }
 
 export default function StudentCourseDashboard() {
@@ -119,13 +105,13 @@ export default function StudentCourseDashboard() {
   const allAssignments = course?.assignments || [];
   const releasedAssignments = allAssignments.filter((assignment) => {
     if (!assignment.release_date) return true;
-    const releaseDate = parseAssignmentDate(assignment.release_date);
+    const releaseDate = parseScheduleDate(assignment.release_date);
     return releaseDate ? releaseDate <= now : true;
   });
 
   const getSortDueTime = (assignment) => {
-    const dueSoft = parseAssignmentDate(assignment.due_date_soft);
-    const dueHard = parseAssignmentDate(assignment.due_date_hard);
+    const dueSoft = parseScheduleDate(assignment.due_date_soft);
+    const dueHard = parseScheduleDate(assignment.due_date_hard);
     if (dueSoft) return dueSoft.getTime();
     if (dueHard) return dueHard.getTime();
     return Number.POSITIVE_INFINITY;
@@ -171,9 +157,9 @@ export default function StudentCourseDashboard() {
   }, [course]);
 
   const timelineWithMeta = timelineAssignments.map((assignment) => {
-    const releaseDate = parseAssignmentDate(assignment.release_date);
-    const softDueDate = parseAssignmentDate(assignment.due_date_soft);
-    const hardDueDate = parseAssignmentDate(assignment.due_date_hard);
+    const releaseDate = parseScheduleDate(assignment.release_date);
+    const softDueDate = parseScheduleDate(assignment.due_date_soft);
+    const hardDueDate = parseScheduleDate(assignment.due_date_hard);
     const dueDate = softDueDate || hardDueDate || null;
 
     const nowMs = now.getTime();
@@ -227,8 +213,14 @@ export default function StudentCourseDashboard() {
     };
   });
 
-  const timelineInProgressOrLate = timelineWithMeta.filter((item) => item.isInProgress || item.isLate);
-  const timelineCompleted = timelineWithMeta.filter((item) => item.isClosed);
+  const isAssignmentSubmitted = (assignmentId) => Boolean(submissionByAssignmentId[assignmentId]?.submitted);
+
+  const timelineInProgressOrLate = timelineWithMeta.filter(
+    (item) => !isAssignmentSubmitted(item.assignment.id) && (item.isInProgress || item.isLate)
+  );
+  const timelineCompleted = timelineWithMeta.filter(
+    (item) => item.isClosed || isAssignmentSubmitted(item.assignment.id)
+  );
 
   const styles = {
     container: {
@@ -477,29 +469,19 @@ export default function StudentCourseDashboard() {
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return 'Unknown';
-    const parsed = parseAssignmentDate(timestamp);
-    if (!parsed) return 'Unknown';
-    return parsed.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: PACIFIC_TIMEZONE,
-      timeZoneName: 'short'
-    });
+    return formatPacificDateTime(timestamp, { kind: 'event' }) || 'Unknown';
   };
 
   const formatDueSummary = (dateObj) => {
-    if (!dateObj) return 'No due date';
-    return dateObj.toLocaleDateString('en-US', {
+    return formatPacificDateTime(dateObj, {
+      kind: 'schedule',
       month: 'short',
       day: 'numeric',
+      year: undefined,
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: PACIFIC_TIMEZONE,
-      timeZoneName: 'short'
-    });
+      timeZoneName: 'short',
+    }) || 'No due date';
   };
 
   const getRemainingInfoLabel = (item) => {
@@ -528,8 +510,8 @@ export default function StudentCourseDashboard() {
   const handleAssignmentClick = (assignment, progress) => {
     setActiveInfoAssignmentId(null);
     if (progress?.submitted) {
-      const hardDue = parseAssignmentDate(assignment?.due_date_hard);
-      const softDue = parseAssignmentDate(assignment?.due_date_soft);
+      const hardDue = parseScheduleDate(assignment?.due_date_hard);
+      const softDue = parseScheduleDate(assignment?.due_date_soft);
       const canResubmit = !hardDue || now.getTime() <= hardDue.getTime();
       const incursLatePenalty = canResubmit && softDue && now.getTime() > softDue.getTime();
 
@@ -642,7 +624,7 @@ export default function StudentCourseDashboard() {
                         (section.key === 'completed' || Boolean(progress.submitted));
 
                       let cardStatusStyle = {};
-                      const submittedAtDate = parseAssignmentDate(progress.submitted_at);
+                      const submittedAtDate = parseUtcTimestamp(progress.submitted_at);
                       const submittedAtMs = submittedAtDate ? submittedAtDate.getTime() : null;
                       const softDueMs = item.softDueDate ? item.softDueDate.getTime() : null;
                       const hardDueMs = item.hardDueDate ? item.hardDueDate.getTime() : null;
@@ -910,8 +892,8 @@ export default function StudentCourseDashboard() {
             </p>
             <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.9rem' }}>
               {resubmitAllowed
-                ? 'You can submit again because the hard due date has not passed yet.'
-                : 'This assignment is read-only because the hard due date has passed.'}
+                ? 'You can submit again because the late due date has not passed yet.'
+                : 'This assignment is read-only because the late due date has passed.'}
             </p>
             {resubmitPenaltyWarning && (
               <p style={{ margin: '0 0 1rem 0', color: '#b45309', fontSize: '0.9rem', fontWeight: 600 }}>

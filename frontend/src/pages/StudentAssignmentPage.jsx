@@ -3,11 +3,7 @@ import { getAssignment, getQuestionsBatch, getAssignmentProgress, saveAssignment
 import StudentPreview from '../components/StudentPreview';
 import StudentGradeReport from '../components/StudentGradeReport';
 import { useAuth } from '../AuthContext';
-
-function parseAssignmentDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr);
-}
+import { parseScheduleDate } from '../utils/datetime';
 
 export default function StudentAssignmentPage() {
   const { user } = useAuth();
@@ -47,7 +43,7 @@ export default function StudentAssignmentPage() {
   };
 
   const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash();
-  const hardDueDate = parseAssignmentDate(assignment?.due_date_hard);
+  const hardDueDate = parseScheduleDate(assignment?.due_date_hard);
   const isSubmissionClosed = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
 
   useEffect(() => {
@@ -80,7 +76,7 @@ export default function StudentAssignmentPage() {
           const loadedAnswers = progressData?.answers || {};
           const loadedIndex = progressData?.current_question_index || 0;
           const hasPriorSubmission = Boolean(progressData?.submitted || progressData?.submitted_at);
-          const hardDue = parseAssignmentDate(assignmentData?.due_date_hard);
+          const hardDue = parseScheduleDate(assignmentData?.due_date_hard);
           const canResubmitBeforeHardDue = !hardDue || Date.now() <= hardDue.getTime();
           const allowResubmitMode = hasPriorSubmission && resubmitRequested && canResubmitBeforeHardDue;
           const loadedSubmitted = hasPriorSubmission && !allowResubmitMode;

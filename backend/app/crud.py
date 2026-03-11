@@ -2,7 +2,7 @@ from datetime import datetime
 import json
 from typing import List, Optional
 
-from sqlmodel import Session, func, select
+from sqlmodel import Session, delete, func, select
 
 from .models import Question
 
@@ -507,12 +507,9 @@ def delete_assignment(session: Session, assignment_id: int, instructor_id: str) 
     if not assignment or assignment.instructor_id != instructor_id:
         return False
 
-    progress_rows = session.exec(
-        select(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
-    ).all()
-    for row in progress_rows:
-        session.delete(row)
-    
+    session.exec(
+        delete(AssignmentProgress).where(AssignmentProgress.assignment_id == assignment_id)
+    )
     session.delete(assignment)
     session.commit()
     return True

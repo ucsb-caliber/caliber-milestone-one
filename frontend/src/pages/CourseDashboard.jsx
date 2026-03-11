@@ -1,40 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { getCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
 import { useAuth } from '../AuthContext';
+import { formatPacificDateTime, parseScheduleDate } from '../utils/datetime';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
-const PACIFIC_TIMEZONE = 'America/Los_Angeles';
-
-function parseAssignmentDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr);
-}
 
 function formatAssignmentDate(dateStr) {
-  const parsed = parseAssignmentDate(dateStr);
-  if (!parsed) return 'Not set';
-  return parsed.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: PACIFIC_TIMEZONE,
-    timeZoneName: 'short'
-  });
+  return formatPacificDateTime(dateStr, { kind: 'schedule' }) || 'Not set';
 }
 
 function formatDateObject(dateObj) {
-  if (!dateObj) return 'Not set';
-  return dateObj.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: PACIFIC_TIMEZONE,
-    timeZoneName: 'short'
-  });
+  return formatPacificDateTime(dateObj, { kind: 'schedule' }) || 'Not set';
 }
 
 function clamp(value, min, max) {
@@ -270,8 +246,8 @@ export default function CourseDashboard() {
   const allAssignments = course.assignments || [];
 
   const getRelevantDueDate = (assignment) => {
-    const dueSoft = parseAssignmentDate(assignment.due_date_soft);
-    const dueHard = parseAssignmentDate(assignment.due_date_hard);
+    const dueSoft = parseScheduleDate(assignment.due_date_soft);
+    const dueHard = parseScheduleDate(assignment.due_date_hard);
     return dueSoft || dueHard || null;
   };
 
@@ -283,7 +259,7 @@ export default function CourseDashboard() {
 
   const unreleasedAssignments = allAssignments.filter((assignment) => {
     if (!assignment.release_date) return true;
-    const releaseDate = parseAssignmentDate(assignment.release_date);
+    const releaseDate = parseScheduleDate(assignment.release_date);
     return releaseDate ? releaseDate > now : true;
   });
 
@@ -294,9 +270,9 @@ export default function CourseDashboard() {
   const timelineAssignments = sortByUpcomingDue(allAssignments);
 
   const timelineWithMeta = timelineAssignments.map((assignment) => {
-    const releaseDate = parseAssignmentDate(assignment.release_date);
-    const softDueDate = parseAssignmentDate(assignment.due_date_soft);
-    const hardDueDate = parseAssignmentDate(assignment.due_date_hard);
+    const releaseDate = parseScheduleDate(assignment.release_date);
+    const softDueDate = parseScheduleDate(assignment.due_date_soft);
+    const hardDueDate = parseScheduleDate(assignment.due_date_hard);
     const dueDate = softDueDate || hardDueDate || null;
 
     const dueMs = dueDate ? dueDate.getTime() : null;

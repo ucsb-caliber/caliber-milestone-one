@@ -58,6 +58,13 @@ function ProtectedRoute({ children }) {
 
 // Simple router using hash-based navigation
 function App() {
+  const normalizeHashRoute = (route) => {
+    if (!route) return route;
+    return route.replace(
+      /(course\/\d+\/assignment\/\d+\/grade)\/[^/]+$/,
+      '$1/:student'
+    );
+  };
 
   const getPageFromHash = () => {
   const qs = new URLSearchParams(window.location.search);
@@ -65,7 +72,7 @@ function App() {
     return 'logged-out';
   }
   const hash = window.location.hash.slice(1);
-  return hash.split('?')[0] || 'courses';
+  return normalizeHashRoute(hash.split('?')[0] || 'courses');
   };
 
   const [page, setPage] = React.useState(getPageFromHash());

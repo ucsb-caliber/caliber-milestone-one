@@ -1,44 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus, releaseAssignmentGrades } from '../api';
 import QuestionCard from '../components/QuestionCard';
 import QuestionTable from '../components/QuestionTable';
 import StudentPreview from '../components/StudentPreview';
 import AssignmentGradingStats from '../components/AssignmentGradingStats';
+import { formatPacificDateTime, parseScheduleDate } from '../utils/datetime';
 
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const PACIFIC_TIMEZONE = 'America/Los_Angeles';
+const compareSubmissionStatusRows = (a, b) => {
+  const aGraded = Boolean(a?.grade_submitted_at);
+  const bGraded = Boolean(b?.grade_submitted_at);
+  if (aGraded !== bGraded) return aGraded ? 1 : -1;
 
-function parseAssignmentDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr);
-}
+  const aLast = String(a?.student_last_name || '').trim().toLowerCase();
+  const bLast = String(b?.student_last_name || '').trim().toLowerCase();
+  if (aLast !== bLast) return aLast.localeCompare(bLast);
+
+  const aFirst = String(a?.student_first_name || '').trim().toLowerCase();
+  const bFirst = String(b?.student_first_name || '').trim().toLowerCase();
+  if (aFirst !== bFirst) return aFirst.localeCompare(bFirst);
+
+  const aName = String(a?.student_name || '').trim().toLowerCase();
+  const bName = String(b?.student_name || '').trim().toLowerCase();
+  if (aName !== bName) return aName.localeCompare(bName);
+
+  return String(a?.student_id || '').localeCompare(String(b?.student_id || ''));
+};
 
 const DateTimeline = ({ assignment }) => {
   const now = new Date();
+  const clampPct = (value, min, max) => Math.min(Math.max(value, min), max);
 
-  const release = parseAssignmentDate(assignment.release_date);
-  const softDue = parseAssignmentDate(assignment.due_date_soft);
-  const hardDue = parseAssignmentDate(assignment.due_date_hard);
+  const release = parseScheduleDate(assignment.release_date);
+  const softDue = parseScheduleDate(assignment.due_date_soft);
+  const hardDue = parseScheduleDate(assignment.due_date_hard);
 
   const formatDate = (d) =>
-    d.toLocaleDateString('en-US', {
+    formatPacificDateTime(d, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      timeZone: PACIFIC_TIMEZONE
-    }) +
-    '\n' +
-    d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: PACIFIC_TIMEZONE,
-      timeZoneName: 'short'
-    });
+      timeZoneName: 'short',
+    })?.replace(', ', '\n') || 'Not set';
+
+  const hasDistinctHardDue = Boolean(hardDue && softDue && hardDue.getTime() !== softDue.getTime());
 
   const getTimeLeft = (date) => {
     if (!date) return null;
@@ -66,22 +78,39 @@ const DateTimeline = ({ assignment }) => {
     return { value: Math.max(1, Math.ceil(diffMs / secondMs)), unit: 'seconds' };
   };
 
-  const start = release || now;
-  const end = hardDue || softDue || now;
-  const totalMs = end - start;
-  const elapsedMs = now - start;
-  const todayPct = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
-
   const getPct = (date) => {
-    if (!date || totalMs <= 0) return 0;
-    return Math.min(Math.max(((date - start) / totalMs) * 100, 0), 100);
+    if (!date) return 0;
+
+    if (softDue) {
+      const leftStart = release || softDue;
+      const leftSpan = Math.max(softDue.getTime() - leftStart.getTime(), 1);
+
+      if (date.getTime() <= softDue.getTime()) {
+        return clampPct(((date.getTime() - leftStart.getTime()) / leftSpan) * 50, 0, 50);
+      }
+
+      if (hasDistinctHardDue && hardDue) {
+        const rightSpan = Math.max(hardDue.getTime() - softDue.getTime(), 1);
+        return 50 + clampPct(((date.getTime() - softDue.getTime()) / rightSpan) * 50, 0, 50);
+      }
+
+      return 50;
+    }
+
+    if (release && hardDue) {
+      const span = Math.max(hardDue.getTime() - release.getTime(), 1);
+      return clampPct(((date.getTime() - release.getTime()) / span) * 100, 0, 100);
+    }
+
+    return 0;
   };
 
-  const softPct = getPct(softDue);
-  const hardPct = getPct(hardDue);
   const softPassed = Boolean(softDue && now > softDue);
   const hardPassed = Boolean(hardDue && now > hardDue);
-  const hasDistinctHardDue = Boolean(hardDue && softDue && hardDue.getTime() !== softDue.getTime());
+  const softPct = softDue ? 50 : getPct(softDue);
+  const hardPct = hasDistinctHardDue ? 100 : getPct(hardDue);
+  const todayPct = getPct(now);
+  const dueLabelsOverlap = hasDistinctHardDue && Math.abs(hardPct - softPct) < 18;
 
   const countdownTarget = hardPassed ? null : (softPassed ? hardDue : softDue);
   const countdown = getTimeLeft(countdownTarget);
@@ -212,7 +241,7 @@ const DateTimeline = ({ assignment }) => {
         </div>
 
         {/* Labels row */}
-        <div style={{ position: 'relative', height: '60px' }}>
+        <div style={{ position: 'relative', height: dueLabelsOverlap ? '108px' : '60px' }}>
           {release && (
             <div style={{ position: 'absolute', left: '0%', top: '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
               <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#111827', marginBottom: '0.15rem' }}>Release Date</div>
@@ -226,7 +255,7 @@ const DateTimeline = ({ assignment }) => {
             </div>
           )}
           {hasDistinctHardDue && (
-            <div style={{ position: 'absolute', left: `${hardPct}%`, top: '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
+            <div style={{ position: 'absolute', left: `${hardPct}%`, top: dueLabelsOverlap ? '2.2rem' : '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
               <div style={{ minWidth: 'max-content', fontSize: '0.8rem', fontWeight: '600', color: '#111827', marginBottom: '0.15rem' }}>Late Submissions Due</div>
               <div style={{ minWidth: 'max-content', whiteSpace: 'pre-line', fontSize: '0.75rem', color: '#9ca3af' }}>{formatDate(hardDue)}</div>
             </div>
@@ -282,6 +311,7 @@ export default function AssignmentView() {
   const [allStudentsGraded, setAllStudentsGraded] = useState(false);
   const [gradeReleased, setGradeReleased] = useState(false);
   const [releasingGrades, setReleasingGrades] = useState(false);
+  const [submissionSort, setSubmissionSort] = useState({ key: 'student', direction: 'asc' });
 
   // Parse URL hash to get course ID and assignment ID
   const parseHash = () => {
@@ -296,6 +326,62 @@ export default function AssignmentView() {
   };
 
   const { courseId, assignmentId } = parseHash();
+
+  const sortedSubmissionStatusRows = useMemo(() => {
+    const rows = [...submissionStatusRows];
+    const direction = submissionSort.direction === 'desc' ? -1 : 1;
+    const statusRank = {
+      on_time: 0,
+      late: 1,
+      not_submitted: 2,
+    };
+
+    rows.sort((a, b) => {
+      if (submissionSort.key === 'student') {
+        return compareSubmissionStatusRows(a, b) * direction;
+      }
+
+      if (submissionSort.key === 'status') {
+        const rankDiff = (statusRank[a?.timing_status] ?? 99) - (statusRank[b?.timing_status] ?? 99);
+        if (rankDiff !== 0) return rankDiff * direction;
+        return compareSubmissionStatusRows(a, b);
+      }
+
+      if (submissionSort.key === 'submitted_at' || submissionSort.key === 'graded_at') {
+        const aTime = new Date(
+          submissionSort.key === 'submitted_at' ? (a?.submitted_at || 0) : (a?.grade_submitted_at || 0)
+        ).getTime() || 0;
+        const bTime = new Date(
+          submissionSort.key === 'submitted_at' ? (b?.submitted_at || 0) : (b?.grade_submitted_at || 0)
+        ).getTime() || 0;
+        if (aTime !== bTime) return (aTime - bTime) * direction;
+        return compareSubmissionStatusRows(a, b);
+      }
+
+      if (submissionSort.key === 'grade') {
+        const aScore = a?.score_percent ?? (a?.score_earned != null && a?.score_total ? (Number(a.score_earned) / Number(a.score_total)) * 100 : Number.NEGATIVE_INFINITY);
+        const bScore = b?.score_percent ?? (b?.score_earned != null && b?.score_total ? (Number(b.score_earned) / Number(b.score_total)) * 100 : Number.NEGATIVE_INFINITY);
+        if (aScore !== bScore) return (aScore - bScore) * direction;
+        return compareSubmissionStatusRows(a, b);
+      }
+
+      return compareSubmissionStatusRows(a, b);
+    });
+
+    return rows;
+  }, [submissionSort, submissionStatusRows]);
+
+  const toggleSubmissionSort = (key) => {
+    setSubmissionSort((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const getSubmissionSortArrow = (key) => {
+    if (submissionSort.key !== key) return '↕';
+    return submissionSort.direction === 'asc' ? '↑' : '↓';
+  };
 
   const reorderQuestions = (list, startIndex, endIndex) => {
     const result = Array.from(list);
@@ -410,9 +496,13 @@ export default function AssignmentView() {
         const studentsWithStatus = await Promise.all(
           studentIds.map(async (studentId) => {
             let displayName = studentId;
+            let firstName = '';
+            let lastName = '';
             try {
               const studentInfo = await getUserById(studentId);
               if (studentInfo?.first_name && studentInfo?.last_name) {
+                firstName = String(studentInfo.first_name);
+                lastName = String(studentInfo.last_name);
                 displayName = `${studentInfo.first_name} ${studentInfo.last_name}`;
               } else {
                 displayName = studentInfo?.email || studentId;
@@ -430,12 +520,14 @@ export default function AssignmentView() {
 
             return {
               ...status,
+              student_first_name: firstName,
+              student_last_name: lastName,
               student_name: displayName,
             };
           })
         );
 
-        setSubmissionStatusRows(studentsWithStatus);
+        setSubmissionStatusRows(studentsWithStatus.sort(compareSubmissionStatusRows));
         setAssignmentPhase(statusData?.assignment_phase || '');
         setAssignmentTotalPoints(Number(statusData?.assignment_total_points || 0));
         setAllStudentsGraded(Boolean(statusData?.all_students_graded));
@@ -545,32 +637,40 @@ export default function AssignmentView() {
 
   // Format date for display
   const formatDate = (dateStr) => {
-    const parsedDate = parseAssignmentDate(dateStr);
-    if (!parsedDate) return 'Not set';
-    return parsedDate.toLocaleDateString('en-US', {
+    return formatPacificDateTime(dateStr, {
+      kind: 'schedule',
       weekday: 'long',
       month: 'long',
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: PACIFIC_TIMEZONE,
-      timeZoneName: 'short'
-    });
+      timeZoneName: 'short',
+    }) || 'Not set';
   };
 
   const formatSubmissionDate = (dateStr) => {
-    const parsedDate = parseAssignmentDate(dateStr);
-    if (!parsedDate) return 'Not submitted';
-    return parsedDate.toLocaleDateString('en-US', {
+    return formatPacificDateTime(dateStr, {
+      kind: 'event',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: PACIFIC_TIMEZONE,
-      timeZoneName: 'short'
-    });
+      timeZoneName: 'short',
+    }) || 'Not submitted';
+  };
+
+  const formatGradedDate = (dateStr) => {
+    return formatPacificDateTime(dateStr, {
+      kind: 'event',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }) || 'Not graded';
   };
 
   const getSubmissionPillStyle = (timingStatus) => {
@@ -763,6 +863,25 @@ export default function AssignmentView() {
       textTransform: 'uppercase',
       color: '#6b7280'
     },
+    submissionSortButton: {
+      border: 'none',
+      background: 'transparent',
+      padding: 0,
+      cursor: 'pointer',
+      fontSize: '0.75rem',
+      fontWeight: '700',
+      letterSpacing: '0.03em',
+      textTransform: 'uppercase',
+      color: '#6b7280',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '0.35rem'
+    },
+    submissionSortArrow: {
+      fontSize: '0.85rem',
+      color: '#374151',
+      lineHeight: 1
+    },
     gradeButton: {
       border: 'none',
       borderRadius: '8px',
@@ -879,7 +998,7 @@ export default function AssignmentView() {
                 onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
                 onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
               >
-                ✏️ Edit Assignment
+                Edit Assignment
               </button>
           )}
         </div>
@@ -908,44 +1027,70 @@ export default function AssignmentView() {
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: canShowReleaseControls || gradeReleased ? '0.75rem' : 0 }}>
             <h2 style={styles.sectionTitle}>Student Submission Status</h2>
-            {canShowReleaseControls && (
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!assignment?.id || !canReleaseGrades) return;
-                  setReleasingGrades(true);
-                  try {
-                    await releaseAssignmentGrades(assignment.id);
-                    const statusData = await getAssignmentSubmissionStatus(assignment.id);
-                    setGradeReleased(Boolean(statusData?.grade_released));
-                    setAllStudentsGraded(Boolean(statusData?.all_students_graded));
-                    const statusByStudent = new Map((statusData?.students || []).map((row) => [row.student_id, row]));
-                    setSubmissionStatusRows((prev) => prev.map((row) => {
-                      const s = statusByStudent.get(row.student_id);
-                      return s ? { ...row, ...s } : row;
-                    }));
-                  } catch (err) {
-                    alert(err.message || 'Failed to release grades');
-                  } finally {
-                    setReleasingGrades(false);
-                  }
-                }}
-                disabled={!canReleaseGrades}
-                style={{
-                  background: canReleaseGrades ? 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)' : '#cbd5e1',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '0.55rem 0.95rem',
-                  cursor: canReleaseGrades ? 'pointer' : 'not-allowed',
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  opacity: canReleaseGrades ? 1 : 0.8,
-                }}
-              >
-                {releasingGrades ? 'Releasing...' : 'Release Grades'}
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {(assignmentPhase === 'ungraded' || gradeReleased) && submissionStatusRows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstStudent = [...submissionStatusRows].sort(compareSubmissionStatusRows)[0];
+                    if (!firstStudent) return;
+                    window.location.hash = `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(firstStudent.student_id)}`;
+                  }}
+                  style={{
+                    background: '#2563eb',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.55rem 0.95rem',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  Manage Grades
+                </button>
+              )}
+              {canShowReleaseControls && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!assignment?.id || !canReleaseGrades) return;
+                    setReleasingGrades(true);
+                    try {
+                      await releaseAssignmentGrades(assignment.id);
+                      const statusData = await getAssignmentSubmissionStatus(assignment.id);
+                      setGradeReleased(Boolean(statusData?.grade_released));
+                      setAllStudentsGraded(Boolean(statusData?.all_students_graded));
+                      const statusByStudent = new Map((statusData?.students || []).map((row) => [row.student_id, row]));
+                      setSubmissionStatusRows((prev) => prev
+                        .map((row) => {
+                          const s = statusByStudent.get(row.student_id);
+                          return s ? { ...row, ...s } : row;
+                        })
+                        .sort(compareSubmissionStatusRows));
+                    } catch (err) {
+                      alert(err.message || 'Failed to release grades');
+                    } finally {
+                      setReleasingGrades(false);
+                    }
+                  }}
+                  disabled={!canReleaseGrades}
+                  style={{
+                    background: canReleaseGrades ? 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)' : '#cbd5e1',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.55rem 0.95rem',
+                    cursor: canReleaseGrades ? 'pointer' : 'not-allowed',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                    opacity: canReleaseGrades ? 1 : 0.8,
+                  }}
+                >
+                  {releasingGrades ? 'Releasing...' : 'Release Grades'}
+                </button>
+              )}
+            </div>
           </div>
           {canShowReleaseControls && (
             <div style={{
@@ -986,14 +1131,40 @@ export default function AssignmentView() {
             <table style={styles.submissionTable}>
               <thead>
                 <tr style={styles.submissionRow}>
-                  <th style={styles.submissionHeaderCell}>Student</th>
-                  <th style={styles.submissionHeaderCell}>Status</th>
-                  <th style={styles.submissionHeaderCell}>Submitted At</th>
-                  <th style={styles.submissionHeaderCell}>Grade</th>
+                  <th style={styles.submissionHeaderCell}>
+                    <button type="button" onClick={() => toggleSubmissionSort('student')} style={styles.submissionSortButton}>
+                      Student
+                      <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('student')}</span>
+                    </button>
+                  </th>
+                  <th style={styles.submissionHeaderCell}>
+                    <button type="button" onClick={() => toggleSubmissionSort('status')} style={styles.submissionSortButton}>
+                      Status
+                      <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('status')}</span>
+                    </button>
+                  </th>
+                  <th style={styles.submissionHeaderCell}>
+                    <button type="button" onClick={() => toggleSubmissionSort('submitted_at')} style={styles.submissionSortButton}>
+                      Submitted At
+                      <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('submitted_at')}</span>
+                    </button>
+                  </th>
+                  <th style={styles.submissionHeaderCell}>
+                    <button type="button" onClick={() => toggleSubmissionSort('graded_at')} style={styles.submissionSortButton}>
+                      Graded At
+                      <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('graded_at')}</span>
+                    </button>
+                  </th>
+                  <th style={styles.submissionHeaderCell}>
+                    <button type="button" onClick={() => toggleSubmissionSort('grade')} style={styles.submissionSortButton}>
+                      Grade
+                      <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('grade')}</span>
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {submissionStatusRows.map((row) => {
+                {sortedSubmissionStatusRows.map((row) => {
                   const pill = getSubmissionPillStyle(row.timing_status);
                   const canGrade = row.timing_status === 'on_time' || row.timing_status === 'late';
                   const hasSubmittedGrade = Boolean(row.grade_submitted) && row.score_earned != null && row.score_total != null;
@@ -1013,6 +1184,7 @@ export default function AssignmentView() {
                         </span>
                       </td>
                       <td style={styles.submissionCell}>{formatSubmissionDate(row.submitted_at)}</td>
+                      <td style={styles.submissionCell}>{formatGradedDate(row.grade_submitted_at)}</td>
                       <td style={styles.submissionCell}>
                         {hasSubmittedGrade ? (
                           gradeReleased ? (

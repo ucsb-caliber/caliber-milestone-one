@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { getAssignmentGradingState, saveAssignmentGradingState, getAssignmentSubmissionStatus } from '../api';
+import { getAssignmentGradingState, saveAssignmentGradingState, getAssignmentSubmissionStatus, getCourse, getUserById } from '../api';
 
 function parseHash() {
   const hash = window.location.hash;
@@ -31,78 +31,250 @@ function asDisplayAnswer(raw) {
   return String(raw);
 }
 
+function buildStudentIdentity(studentId, studentInfo, rosterName) {
+  const firstName = String(studentInfo?.first_name || '').trim();
+  const lastName = String(studentInfo?.last_name || '').trim();
+  const fullName = firstName && lastName
+    ? `${firstName} ${lastName}`
+    : String(rosterName || studentInfo?.email || studentId);
+
+  return {
+    student_id: studentId,
+    student_name: fullName,
+    student_first_name: firstName || fullName.split(' ').slice(0, -1).join(' ').trim(),
+    student_last_name: lastName || fullName.split(' ').slice(-1)[0].trim(),
+  };
+}
+
+function isStudentGraded(row) {
+  return Boolean(row?.grade_submitted_at);
+}
+
+function compareStudentRows(a, b) {
+  const aGraded = isStudentGraded(a);
+  const bGraded = isStudentGraded(b);
+  if (aGraded !== bGraded) return aGraded ? 1 : -1;
+
+  const aLast = String(a?.student_last_name || '').trim().toLowerCase();
+  const bLast = String(b?.student_last_name || '').trim().toLowerCase();
+  if (aLast !== bLast) return aLast.localeCompare(bLast);
+
+  const aFirst = String(a?.student_first_name || '').trim().toLowerCase();
+  const bFirst = String(b?.student_first_name || '').trim().toLowerCase();
+  if (aFirst !== bFirst) return aFirst.localeCompare(bFirst);
+
+  const aName = String(a?.student_name || '').trim().toLowerCase();
+  const bName = String(b?.student_name || '').trim().toLowerCase();
+  if (aName !== bName) return aName.localeCompare(bName);
+
+  return String(a?.student_id || '').localeCompare(String(b?.student_id || ''));
+}
+
+function buildStudentRows(studentIds, statusData, courseData, userInfoById) {
+  const statusByStudent = new Map((statusData?.students || []).map((row) => [row.student_id, row]));
+
+  return studentIds.map((sid) => {
+    const identity = buildStudentIdentity(
+      sid,
+      userInfoById[sid],
+      courseData?.student_name_by_id?.[sid]
+    );
+    const status = statusByStudent.get(sid) || {
+      student_id: sid,
+      submitted: false,
+      submitted_at: null,
+      timing_status: 'not_submitted',
+      grade_submitted: false,
+      grade_submitted_at: null,
+      score_earned: null,
+      score_total: null,
+      score_percent: null,
+    };
+
+    return {
+      ...identity,
+      ...status,
+    };
+  }).sort(compareStudentRows);
+}
+
+function mergeStudentRows(existingRows, statusData) {
+  const statusByStudent = new Map((statusData?.students || []).map((row) => [row.student_id, row]));
+  return existingRows.map((row) => ({
+    ...row,
+    ...(statusByStudent.get(row.student_id) || {}),
+  })).sort(compareStudentRows);
+}
+
+function formatStudentScore(row) {
+  if (row?.score_earned == null || row?.score_total == null) return 'Needs grading';
+  return `${Math.round(Number(row.score_earned) * 100) / 100}/${Math.round(Number(row.score_total) * 100) / 100}`;
+}
+
+function isQuestionCompleteDraft(question) {
+  if (!question) return false;
+  if (question.is_auto_graded) return true;
+  if (!question.requires_manual_grading) return Boolean(question.is_fully_graded);
+  const parts = question.rubric_parts || [];
+  if (!parts.length) return Boolean(question.is_fully_graded);
+  return parts.every((part) => part.selected_score != null);
+}
+
+function areAllQuestionsCompleteDraft(questions) {
+  return (questions || []).every(isQuestionCompleteDraft);
+}
+
+function commentFieldKey(questionId, partIndex) {
+  return `${questionId}:${partIndex}`;
+}
+
 export default function GradeAssignmentPage() {
   const { courseId, assignmentId, studentId } = parseHash();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [studentLoading, setStudentLoading] = useState(true);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
   const [statusData, setStatusData] = useState(null);
+  const [studentRows, setStudentRows] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState(studentId);
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [saveState, setSaveState] = useState('updated');
+  const [studentMenuOpen, setStudentMenuOpen] = useState(false);
   const latestQuestionsRef = useRef([]);
   const persistSequenceRef = useRef(0);
+  const autoSaveTimerRef = useRef(null);
+  const commentVersionRef = useRef({});
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (autoSaveTimerRef.current) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const setQuestions = (nextQuestionsOrUpdater) => {
     setData((prev) => {
       const previousQuestions = prev?.questions || [];
-      const nextQuestions =
-        typeof nextQuestionsOrUpdater === 'function'
-          ? nextQuestionsOrUpdater(previousQuestions)
-          : nextQuestionsOrUpdater;
+      const nextQuestions = typeof nextQuestionsOrUpdater === 'function'
+        ? nextQuestionsOrUpdater(previousQuestions)
+        : nextQuestionsOrUpdater;
       latestQuestionsRef.current = nextQuestions || [];
       return { ...(prev || {}), questions: nextQuestions || [] };
     });
   };
 
   useEffect(() => {
-    async function load() {
-      if (!assignmentId || !studentId) {
-        setError('Missing assignment or student ID');
-        setLoading(false);
-        return;
-      }
-      try {
-        const [response, statuses] = await Promise.all([
-          getAssignmentGradingState(assignmentId, studentId),
-          getAssignmentSubmissionStatus(assignmentId),
-        ]);
-        setData(response);
-        latestQuestionsRef.current = response?.questions || [];
-        setStatusData(statuses);
-        setQuestionIndex(0);
-      } catch (err) {
-        setError(err.message || 'Failed to load grading view');
-      } finally {
-        setLoading(false);
+    setSelectedStudentId(studentId);
+  }, [studentId]);
+
+  const loadStudentData = async (nextStudentId, { showLoading = true } = {}) => {
+    if (!assignmentId || !nextStudentId) return;
+
+    const requestId = persistSequenceRef.current + 1;
+    persistSequenceRef.current = requestId;
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
+    if (showLoading) {
+      setStudentLoading(true);
+    }
+    setError('');
+    setStudentMenuOpen(false);
+    setSaveState('updated');
+
+    try {
+      const response = await getAssignmentGradingState(assignmentId, nextStudentId);
+      if (!mountedRef.current || requestId !== persistSequenceRef.current) return;
+      setData(response);
+      latestQuestionsRef.current = response?.questions || [];
+      setQuestionIndex(0);
+    } catch (err) {
+      if (!mountedRef.current || requestId !== persistSequenceRef.current) return;
+      setError(err.message || 'Failed to load grading view');
+    } finally {
+      if (mountedRef.current && requestId === persistSequenceRef.current) {
+        setStudentLoading(false);
       }
     }
-    load();
-  }, [assignmentId, studentId]);
+  };
+
+  useEffect(() => {
+    async function loadPageContext() {
+      if (!assignmentId || !selectedStudentId) {
+        setError('Missing assignment or student ID');
+        setInitialLoading(false);
+        setStudentLoading(false);
+        return;
+      }
+
+      setInitialLoading(true);
+      setStudentLoading(false);
+      setError('');
+      setStudentMenuOpen(false);
+      setSaveState('updated');
+
+      try {
+        const [statuses, courseData] = await Promise.all([
+          getAssignmentSubmissionStatus(assignmentId),
+          courseId ? getCourse(courseId) : Promise.resolve(null),
+        ]);
+
+        const studentIds = courseData?.student_ids || [];
+        const userInfoEntries = await Promise.all(
+          studentIds.map(async (sid) => {
+            try {
+              return [sid, await getUserById(sid)];
+            } catch {
+              return [sid, null];
+            }
+          })
+        );
+        const userInfoById = Object.fromEntries(userInfoEntries);
+        const nextStudentRows = buildStudentRows(studentIds, statuses, courseData, userInfoById);
+
+        if (!mountedRef.current) return;
+
+        setStatusData(statuses);
+        setStudentRows(nextStudentRows);
+      } catch (err) {
+        if (!mountedRef.current) return;
+        setError(err.message || 'Failed to load grading view');
+      } finally {
+        if (mountedRef.current) {
+          setInitialLoading(false);
+        }
+      }
+    }
+
+    loadPageContext();
+  }, [assignmentId, courseId]);
+
+  useEffect(() => {
+    if (initialLoading || !selectedStudentId) return;
+    loadStudentData(selectedStudentId, { showLoading: true });
+  }, [initialLoading, selectedStudentId]);
 
   const questions = data?.questions || [];
   const currentQuestion = questions[questionIndex] || null;
+  const assignmentTitle = data?.assignment_title || 'Assignment';
+  const selectedStudentRow = studentRows.find((row) => row.student_id === selectedStudentId) || null;
+  const studentDisplayName = selectedStudentRow?.student_name || selectedStudentId;
+  const showSaveButton = questions.some((q) => q.requires_manual_grading);
 
-  const questionGradesPayload = useMemo(() => {
-    return questions
-      .filter((q) => q.requires_manual_grading)
-      .map((q) => ({
-        question_id: q.question_id,
-        question_comment: q.question_comment || '',
-        parts: (q.rubric_parts || [])
-          .filter((p) => p.selected_score != null)
-          .map((p) => ({
-            part_index: p.part_index,
-            score: Number(p.selected_score),
-            comment: p.comment || '',
-          })),
-      }));
-  }, [questions]);
-
-  const persistDraft = async (nextQuestions, submitGrade = false) => {
-    if (!assignmentId || !studentId) return;
+  const persistDraft = async (nextQuestions) => {
+    if (!assignmentId || !selectedStudentId) return;
     const requestId = persistSequenceRef.current + 1;
+    const sentCommentVersions = { ...commentVersionRef.current };
     persistSequenceRef.current = requestId;
-    setSaving(true);
+    setSaveState('updating');
+
     try {
       const payload = {
         question_grades: nextQuestions
@@ -118,42 +290,74 @@ export default function GradeAssignmentPage() {
                 comment: p.comment || '',
               })),
           })),
-        submit_grade: submitGrade,
+        submit_grade: Boolean(data?.grade_submitted) || areAllQuestionsCompleteDraft(nextQuestions),
       };
-      const updated = await saveAssignmentGradingState(assignmentId, studentId, payload);
-      if (requestId !== persistSequenceRef.current) return;
+
+      const updated = await saveAssignmentGradingState(assignmentId, selectedStudentId, payload);
+      if (!mountedRef.current || requestId !== persistSequenceRef.current) return;
+
       setData((prev) => {
         const base = prev || {};
         const prevQuestions = base.questions || [];
+        const latestQuestions = latestQuestionsRef.current || [];
         const updatedQuestions = updated.questions || [];
-        const mergedQuestions = updatedQuestions.map((q, qIdx) => {
-          const prevQ = prevQuestions[qIdx];
+        const mergedQuestions = updatedQuestions.map((q, idx) => {
+          const prevQ = prevQuestions[idx];
+          const latestQ = latestQuestions.find((item) => item.question_id === q.question_id);
           if (!prevQ?.rubric_parts?.length) return q;
           return {
             ...q,
-            rubric_parts: (q.rubric_parts || []).map((p) => {
-              const prevP = prevQ.rubric_parts?.find((r) => r.part_index === p.part_index);
-              if (prevP && String(prevP.comment || '').trim() !== '' && String(p.comment || '').trim() === '')
-                return { ...p, comment: prevP.comment || '' };
-              return p;
+            rubric_parts: (q.rubric_parts || []).map((part) => {
+              const prevPart = prevQ.rubric_parts?.find((item) => item.part_index === part.part_index);
+              const latestPart = latestQ?.rubric_parts?.find((item) => item.part_index === part.part_index);
+              const key = commentFieldKey(q.question_id, part.part_index);
+              const latestVersion = commentVersionRef.current[key] || 0;
+              const sentVersion = sentCommentVersions[key] || 0;
+              if (latestPart && latestVersion >= sentVersion) {
+                return { ...part, comment: latestPart.comment || '' };
+              }
+              if (prevPart && String(prevPart.comment || '').trim() !== '' && String(part.comment || '').trim() === '') {
+                return { ...part, comment: prevPart.comment || '' };
+              }
+              return part;
             }),
           };
         });
         latestQuestionsRef.current = mergedQuestions;
         return { ...base, ...updated, questions: mergedQuestions };
       });
+
       const statuses = await getAssignmentSubmissionStatus(assignmentId);
-      if (requestId !== persistSequenceRef.current) return;
+      if (!mountedRef.current || requestId !== persistSequenceRef.current) return;
+
       setStatusData(statuses);
+      setStudentRows((prevRows) => mergeStudentRows(prevRows, statuses));
       setQuestionIndex((idx) => Math.min(idx, (updated.questions || []).length - 1));
+      setSaveState('updated');
     } catch (err) {
-      if (requestId !== persistSequenceRef.current) return;
+      if (!mountedRef.current || requestId !== persistSequenceRef.current) return;
       setError(err.message || 'Failed to save grading');
-    } finally {
-      if (requestId === persistSequenceRef.current) {
-        setSaving(false);
-      }
+      setSaveState('updated');
     }
+  };
+
+  const scheduleAutoSave = (nextQuestions) => {
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    setSaveState('updating');
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      persistDraft(latestQuestionsRef.current);
+    }, 700);
+  };
+
+  const flushAutoSave = async () => {
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    await persistDraft(latestQuestionsRef.current);
   };
 
   const updatePartScore = (partIndex, score) => {
@@ -162,99 +366,245 @@ export default function GradeAssignmentPage() {
       if (idx !== questionIndex) return q;
       return {
         ...q,
-        rubric_parts: (q.rubric_parts || []).map((p) =>
+        rubric_parts: (q.rubric_parts || []).map((p) => (
           p.part_index === partIndex
             ? { ...p, selected_score: score, graded: true }
             : p
-          ),
+        )),
       };
     });
     setQuestions(nextQuestions);
-    persistDraft(nextQuestions, false);
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    persistDraft(nextQuestions);
   };
 
   const updatePartComment = (partIndex, comment) => {
     if (!currentQuestion) return;
-    setQuestions((previousQuestions) =>
-      previousQuestions.map((q, idx) => {
-        if (idx !== questionIndex) return q;
-        return {
-          ...q,
-          rubric_parts: (q.rubric_parts || []).map((p) =>
-            p.part_index === partIndex ? { ...p, comment } : p
-          ),
-        };
-      })
-    );
+    const key = commentFieldKey(currentQuestion.question_id, partIndex);
+    commentVersionRef.current[key] = (commentVersionRef.current[key] || 0) + 1;
+    const nextQuestions = questions.map((q, idx) => {
+      if (idx !== questionIndex) return q;
+      return {
+        ...q,
+        rubric_parts: (q.rubric_parts || []).map((p) => (
+          p.part_index === partIndex ? { ...p, comment } : p
+        )),
+      };
+    });
+    setQuestions(nextQuestions);
+    scheduleAutoSave(nextQuestions);
   };
 
-  const onCommentBlur = () => {
-    persistDraft(latestQuestionsRef.current, false);
-  };
+  const isQuestionComplete = (question) => Boolean(question?.is_auto_graded || question?.is_fully_graded || isQuestionCompleteDraft(question));
 
-  const canMoveNext = !currentQuestion
-    ? false
-    : currentQuestion.is_auto_graded || currentQuestion.is_fully_graded;
+  const navigateToStudent = async (nextStudentId) => {
+    if (!nextStudentId || nextStudentId === selectedStudentId) {
+      setStudentMenuOpen(false);
+      return;
+    }
+    if (saveState === 'updating') {
+      await flushAutoSave();
+    }
+    setStudentMenuOpen(false);
+    setSelectedStudentId(nextStudentId);
+    window.history.replaceState(null, '', `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(nextStudentId)}`);
+  };
 
   const styles = {
     container: { maxWidth: '1400px', margin: '0 auto', padding: '1.5rem' },
     topBar: {
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      marginBottom: '1rem', background: 'white', padding: '0.8rem 1rem',
-      borderRadius: '10px', border: '1px solid #e5e7eb'
+      display: 'grid',
+      gridTemplateColumns: 'auto minmax(280px, 1.2fr) minmax(200px, 1fr) auto',
+      alignItems: 'center',
+      gap: '1rem',
+      marginBottom: '1rem',
+      background: 'white',
+      padding: '0.9rem 1rem',
+      borderRadius: '10px',
+      border: '1px solid #e5e7eb'
     },
-    body: { display: 'grid', gridTemplateColumns: '2.3fr 1.4fr 0.9fr', gap: '1rem' },
+    headerInline: { display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, position: 'relative' },
+    headerLabel: { fontSize: '0.92rem', color: '#6b7280', fontWeight: 700, whiteSpace: 'nowrap' },
+    headerCenter: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.65rem', minWidth: 0 },
+    headerRight: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' },
+    studentMenuButton: {
+      minWidth: '220px',
+      border: '1px solid #d1d5db',
+      borderRadius: '10px',
+      background: '#f9fafb',
+      padding: '0.5rem 0.75rem',
+      textAlign: 'left',
+      cursor: 'pointer'
+    },
+    studentMenuPanel: {
+      position: 'absolute',
+      top: '100%',
+      left: '0',
+      zIndex: 20,
+      width: 'min(460px, calc(100vw - 5rem))',
+      marginTop: '0.5rem',
+      background: 'white',
+      border: '1px solid #d1d5db',
+      borderRadius: '12px',
+      boxShadow: '0 14px 30px rgba(15,23,42,0.14)',
+      overflow: 'hidden'
+    },
+    studentMenuTable: { width: '100%', borderCollapse: 'collapse' },
+    studentMenuCell: { padding: '0.7rem 0.85rem', fontSize: '0.88rem', borderBottom: '1px solid #e5e7eb' },
+    body: { display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(320px, 0.95fr)', gap: '1rem' },
     panel: { background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1rem' },
     h: { margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#111827' },
+    questionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' },
+    questionNav: { display: 'flex', alignItems: 'center', gap: '0.65rem' },
+    navButton: { border: 'none', borderRadius: '8px', padding: '0.45rem 0.8rem', cursor: 'pointer', fontWeight: 600 },
     gradeButton: {
-      background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px',
-      padding: '0.55rem 0.9rem', cursor: 'pointer', fontWeight: 700
+      background: '#2563eb',
+      color: 'white',
+      border: 'none',
+      borderRadius: '8px',
+      padding: '0.55rem 0.9rem',
+      cursor: 'pointer',
+      fontWeight: 700,
+      minWidth: '88px'
     },
     scoreChip: { display: 'inline-block', padding: '0.2rem 0.45rem', borderRadius: '6px', fontSize: '0.76rem', fontWeight: 700 },
+    questionList: { marginTop: '0.7rem', display: 'flex', flexDirection: 'column', gap: '0.55rem' },
+    saveText: { color: '#2563eb', fontWeight: 700, minWidth: '74px', textAlign: 'right' },
+    loadingPanel: { background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1rem', color: '#6b7280' },
   };
 
-  if (loading) return <div style={styles.container}>Loading grading view...</div>;
-  if (error) return <div style={styles.container}>{error}</div>;
-  if (!data || !currentQuestion) return <div style={styles.container}>No grading data found.</div>;
+  if (initialLoading) return <div style={styles.container}>Loading grading view...</div>;
+  if (!data && error) return <div style={styles.container}>{error}</div>;
 
   return (
     <div style={styles.container}>
       <div style={styles.topBar}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={() => { window.location.hash = `#course/${courseId}/assignment/${assignmentId}/view`; }}
-            style={{ border: 'none', background: '#f3f4f6', borderRadius: '8px', padding: '0.45rem 0.75rem', cursor: 'pointer' }}
-          >
-            ← Back
-          </button>
-          <strong>Grading {studentId}</strong>
-          <span style={{ color: '#6b7280' }}>{data.assignment_title}</span>
-        </div>
-        <div>
-          <strong>Total grade: </strong>
-          {`${Math.round(data.score_earned * 100) / 100}/${Math.round(data.score_total * 100) / 100}`}
-          {statusData?.grade_released && (
-            <span style={{ marginLeft: '0.6rem', color: '#065f46', fontWeight: 700 }}>Released</span>
-          )}
-          {data.all_questions_fully_graded && (
+        <button
+          type="button"
+          onClick={() => { window.location.hash = `#course/${courseId}/assignment/${assignmentId}/view`; }}
+          style={{ border: 'none', background: '#f3f4f6', borderRadius: '8px', padding: '0.45rem 0.75rem', cursor: 'pointer' }}
+        >
+          ← Back
+        </button>
+
+        <div style={styles.headerInline}>
+          <span style={styles.headerLabel}>Student:</span>
+          <div style={{ minWidth: 0, flex: 1, position: 'relative' }}>
             <button
               type="button"
-              style={{ ...styles.gradeButton, marginLeft: '1rem' }}
-              onClick={() => persistDraft(questions, true)}
-              disabled={saving}
+              onClick={() => setStudentMenuOpen((open) => !open)}
+              style={styles.studentMenuButton}
             >
-              {saving
-                ? (data.grade_submitted ? 'Updating...' : 'Submitting...')
-                : (data.grade_submitted ? 'Update grade' : 'Submit grade')}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {studentDisplayName}
+                </span>
+                <span style={{ color: '#6b7280', fontWeight: 700 }}>{studentMenuOpen ? '▲' : '▼'}</span>
+              </div>
             </button>
+            {studentMenuOpen && (
+              <div style={styles.studentMenuPanel}>
+                <table style={styles.studentMenuTable}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc' }}>
+                      <th style={{ ...styles.studentMenuCell, textAlign: 'left', color: '#6b7280', fontSize: '0.78rem', fontWeight: 800 }}>Student</th>
+                      <th style={{ ...styles.studentMenuCell, textAlign: 'left', color: '#6b7280', fontSize: '0.78rem', fontWeight: 800 }}>Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentRows.map((row) => {
+                      const graded = isStudentGraded(row);
+                      const isCurrent = row.student_id === selectedStudentId;
+                      return (
+                        <tr
+                          key={row.student_id}
+                          onClick={() => navigateToStudent(row.student_id)}
+                          style={{
+                            background: isCurrent ? '#dbeafe' : (graded ? '#f0fdf4' : '#fef2f2'),
+                            cursor: saveState === 'saving' ? 'not-allowed' : 'pointer',
+                            opacity: saveState === 'saving' ? 0.65 : 1,
+                          }}
+                        >
+                          <td style={{ ...styles.studentMenuCell, color: graded ? '#166534' : '#991b1b', fontWeight: 700 }}>
+                            {row.student_name}
+                          </td>
+                          <td style={{ ...styles.studentMenuCell, color: graded ? '#166534' : '#991b1b', fontWeight: 700 }}>
+                            {formatStudentScore(row)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={styles.headerCenter}>
+          <span style={styles.headerLabel}>Assignment:</span>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assignmentTitle}</div>
+        </div>
+
+        <div style={styles.headerRight}>
+          <strong>Total grade:</strong>
+          {data ? `${Math.round(data.score_earned * 100) / 100}/${Math.round(data.score_total * 100) / 100}` : '...'}
+          {statusData?.grade_released && (
+            <span style={{ color: '#065f46', fontWeight: 700 }}>Released</span>
+          )}
+          {showSaveButton && (
+            <span style={styles.saveText}>{saveState === 'updating' ? 'Updating' : 'Updated'}</span>
           )}
         </div>
       </div>
 
+      {error && (
+        <div style={{ ...styles.loadingPanel, marginBottom: '1rem', color: '#dc2626', background: '#fee2e2' }}>
+          {error}
+        </div>
+      )}
+
+      {studentLoading || !data || !currentQuestion ? (
+        <div style={styles.loadingPanel}>Loading...</div>
+      ) : (
       <div style={styles.body}>
         <div style={styles.panel}>
-          <h3 style={styles.h}>{`Q${questionIndex + 1}) ${currentQuestion.question_title}`}</h3>
+          <div style={styles.questionHeader}>
+            <h3 style={styles.h}>{`Q${questionIndex + 1}) ${currentQuestion.question_title}`}</h3>
+            <div style={styles.questionNav}>
+              <button
+                type="button"
+                onClick={() => setQuestionIndex((idx) => Math.max(0, idx - 1))}
+                disabled={questionIndex === 0}
+                style={{
+                  ...styles.navButton,
+                  background: '#f3f4f6',
+                  color: '#111827',
+                  cursor: questionIndex === 0 ? 'not-allowed' : 'pointer',
+                  opacity: questionIndex === 0 ? 0.6 : 1,
+                }}
+              >
+                Previous
+              </button>
+              {questionIndex < questions.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => setQuestionIndex((idx) => Math.min(questions.length - 1, idx + 1))}
+                  style={{
+                    ...styles.navButton,
+                    background: '#86efac',
+                    color: '#14532d',
+                  }}
+                >
+                  Next →
+                </button>
+              )}
+            </div>
+          </div>
+
           {currentQuestion.question_text ? (
             <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.4rem' }}>Question</div>
@@ -265,133 +615,109 @@ export default function GradeAssignmentPage() {
               </div>
             </div>
           ) : null}
+
           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}>Student answer</div>
           <p style={{ whiteSpace: 'pre-wrap', color: '#374151' }}>{asDisplayAnswer(currentQuestion.student_answer)}</p>
-          <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between' }}>
-            <button
-              type="button"
-              onClick={() => setQuestionIndex((i) => Math.max(0, i - 1))}
-              disabled={questionIndex === 0}
-              style={{ border: 'none', background: '#f3f4f6', borderRadius: '8px', padding: '0.45rem 0.8rem', cursor: 'pointer' }}
-            >
-              Previous
-            </button>
-            {questionIndex < questions.length - 1 && canMoveNext && (
-              <button
-                type="button"
-                onClick={() => setQuestionIndex((i) => Math.min(questions.length - 1, i + 1))}
-                style={{ border: 'none', background: '#86efac', borderRadius: '8px', padding: '0.45rem 0.8rem', cursor: 'pointer', fontWeight: 700 }}
-              >
-                Next →
-              </button>
-            )}
-          </div>
-        </div>
 
-        <div style={styles.panel}>
-          <h3 style={styles.h}>Rubric</h3>
-          {currentQuestion.is_auto_graded ? (
-            <div style={{ marginTop: '0.75rem' }}>
-              <p style={{ margin: '0.4rem 0', color: '#065f46', fontWeight: 700 }}>Auto-graded ({currentQuestion.earned_points}/{currentQuestion.max_points})</p>
-              <p style={{ margin: 0, color: '#6b7280' }}>MCQ and T/F are graded automatically.</p>
-            </div>
-          ) : (
-            <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-              {(currentQuestion.rubric_parts || []).map((part) => (
-                <div key={part.part_index} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.6rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <strong>{part.label}</strong>
-                    <span style={{ color: '#6b7280' }}>{`max ${part.max_points}`}</span>
-                  </div>
-                  {(part.level_criteria && part.level_criteria.length > 0) ? (
-                    <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#374151', lineHeight: 1.5 }}>
-                      {part.level_criteria.map((level) => (
-                        <div key={level.points} style={{ marginBottom: '0.25rem' }}>
-                          <span style={{ fontWeight: 700, color: '#111827' }}>+{level.points}:</span>
-                          {' '}{level.criteria || '—'}
-                        </div>
+          {currentQuestion.requires_manual_grading && (
+            <div style={{ marginTop: '1rem' }}>
+              <h3 style={{ ...styles.h, marginBottom: '0.75rem' }}>Rubric</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                {(currentQuestion.rubric_parts || []).map((part) => (
+                  <div key={part.part_index} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.75rem' }}>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <strong>{part.label}</strong>
+                    </div>
+                    {(part.level_criteria && part.level_criteria.length > 0) ? (
+                      <div style={{ marginBottom: '0.6rem', fontSize: '0.875rem', color: '#374151', lineHeight: 1.5 }}>
+                        {part.level_criteria.map((level) => (
+                          <div key={level.points} style={{ marginBottom: '0.25rem' }}>
+                            <span style={{ fontWeight: 700, color: '#111827' }}>+{level.points}:</span>
+                            {' '}{level.criteria || '-'}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                      {(part.options || []).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => updatePartScore(part.part_index, opt)}
+                          style={{
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '0.3rem 0.55rem',
+                            cursor: 'pointer',
+                            background: Number(part.selected_score) === Number(opt) ? '#2563eb' : '#f3f4f6',
+                            color: Number(part.selected_score) === Number(opt) ? 'white' : '#111827',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {`+${opt}`}
+                        </button>
                       ))}
                     </div>
-                  ) : null}
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-                    {(part.options || []).map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => updatePartScore(part.part_index, opt)}
-                        style={{
-                          border: 'none',
-                          borderRadius: '6px',
-                          padding: '0.25rem 0.5rem',
-                          cursor: 'pointer',
-                          background: Number(part.selected_score) === Number(opt) ? '#2563eb' : '#f3f4f6',
-                          color: Number(part.selected_score) === Number(opt) ? 'white' : '#111827',
-                          fontWeight: 700,
-                        }}
-                      >
-                        {`+${opt}`}
-                      </button>
-                    ))}
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem' }}>Comment (optional)</label>
+                    <textarea
+                      value={part.comment || ''}
+                      placeholder="Enter comment..."
+                      onChange={(e) => updatePartComment(part.part_index, e.target.value)}
+                      style={{ width: '100%', minHeight: '56px', border: '1px solid #d1d5db', borderRadius: '6px', padding: '0.5rem', boxSizing: 'border-box' }}
+                    />
                   </div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem' }}>Comment (optional)</label>
-                  <textarea
-                    value={part.comment || ''}
-                    placeholder="Enter comment..."
-                    onChange={(e) => updatePartComment(part.part_index, e.target.value)}
-                    onBlur={onCommentBlur}
-                    style={{ width: '100%', minHeight: '56px', border: '1px solid #d1d5db', borderRadius: '6px', padding: '0.5rem', boxSizing: 'border-box' }}
-                  />
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          )}
-
-          {questions.some((q) => q.requires_manual_grading) && (
-            <button
-              type="button"
-              style={{ ...styles.gradeButton, marginTop: '1rem', width: '100%', background: '#6b7280' }}
-              onClick={() => persistDraft(questions, false)}
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
           )}
         </div>
 
         <div style={styles.panel}>
-          <h3 style={styles.h}>Grades</h3>
-          <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            {questions.map((q, idx) => {
-              const isUngradedFrq = q.requires_manual_grading && !q.is_fully_graded;
-              const displayScore = isUngradedFrq
-                ? '—'
-                : `${Math.round(q.earned_points * 100) / 100}/${Math.round(q.max_points * 100) / 100}`;
+          <h3 style={styles.h}>Questions</h3>
+          <div style={styles.questionList}>
+            {questions.map((question, idx) => {
+              const complete = isQuestionComplete(question);
+              const isSelected = idx === questionIndex;
+              const displayScore = complete
+                ? `${Math.round(question.earned_points * 100) / 100}/${Math.round(question.max_points * 100) / 100}`
+                : 'Needs grading';
+
               return (
-              <button
-                key={q.question_id}
-                type="button"
-                onClick={() => setQuestionIndex(idx)}
-                style={{
-                  border: idx === questionIndex ? '1px solid #2563eb' : '1px solid #e5e7eb',
-                  background: idx === questionIndex ? '#eff6ff' : 'white',
-                  borderRadius: '8px',
-                  padding: '0.45rem',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.83rem', fontWeight: 700 }}>{`Q${idx + 1}`}</span>
-                  <span style={{ ...styles.scoreChip, background: '#f3f4f6', color: '#374151' }}>
-                    {displayScore}
-                  </span>
-                </div>
-              </button>
+                <button
+                  key={question.question_id}
+                  type="button"
+                  onClick={() => setQuestionIndex(idx)}
+                  style={{
+                    width: '100%',
+                    border: isSelected ? '2px solid #2563eb' : `1px solid ${complete ? '#86efac' : '#fca5a5'}`,
+                    background: complete ? '#f0fdf4' : '#fef2f2',
+                    borderRadius: '10px',
+                    padding: '0.7rem 0.75rem',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    boxShadow: isSelected ? '0 0 0 2px rgba(37,99,235,0.14)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.6rem' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.83rem', fontWeight: 800, color: complete ? '#166534' : '#991b1b' }}>
+                        {`Q${idx + 1}`}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600, lineHeight: 1.35 }}>
+                        {question.question_title}
+                      </div>
+                    </div>
+                    <span style={{ ...styles.scoreChip, background: complete ? '#dcfce7' : '#fee2e2', color: complete ? '#166534' : '#991b1b', flexShrink: 0 }}>
+                      {displayScore}
+                    </span>
+                  </div>
+                </button>
               );
             })}
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

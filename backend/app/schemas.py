@@ -411,6 +411,7 @@ class AssignmentStudentSubmissionStatus(BaseModel):
     submitted_at: Optional[datetime] = None
     timing_status: str  # on_time | late | not_submitted
     grade_submitted: bool = False
+    grade_submitted_at: Optional[datetime] = None
     score_earned: Optional[float] = None
     score_total: Optional[float] = None
     score_percent: Optional[float] = None

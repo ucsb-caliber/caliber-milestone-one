@@ -5,14 +5,10 @@ import QuestionSearchBar from '../components/QuestionSearchBar';
 import { getUserById } from '../api';
 import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
 import { filterQuestionsBySearch } from '../utils/questionSearch';
-
-function parseAssignmentDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr);
-}
+import { parseScheduleDate } from '../utils/datetime';
 
 function formatDateForDateTimeLocal(dateStr) {
-  const date = parseAssignmentDate(dateStr);
+  const date = parseScheduleDate(dateStr);
   if (!date) return '';
   const pad = (value) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -60,6 +56,45 @@ export default function CreateEditAssignment() {
   };
 
   const { courseId, assignmentId, isNew, isEdit } = parseHash();
+  const backHref = isEditMode && assignmentId
+    ? `#course/${courseId}/assignment/${assignmentId}/view`
+    : `#course/${courseId}`;
+  const backLabel = isEditMode ? '← Back' : '← Back to Course';
+
+  const fetchAllQuestionsForPicker = async () => {
+    const pageSize = 200;
+    let skip = 0;
+    let total = null;
+    const collected = [];
+
+    while (total === null || collected.length < total) {
+      const page = await getAllQuestions({ skip, limit: pageSize });
+      const pageQuestions = page?.questions || [];
+      total = Number(page?.total ?? pageQuestions.length);
+      if (!pageQuestions.length) break;
+      collected.push(...pageQuestions);
+      skip += pageSize;
+      if (pageQuestions.length < pageSize) break;
+    }
+
+    return collected;
+  };
+
+  const prioritizeQuestionsForPicker = (questions) => {
+    const currentUserId = user?.id;
+    const toEpoch = (value) => {
+      const date = value ? new Date(value) : null;
+      const time = date?.getTime?.();
+      return Number.isFinite(time) ? time : 0;
+    };
+
+    return [...questions].sort((a, b) => {
+      const aMine = currentUserId && a.user_id === currentUserId ? 0 : 1;
+      const bMine = currentUserId && b.user_id === currentUserId ? 0 : 1;
+      if (aMine !== bMine) return aMine - bMine;
+      return toEpoch(b.created_at) - toEpoch(a.created_at);
+    });
+  };
 
   const fetchAllQuestionsForPicker = async () => {
     const pageSize = 200;
@@ -374,7 +409,7 @@ export default function CreateEditAssignment() {
 
   return (
     <div style={styles.container}>
-      <a href={`#course/${courseId}`} style={styles.backLink}>← Back to Course</a>
+      <a href={backHref} style={styles.backLink}>{backLabel}</a>
 
       <h1 style={styles.title}>{isEditMode ? 'Edit Assignment' : 'Create Assignment'}</h1>
 

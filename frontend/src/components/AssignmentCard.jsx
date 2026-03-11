@@ -1,24 +1,12 @@
 import React from 'react';
-
-const PACIFIC_TIMEZONE = 'America/Los_Angeles';
-
-function parseAssignmentDate(dateStr) {
-  if (!dateStr) return null;
-  return new Date(dateStr);
-}
+import { formatPacificDateTime } from '../utils/datetime';
 
 function formatAssignmentDate(dateStr) {
-  const parsedDate = parseAssignmentDate(dateStr);
-  if (!parsedDate) return 'Not set';
-  return parsedDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: PACIFIC_TIMEZONE,
-    timeZoneName: 'short'
-  });
+  return formatPacificDateTime(dateStr, { kind: 'schedule' }) || 'Not set';
+}
+
+function formatEventDate(dateStr) {
+  return formatPacificDateTime(dateStr, { kind: 'event' }) || 'Not submitted';
 }
 
 export default function AssignmentCard({
@@ -40,7 +28,7 @@ export default function AssignmentCard({
   } : {};
 
   const formattedSubmissionTimestamp = submissionTimestamp
-    ? formatAssignmentDate(submissionTimestamp)
+    ? formatEventDate(submissionTimestamp)
     : 'Not submitted';
 
   return (

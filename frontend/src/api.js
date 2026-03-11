@@ -1417,8 +1417,15 @@ export async function deleteAssignment(assignmentId) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete assignment');
+      const errorText = await response.text();
+      let message = 'Failed to delete assignment';
+      try {
+        const error = JSON.parse(errorText);
+        message = error.detail || message;
+      } catch {
+        message = errorText || message;
+      }
+      throw new Error(message);
     }
 
     return { success: true };
