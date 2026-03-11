@@ -44,6 +44,8 @@ class Assignment(SQLModel, table=True):
     due_date_hard: Optional[datetime] = Field(default=None)  # Final cut-off for Autograder
     late_policy_id: Optional[str] = Field(default=None)  # Reference to policy template
     assignment_questions: str = Field(sa_column=Column(TEXT), default="[]")  # JSON array of question IDs
+    grade_released: bool = Field(default=False)
+    grade_released_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -60,8 +62,13 @@ class AssignmentProgress(SQLModel, table=True):
     # In roster-managed mode this stores the OIDC subject directly (no local FK dependency).
     student_id: str = Field(index=True)
     answers: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id
+    grading_data: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id with rubric-part scores/comments
     current_question_index: int = Field(default=0)
     submitted: bool = Field(default=False)
     submitted_at: Optional[datetime] = Field(default=None)
+    grade_submitted: bool = Field(default=False)
+    grade_submitted_at: Optional[datetime] = Field(default=None)
+    score_earned: Optional[float] = Field(default=None)
+    score_total: Optional[float] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
