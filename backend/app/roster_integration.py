@@ -103,6 +103,22 @@ def call_roster(
         ) from exc
 
 
+def fetch_research_id(user_id: str) -> Optional[str]:
+    """Fetch the anonymous research_id for a student from the roster service.
+
+    Returns None on any failure — submissions are never blocked by this.
+    """
+    if not roster_management_enabled() or not ROSTER_INTERNAL_SECRET:
+        return None
+    try:
+        result = call_roster("GET", f"/api/users/{user_id}", user_id=user_id)
+        if isinstance(result, dict):
+            return result.get("research_id") or None
+    except Exception:
+        pass
+    return None
+
+
 def delete_local_course(session: Session, course_id: int) -> None:
     # Caliber DB remains the source for assignment content only.
     assignments = session.exec(select(Assignment).where(Assignment.course_id == course_id)).all()

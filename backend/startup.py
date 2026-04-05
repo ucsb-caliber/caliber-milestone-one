@@ -58,6 +58,8 @@ def _run_postgres_migrations() -> None:
         "CREATE INDEX IF NOT EXISTS ix_assignment_course_id ON assignment(course_id)",
         "CREATE INDEX IF NOT EXISTS ix_assignment_progress_assignment_id ON assignment_progress(assignment_id)",
         "CREATE INDEX IF NOT EXISTS ix_assignment_progress_student_id ON assignment_progress(student_id)",
+        "ALTER TABLE assignment_progress ADD COLUMN IF NOT EXISTS research_id VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_assignment_progress_research_id ON assignment_progress(research_id)",
     ]
 
     for statement in additive_statements:

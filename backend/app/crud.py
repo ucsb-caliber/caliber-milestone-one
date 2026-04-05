@@ -256,7 +256,8 @@ def upsert_assignment_progress(
     student_id: str,
     answers: Optional[dict] = None,
     current_question_index: Optional[int] = None,
-    submitted: Optional[bool] = None
+    submitted: Optional[bool] = None,
+    research_id: Optional[str] = None,
 ):
     """Create/update assignment progress for a student."""
     from .models import AssignmentProgress
@@ -266,6 +267,7 @@ def upsert_assignment_progress(
         progress = AssignmentProgress(
             assignment_id=assignment_id,
             student_id=student_id,
+            research_id=research_id,
             answers="{}",
             current_question_index=0,
             submitted=False
@@ -273,6 +275,9 @@ def upsert_assignment_progress(
         session.add(progress)
         session.commit()
         session.refresh(progress)
+    elif research_id and not progress.research_id:
+        # Backfill research_id if not yet set (e.g. pre-existing record)
+        progress.research_id = research_id
 
     if answers is not None:
         progress.answers = json.dumps(answers)

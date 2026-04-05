@@ -44,6 +44,7 @@ from .storage_client import build_pdf_storage_path, upload_pdf_to_storage
 from .roster_integration import (
     call_roster,
     delete_local_course,
+    fetch_research_id,
 )
 
 load_dotenv()
@@ -1976,7 +1977,8 @@ def get_student_assignment_progress(
             student_id=user_id,
             answers={},
             current_question_index=0,
-            submitted=False
+            submitted=False,
+            research_id=fetch_research_id(user_id),
         )
 
     import json
@@ -2077,7 +2079,8 @@ def save_student_assignment_progress(
         student_id=user_id,
         answers=progress_data.answers,
         current_question_index=progress_data.current_question_index,
-        submitted=progress_data.submitted
+        submitted=progress_data.submitted,
+        research_id=fetch_research_id(user_id),
     )
 
     import json
@@ -2411,3 +2414,41 @@ def root():
             "PUT /api/assignments/{assignment_id}/progress"
         ]
     }
+
+
+@app.get("/internal/assignment-progress")
+def internal_assignment_progress(
+    course_id: Optional[int] = None,
+    request: Request = None,
+    session: Session = Depends(get_session),
+):
+    """Research-manager-only endpoint. Returns anonymized assignment progress.
+
+    Strips student_id — only research_id is returned to identify students.
+    Gated by X-Internal-Secret header matching ROSTER_INTERNAL_SECRET env var.
+    """
+    from .roster_integration import ROSTER_INTERNAL_SECRET
+    secret = (ROSTER_INTERNAL_SECRET or "").strip()
+    provided = (request.headers.get("x-internal-secret") or "").strip() if request else ""
+    if not secret or provided != secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    query = select(AssignmentProgress)
+    if course_id is not None:
+        query = query.join(Assignment).where(Assignment.course_id == course_id)
+
+    rows = session.exec(query).all()
+    return [
+        {
+            "research_id": r.research_id,
+            "assignment_id": r.assignment_id,
+            "submitted": r.submitted,
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+            "grade_submitted": r.grade_submitted,
+            "score_earned": r.score_earned,
+            "score_total": r.score_total,
+            "current_question_index": r.current_question_index,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]

@@ -61,6 +61,7 @@ class AssignmentProgress(SQLModel, table=True):
     assignment_id: int = Field(foreign_key="assignment.id", index=True)
     # In roster-managed mode this stores the OIDC subject directly (no local FK dependency).
     student_id: str = Field(index=True)
+    research_id: Optional[str] = Field(default=None, index=True)
     answers: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id
     grading_data: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id with rubric-part scores/comments
     current_question_index: int = Field(default=0)
