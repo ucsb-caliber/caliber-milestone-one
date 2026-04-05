@@ -15,7 +15,13 @@ load_dotenv()
 # OIDC / Keycloak configuration
 OIDC_ISSUER = (os.getenv("OIDC_ISSUER") or "").rstrip("/")
 OIDC_JWKS_URL = (os.getenv("OIDC_JWKS_URL") or "").strip()
-OIDC_AUDIENCE = (os.getenv("OIDC_AUDIENCE") or "").strip() or None
+# CALIBER_OIDC_AUDIENCE should be set in the deployment environment (e.g. "portal").
+# Falls back to the legacy OIDC_AUDIENCE variable for backward compatibility.
+OIDC_AUDIENCE = (
+    os.getenv("CALIBER_OIDC_AUDIENCE")
+    or os.getenv("OIDC_AUDIENCE")
+    or "portal"
+).strip()
 # Optional local-dev bypass for frontend test-mode. Disabled by default and
 # only honored when OIDC validation is not configured for this backend.
 TEST_TOKEN_ALLOWED = os.getenv("TEST_TOKEN_ALLOWED", "false").lower() in ("1", "true", "yes")

@@ -232,6 +232,17 @@ def on_startup():
     backfill_existing_assignment_dates()
 
 
+@app.get("/health")
+def health_check(session: Session = Depends(get_session)):
+    """Health check endpoint. Verifies the service is running and the DB is reachable."""
+    try:
+        session.exec(select(Assignment).limit(1))
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+    return {"status": "ok" if db_status == "ok" else "degraded", "db": db_status}
+
+
 def ensure_assignment_progress_grading_columns():
     """
     Backward-compatible schema guard for grading columns.

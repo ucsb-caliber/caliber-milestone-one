@@ -106,13 +106,20 @@ def call_roster(
 def fetch_research_id(user_id: str) -> Optional[str]:
     """Fetch the anonymous research_id for a student from the roster service.
 
-    Returns None on any failure — submissions are never blocked by this.
+    Only returns a research_id if the student has explicitly consented to
+    research data collection (research_consent is True). Returns None when
+    consent is False or has not yet been answered (None), and on any failure —
+    submissions are never blocked by this.
     """
     if not roster_management_enabled() or not ROSTER_INTERNAL_SECRET:
         return None
     try:
         result = call_roster("GET", f"/api/users/{user_id}", user_id=user_id)
         if isinstance(result, dict):
+            research_consent = result.get("research_consent")
+            # Only tag data with a research_id when the student explicitly consented.
+            if research_consent is not True:
+                return None
             return result.get("research_id") or None
     except Exception:
         pass
