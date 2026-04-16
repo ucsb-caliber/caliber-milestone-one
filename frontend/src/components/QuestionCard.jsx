@@ -110,6 +110,7 @@ export default function QuestionCard({
   showCourseType = true, 
   showSchool = true, 
   showKeywords = true,
+  isStudentPreview = false,
   scale = 1,
 }) {
   let answerChoices = [];
@@ -200,7 +201,7 @@ export default function QuestionCard({
       )}
 
       {/* User Icon in top right corner */}
-      {showUserIcon && userInfo && (
+      {!isStudentPreview && showUserIcon && userInfo && (
         <div style={{ position: 'absolute', top: '1rem', right: '1rem' }}>
           <UserIcon userInfo={userInfo} size={compact ? 32 : 40} />
         </div>
@@ -309,7 +310,7 @@ export default function QuestionCard({
           </div>
         )}
 
-        {showKeywords && keywords.length > 0 && (
+        {!isStudentPreview && showKeywords && keywords.length > 0 && (
           <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
             <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
             {keywords.map((keyword, index) => (
@@ -330,7 +331,7 @@ export default function QuestionCard({
             ))}
           </div>
         )}
-        {tags.length > 0 && (
+        {!isStudentPreview && tags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
             <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Tags:</strong>
             {tags.map((tag, index) => (
@@ -442,20 +443,21 @@ export default function QuestionCard({
                 {answerChoices.map((choice, index) => {
                   const choiceDisplay = formatChoiceForDisplay(choice);
                   const isCorrect = choiceDisplay === String(question.correct_answer ?? '');
+                  const shouldHighlight = !isStudentPreview && isCorrect; //Only show green borders/labels if NOT in student preview
                   return (
                     <div
                       key={index}
                       style={{
                         padding: '0.5rem 0.75rem',
                         borderRadius: '4px',
-                        border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
-                        background: isCorrect ? '#d4edda' : '#f8f9fa',
+                        border: shouldHighlight ? '2px solid #28a745' : '1px solid #ddd',
+                        background: shouldHighlight ? '#d4edda' : '#f8f9fa',
                         fontSize: '0.875rem',
                         position: 'relative'
                       }}
                     >
                       {choiceDisplay}
-                      {isCorrect && (
+                      {shouldHighlight && (
                         <span style={{
                           marginLeft: '0.5rem',
                           color: '#28a745',
@@ -516,10 +518,10 @@ export default function QuestionCard({
                       </div>
                       {levels.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          {levels.map((l, i) => (
+                          {!isStudentPreview && levels.map((l, i) => (
                             <div key={i} style={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.3 }}>
-                              <span style={{ fontWeight: '600', color: '#0369a1' }}>+{l.points || 0}:</span> {l.criteria || '—'}
-                            </div>
+                            <span style={{ fontWeight: '600', color: '#0369a1' }}>+{l.points || 0}:</span> {l.criteria || '—'}
+                          </div>
                           ))}
                         </div>
                       ) : part.rubric_text && (
@@ -579,7 +581,7 @@ export default function QuestionCard({
       })()}
 
       {/* Action buttons */}
-      {(showStudentViewButton || showDeleteButton || showEditButton || showRemoveButton) && (
+      {!isStudentPreview && (showStudentViewButton || showDeleteButton || showEditButton || showRemoveButton) && (
         <div 
           onPointerDown={(e) => e.stopPropagation()}
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}

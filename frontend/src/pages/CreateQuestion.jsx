@@ -636,7 +636,8 @@ export default function CreateQuestion() {
                       padding: '4px 12px', 
                       border: 'none', 
                       background: viewMode === 'split' ? 'white' : 'transparent', 
-                      boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                      boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' ,
+                      fontWeight: viewMode === 'split' ? '700' : '500'
                       }}>
                       Student View
                     </button>
@@ -921,6 +922,7 @@ export default function CreateQuestion() {
                     color: '#64748b', 
                     textTransform: 'uppercase' 
                     }}>Student View</h3>
+                    <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>Live Preview</span>
                 </div>
                 <div style={{ 
                   border: '1px solid #edf2f7', 
@@ -930,7 +932,7 @@ export default function CreateQuestion() {
                   }}>
                   <StudentPreview
                     inline={true}
-                    isPreviewMode={false}
+                    isPreviewMode={true}
                     forceReadOnly={true}
                     showStatusBanner={false}
                     showPrevNextButtons={false}
@@ -941,9 +943,12 @@ export default function CreateQuestion() {
                       text: formData.text,
                       question_type: formData.question_type,
                       answer_choices: (formData.question_type === 'mcq' || formData.question_type === 'true_false')
-                        ? JSON.stringify(formData.answer_choices)
+                        ? JSON.stringify(formData.answer_choices.filter(c => c.trim() !== ''))
                         : JSON.stringify(formData.rubric_parts),
-                      correct_answer: formData.correct_answer
+                      correct_answer: formData.correct_answer,
+                      school: formData.school,
+                      course: formData.course,
+                      course_type: formData.course_type
                     }]}
                   />
                 </div>
