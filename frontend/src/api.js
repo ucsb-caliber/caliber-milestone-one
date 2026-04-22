@@ -47,6 +47,14 @@ async function getAuthHeaders() {
       'Authorization': 'Bearer test-token-1',
     };
   }
+
+  const accessToken = await getValidAccessToken();
+  if (accessToken) {
+    return {
+      'Authorization': `Bearer ${accessToken}`,
+    };
+  }
+
   // Prefer same-origin cookie/session auth by default.
   return {};
 }

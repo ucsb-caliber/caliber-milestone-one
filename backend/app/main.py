@@ -39,7 +39,13 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   delete_unverified_questions_by_source)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
-from .auth import get_current_user, get_current_user_email, get_current_user_name, get_optional_user
+from .auth import (
+    get_current_user,
+    get_current_user_email,
+    get_current_user_name,
+    get_current_user_token,
+    get_optional_user,
+)
 from .storage_client import build_pdf_storage_path, upload_pdf_to_storage
 from .roster_integration import (
     call_roster,
@@ -833,14 +839,25 @@ def _roster_call_for_user(
 ):
     user_email = get_current_user_email()
     user_name = get_current_user_name()
+    user_token = get_current_user_token()
     return call_roster(
         method,
         path,
         user_id=user_id,
         user_email=user_email,
         user_name=user_name,
+        user_token=user_token,
         params=params,
         json_body=json_body,
+    )
+
+
+def _fetch_research_id_for_current_user(user_id: str) -> Optional[str]:
+    return fetch_research_id(
+        user_id,
+        user_email=get_current_user_email(),
+        user_name=get_current_user_name(),
+        user_token=get_current_user_token(),
     )
 
 
@@ -1989,7 +2006,7 @@ def get_student_assignment_progress(
             answers={},
             current_question_index=0,
             submitted=False,
-            research_id=fetch_research_id(user_id),
+            research_id=_fetch_research_id_for_current_user(user_id),
         )
 
     import json
@@ -2091,7 +2108,7 @@ def save_student_assignment_progress(
         answers=progress_data.answers,
         current_question_index=progress_data.current_question_index,
         submitted=progress_data.submitted,
-        research_id=fetch_research_id(user_id),
+        research_id=_fetch_research_id_for_current_user(user_id),
     )
 
     import json
