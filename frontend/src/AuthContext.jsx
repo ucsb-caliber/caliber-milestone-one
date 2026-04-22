@@ -17,6 +17,9 @@ const OIDC_SCOPES = (import.meta.env.VITE_OIDC_SCOPES || 'openid profile email')
 const OIDC_STATE_STORAGE_KEY = 'caliber-oidc-state';
 const OIDC_PKCE_VERIFIER_STORAGE_KEY = 'caliber-oidc-pkce-verifier';
 const OIDC_POST_LOGIN_HASH_STORAGE_KEY = 'caliber-oidc-post-login-hash';
+const OIDC_LOGIN_STARTED_AT_STORAGE_KEY = 'caliber-oidc-login-started-at';
+const OIDC_LOGIN_ERROR_STORAGE_KEY = 'caliber-oidc-login-error';
+const OIDC_LOGIN_RETRY_WINDOW_MS = 15 * 1000;
 
 function portalUrl(path) {
   return PORTAL_BASE_URL ? `${PORTAL_BASE_URL}${path}` : path;
@@ -65,10 +68,35 @@ async function pkceChallengeFromVerifier(verifier) {
 function clearOidcRequestState() {
   sessionStorage.removeItem(OIDC_STATE_STORAGE_KEY);
   sessionStorage.removeItem(OIDC_PKCE_VERIFIER_STORAGE_KEY);
+  sessionStorage.removeItem(OIDC_LOGIN_STARTED_AT_STORAGE_KEY);
+}
+
+function clearOidcLoginError() {
+  sessionStorage.removeItem(OIDC_LOGIN_ERROR_STORAGE_KEY);
+}
+
+function markOidcLoginError(message) {
+  sessionStorage.setItem(OIDC_LOGIN_ERROR_STORAGE_KEY, message || 'OIDC sign in failed');
+}
+
+export function getOidcLoginError() {
+  return sessionStorage.getItem(OIDC_LOGIN_ERROR_STORAGE_KEY) || '';
+}
+
+export function clearOidcLoginStateForRetry() {
+  clearOidcTokens();
+  clearOidcRequestState();
+  clearOidcLoginError();
+}
+
+function directLoginRecentlyStarted() {
+  const startedAt = Number(sessionStorage.getItem(OIDC_LOGIN_STARTED_AT_STORAGE_KEY) || 0);
+  return Boolean(startedAt && Date.now() - startedAt < OIDC_LOGIN_RETRY_WINDOW_MS);
 }
 
 async function startDirectOidcLogin() {
   if (!isDirectOidcEnabled()) return;
+  if (directLoginRecentlyStarted()) return;
 
   const state = randomUrlSafeString(24);
   const verifier = randomUrlSafeString(64);
@@ -76,6 +104,8 @@ async function startDirectOidcLogin() {
 
   sessionStorage.setItem(OIDC_STATE_STORAGE_KEY, state);
   sessionStorage.setItem(OIDC_PKCE_VERIFIER_STORAGE_KEY, verifier);
+  sessionStorage.setItem(OIDC_LOGIN_STARTED_AT_STORAGE_KEY, String(Date.now()));
+  clearOidcLoginError();
 
   const params = new URLSearchParams({
     client_id: OIDC_CLIENT_ID,
@@ -98,7 +128,9 @@ async function handleDirectOidcCallbackIfPresent() {
   if (error) {
     clearOidcTokens();
     clearOidcRequestState();
-    throw new Error(params.get('error_description') || error);
+    const message = params.get('error_description') || error;
+    markOidcLoginError(message);
+    throw new Error(message);
   }
 
   const code = params.get('code');
@@ -110,6 +142,7 @@ async function handleDirectOidcCallbackIfPresent() {
   if (!expectedState || !verifier || state !== expectedState) {
     clearOidcTokens();
     clearOidcRequestState();
+    markOidcLoginError('Invalid OIDC callback state');
     throw new Error('Invalid OIDC callback state');
   }
 
@@ -130,9 +163,12 @@ async function handleDirectOidcCallbackIfPresent() {
   });
 
   if (!response.ok) {
+    const text = await response.text();
     clearOidcTokens();
     clearOidcRequestState();
-    throw new Error('OIDC code exchange failed');
+    const message = `OIDC code exchange failed (${response.status})${text ? `: ${text}` : ''}`;
+    markOidcLoginError(message);
+    throw new Error(message);
   }
 
   const tokenData = await response.json();
@@ -142,6 +178,7 @@ async function handleDirectOidcCallbackIfPresent() {
   });
 
   clearOidcRequestState();
+  clearOidcLoginError();
 
   const cleanedUrl = new URL(window.location.href);
   ['code', 'state', 'session_state', 'iss', 'error', 'error_description'].forEach((key) => {
@@ -199,23 +236,19 @@ async function fetchKeycloakUser() {
       credentials: 'include',
     });
   } else {
-    // Prefer cookie/session auth first so switching portal accounts takes effect immediately.
-    response = await fetch(`${API_BASE}/api/user`, {
-      method: 'GET',
-      headers: {},
-      credentials: 'include',
-    });
-
-    // Fallback to direct OIDC bearer only when cookie auth is unavailable.
-    if (response.status === 401) {
-      const accessToken = await getValidAccessToken();
-      if (accessToken) {
-        response = await fetch(`${API_BASE}/api/user`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${accessToken}` },
-          credentials: 'include',
-        });
-      }
+    const accessToken = await getValidAccessToken();
+    if (accessToken) {
+      response = await fetch(`${API_BASE}/api/user`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        credentials: 'include',
+      });
+    } else {
+      response = await fetch(`${API_BASE}/api/user`, {
+        method: 'GET',
+        headers: {},
+        credentials: 'include',
+      });
     }
   }
 

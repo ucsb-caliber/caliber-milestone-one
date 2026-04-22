@@ -15,13 +15,13 @@ load_dotenv()
 # OIDC / Keycloak configuration
 OIDC_ISSUER = (os.getenv("OIDC_ISSUER") or "").rstrip("/")
 OIDC_JWKS_URL = (os.getenv("OIDC_JWKS_URL") or "").strip()
-# CALIBER_OIDC_AUDIENCE should be set in the deployment environment (e.g. "portal").
-# Falls back to the legacy OIDC_AUDIENCE variable for backward compatibility.
+# Optional audience validation. Set CALIBER_OIDC_AUDIENCE or the legacy
+# OIDC_AUDIENCE when the backend should enforce a specific token audience.
 OIDC_AUDIENCE = (
     os.getenv("CALIBER_OIDC_AUDIENCE")
     or os.getenv("OIDC_AUDIENCE")
-    or "portal"
-).strip()
+    or ""
+).strip() or None
 # Optional local-dev bypass for frontend test-mode. Disabled by default and
 # only honored when OIDC validation is not configured for this backend.
 TEST_TOKEN_ALLOWED = os.getenv("TEST_TOKEN_ALLOWED", "false").lower() in ("1", "true", "yes")
@@ -30,6 +30,7 @@ TEST_TOKEN_USER_ID = os.getenv("TEST_TOKEN_USER_ID", "test-user-1")
 _oidc_jwks_client = None
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
 _current_user_name: ContextVar[Optional[str]] = ContextVar("current_user_name", default=None)
+_current_user_token: ContextVar[Optional[str]] = ContextVar("current_user_token", default=None)
 
 
 def _audience_matches(claims: dict[str, Any], expected: str | None) -> bool:
@@ -174,12 +175,14 @@ async def get_current_user(
     if _is_local_test_token_enabled() and token.strip() == "test-token-1":
         _current_user_email.set(None)
         _current_user_name.set(None)
+        _current_user_token.set(token.strip())
         return TEST_TOKEN_USER_ID
 
     # Verify the token using the common verification function
     user_id, email, full_name = verify_jwt_token(token)
     _current_user_email.set(email)
     _current_user_name.set(full_name)
+    _current_user_token.set(token)
     return user_id
 
 
@@ -209,12 +212,14 @@ async def get_optional_user(
     if _is_local_test_token_enabled() and token.strip() == "test-token-1":
         _current_user_email.set(None)
         _current_user_name.set(None)
+        _current_user_token.set(token.strip())
         return TEST_TOKEN_USER_ID
     
     try:
         user_id, email, full_name = verify_jwt_token(token)
         _current_user_email.set(email)
         _current_user_name.set(full_name)
+        _current_user_token.set(token)
         return user_id
     except Exception:
         return None
@@ -226,3 +231,7 @@ def get_current_user_email() -> Optional[str]:
 
 def get_current_user_name() -> Optional[str]:
     return _current_user_name.get()
+
+
+def get_current_user_token() -> Optional[str]:
+    return _current_user_token.get()
