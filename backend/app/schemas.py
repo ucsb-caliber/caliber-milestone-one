@@ -76,6 +76,7 @@ class QuestionCreate(BaseModel):
     source_pdf: Optional[str] = None
     image_url: Optional[str] = None
     is_verified: bool = False
+    coding_config: Optional[dict] = None
 
 
 class QuestionUpdate(BaseModel):
@@ -96,6 +97,26 @@ class QuestionUpdate(BaseModel):
     source_pdf: Optional[str] = None
     image_url: Optional[str] = None
     is_verified: Optional[bool] = None
+    coding_config: Optional[dict] = None
+
+
+class CodingTestCase(BaseModel):
+    name: str = ""
+    description: str = ""
+    input: str = ""
+    output: str = ""
+    code: str = ""
+
+
+class CodingQuestionConfigResponse(BaseModel):
+    language: str = "cpp"
+    function_signature: str = ""
+    starter_code: str = ""
+    visible_tests: List[CodingTestCase] = []
+    hidden_tests: List[CodingTestCase] = []
+    time_limit_ms: int = 2000
+    memory_limit_mb: int = 256
+    points: float = 1.0
 
 
 
@@ -121,6 +142,7 @@ class QuestionResponse(BaseModel):
     user_id: str
     created_at: datetime
     is_verified: bool
+    coding: Optional[CodingQuestionConfigResponse] = None
 
     class Config:
         from_attributes = True
@@ -475,6 +497,7 @@ class AssignmentQuestionGradeResponse(BaseModel):
     correct_answer: Optional[str] = None
     question_comment: str = ""
     rubric_parts: List[RubricPartGradeResponse] = []
+    coding_result: Optional[dict] = None
 
 
 class AssignmentGradingResponse(BaseModel):
@@ -482,8 +505,39 @@ class AssignmentGradingResponse(BaseModel):
     assignment_title: str
     student_id: str
     grade_submitted: bool
+    raw_score_earned: float = 0.0
     score_earned: float
     score_total: float
     score_percent: float
+    late_penalty_applied: bool = False
+    late_penalty_fraction: float = 0.0
+    late_penalty_points: float = 0.0
     all_questions_fully_graded: bool
     questions: List[AssignmentQuestionGradeResponse] = []
+
+
+class CodingRunRequest(BaseModel):
+    source_code: str = Field(..., min_length=1)
+    language: str = "cpp"
+
+
+class CodingRunTestResult(BaseModel):
+    name: str = ""
+    status: str = ""
+    description: str = ""
+    message: str = ""
+    input: str = ""
+    expected_output: str = ""
+    received_output: str = ""
+
+
+class CodingRunResponse(BaseModel):
+    run_id: Optional[int] = None
+    status: str
+    verdict: str
+    language: str = "cpp"
+    compile_output: str = ""
+    runtime_output: str = ""
+    elapsed_ms: int = 0
+    is_submit_run: bool = False
+    tests: List[CodingRunTestResult] = []

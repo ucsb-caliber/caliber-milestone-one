@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from sqlmodel import Session, delete, func, select
 
-from .models import Question
+from .models import Question, CodingQuestionPrivate, CodingRun
 
 
 def generate_unique_question_qid(session: Session) -> str:
@@ -184,12 +184,73 @@ def update_question(session: Session, question_id: int, user_id: str, title: Opt
     return question
 
 
+def get_coding_question_private(session: Session, question_id: int) -> Optional[CodingQuestionPrivate]:
+    """Get private hidden-test config for a coding question."""
+    return session.get(CodingQuestionPrivate, question_id)
+
+
+def upsert_coding_question_private(session: Session, question_id: int, hidden_tests: str = "[]") -> CodingQuestionPrivate:
+    """Create/update hidden tests for a coding question."""
+    row = get_coding_question_private(session, question_id)
+    if not row:
+        row = CodingQuestionPrivate(question_id=question_id, hidden_tests=hidden_tests or "[]")
+    else:
+        row.hidden_tests = hidden_tests or "[]"
+        row.updated_at = datetime.utcnow()
+
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def create_coding_run(
+    session: Session,
+    *,
+    assignment_id: Optional[int],
+    question_id: int,
+    student_id: str,
+    language: str,
+    source_code: str,
+    status: str,
+    verdict: str,
+    compile_output: str,
+    runtime_output: str,
+    result_json: str,
+    is_submit_run: bool,
+) -> CodingRun:
+    """Persist one coding execution attempt."""
+    row = CodingRun(
+        assignment_id=assignment_id,
+        question_id=question_id,
+        student_id=student_id,
+        language=language,
+        source_code=source_code,
+        status=status,
+        verdict=verdict,
+        compile_output=compile_output,
+        runtime_output=runtime_output,
+        result_json=result_json,
+        is_submit_run=is_submit_run,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 def delete_question(session: Session, question_id: int, user_id: str) -> bool:
     """Delete a question from the database. Only the owner can delete."""
     question = session.get(Question, question_id)
     if not question or question.user_id != user_id:
         return False
-    
+
+    private_row = session.get(CodingQuestionPrivate, question_id)
+    if private_row:
+        session.delete(private_row)
+    coding_runs = session.exec(select(CodingRun).where(CodingRun.question_id == question_id)).all()
+    for row in coding_runs:
+        session.delete(row)
     session.delete(question)
     session.commit()
     return True
@@ -271,6 +332,7 @@ def upsert_assignment_progress(
     assignment_id: int,
     student_id: str,
     answers: Optional[dict] = None,
+    grading_data: Optional[dict] = None,
     current_question_index: Optional[int] = None,
     submitted: Optional[bool] = None,
     research_id: Optional[str] = None,
@@ -297,6 +359,8 @@ def upsert_assignment_progress(
 
     if answers is not None:
         progress.answers = json.dumps(answers)
+    if grading_data is not None:
+        progress.grading_data = json.dumps(grading_data)
     if current_question_index is not None:
         progress.current_question_index = max(0, current_question_index)
     if submitted is not None:

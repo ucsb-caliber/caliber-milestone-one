@@ -30,7 +30,9 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      AssignmentProgressResponse, AssignmentProgressUpdate,
                      AssignmentSubmissionStatusResponse, AssignmentStudentSubmissionStatus,
                      AssignmentGradingResponse, AssignmentGradeUpsertRequest,
-                     AssignmentQuestionGradeResponse, RubricPartGradeResponse, RubricLevelCriteria)
+                     AssignmentQuestionGradeResponse, RubricPartGradeResponse, RubricLevelCriteria,
+                     CodingQuestionConfigResponse, CodingTestCase,
+                     CodingRunRequest, CodingRunResponse, CodingRunTestResult)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
                   get_draft_questions, get_draft_questions_count,
                   get_questions_by_ids, update_question, delete_question,
@@ -38,7 +40,8 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   delete_assignment, get_assignment_progress, upsert_assignment_progress,
                   list_assignment_progress_for_students,
                   update_assignment_grading,
-                  delete_unverified_questions_by_source)
+                  delete_unverified_questions_by_source, get_coding_question_private,
+                  upsert_coding_question_private, create_coding_run)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
 from .auth import (
@@ -53,6 +56,13 @@ from .roster_integration import (
     call_roster,
     delete_local_course,
     fetch_research_id,
+)
+from .coding import (
+    normalize_coding_public_config,
+    normalize_coding_tests,
+    serialize_coding_public_config,
+    serialize_coding_hidden_tests,
+    execute_coding_request,
 )
 from .variant_gen import generate_variant, question_to_variant_gen_db
 
@@ -412,6 +422,12 @@ def _late_due_deadline_local(assignment: Assignment) -> Optional[datetime]:
     )
 
 
+def _late_due_deadline_utc(assignment: Assignment) -> Optional[datetime]:
+    """Return the late-submission deadline as a UTC event timestamp."""
+    deadline_local = _late_due_deadline_local(assignment)
+    return deadline_local.astimezone(timezone.utc) if deadline_local else None
+
+
 def _has_late_due_passed(assignment: Assignment, *, now: Optional[datetime] = None) -> bool:
     current = now or datetime.now(PACIFIC_TIMEZONE)
     if current.tzinfo is None:
@@ -452,6 +468,162 @@ def _safe_json_loads(raw: Any, default: Any):
     except Exception:
         return default
 
+
+def _is_coding_question_type(question_type: str) -> bool:
+    return (question_type or "").strip().lower() == "coding"
+
+
+def _public_coding_config_from_question(question: Question) -> dict[str, Any]:
+    if not _is_coding_question_type(question.question_type or ""):
+        return {}
+    return normalize_coding_public_config(question.answer_choices)
+
+
+def _coding_response_from_question(
+    session: Session,
+    question: Question,
+    *,
+    include_hidden_tests: bool = False,
+) -> Optional[CodingQuestionConfigResponse]:
+    if not _is_coding_question_type(question.question_type or ""):
+        return None
+
+    public_config = _public_coding_config_from_question(question)
+    hidden_tests = []
+    if include_hidden_tests:
+        private_row = get_coding_question_private(session, question.id)
+        hidden_tests = normalize_coding_tests(private_row.hidden_tests if private_row else "[]")
+
+    return CodingQuestionConfigResponse(
+        language="cpp",
+        function_signature=str(public_config.get("function_signature") or ""),
+        starter_code=str(public_config.get("starter_code") or ""),
+        visible_tests=[CodingTestCase(**test) for test in public_config.get("visible_tests") or []],
+        hidden_tests=[CodingTestCase(**test) for test in hidden_tests],
+        time_limit_ms=int(public_config.get("time_limit_ms") or 2000),
+        memory_limit_mb=int(public_config.get("memory_limit_mb") or 256),
+        points=float(public_config.get("points") or 1.0),
+    )
+
+
+def _build_question_response(
+    session: Session,
+    question: Question,
+    *,
+    include_hidden_coding: bool = False,
+) -> QuestionResponse:
+    return QuestionResponse(
+        id=question.id,
+        qid=question.qid,
+        title=question.title,
+        text=question.text,
+        tags=question.tags,
+        keywords=question.keywords,
+        school=question.school,
+        user_school=question.user_school,
+        course=question.course,
+        course_type=question.course_type,
+        question_type=question.question_type,
+        blooms_taxonomy=question.blooms_taxonomy,
+        answer_choices=question.answer_choices,
+        correct_answer=question.correct_answer,
+        pdf_url=question.pdf_url,
+        source_pdf=question.source_pdf,
+        image_url=question.image_url,
+        user_id=question.user_id,
+        created_at=question.created_at,
+        is_verified=question.is_verified,
+        coding=_coding_response_from_question(
+            session,
+            question,
+            include_hidden_tests=include_hidden_coding,
+        ),
+    )
+
+
+def _normalize_coding_answer(raw_answer: Any) -> dict[str, str]:
+    parsed = _safe_json_loads(raw_answer, {})
+    if not isinstance(parsed, dict):
+        return {"language": "cpp", "source_code": ""}
+    return {
+        "language": str(parsed.get("language") or "cpp").strip().lower() or "cpp",
+        "source_code": str(parsed.get("source_code") or ""),
+    }
+
+
+def _execute_coding_for_question(
+    *,
+    session: Session,
+    question: Question,
+    source_code: str,
+    use_hidden_tests: bool,
+) -> dict[str, Any]:
+    public_config = _public_coding_config_from_question(question)
+    hidden_tests = []
+    if use_hidden_tests:
+        private_row = get_coding_question_private(session, question.id)
+        hidden_tests = normalize_coding_tests(private_row.hidden_tests if private_row else "[]")
+    tests = hidden_tests if use_hidden_tests else list(public_config.get("visible_tests") or [])
+
+    return execute_coding_request(
+        {
+            "language": str(public_config.get("language") or "cpp"),
+            "source_code": source_code,
+            "tests": tests,
+            "time_limit_ms": int(public_config.get("time_limit_ms") or 2000),
+            "memory_limit_mb": int(public_config.get("memory_limit_mb") or 256),
+        }
+    )
+
+
+def _coding_grading_result(question: Question, execution_result: dict[str, Any]) -> dict[str, Any]:
+    public_config = _public_coding_config_from_question(question)
+    points = max(0.0, float(public_config.get("points") or 1.0))
+    tests = execution_result.get("tests") or []
+    passed = sum(1 for test in tests if str(test.get("status") or "") == "passed")
+    total = len(tests)
+    verdict = str(execution_result.get("verdict") or "")
+    earned = points if verdict == "accepted" and total == 0 else (0.0 if total == 0 else round(points * (passed / total), 4))
+    return {
+        "status": str(execution_result.get("status") or ""),
+        "verdict": verdict,
+        "compile_output": str(execution_result.get("compile_output") or ""),
+        "runtime_output": str(execution_result.get("runtime_output") or ""),
+        "elapsed_ms": int(execution_result.get("elapsed_ms") or 0),
+        "tests": tests,
+        "passed_count": passed,
+        "total_count": total,
+        "earned_points": earned,
+        "max_points": points,
+    }
+
+
+def _validate_coding_authoring_payload(coding_payload: Any) -> None:
+    public_config = normalize_coding_public_config(coding_payload)
+    hidden_tests = normalize_coding_tests((coding_payload or {}).get("hidden_tests") if isinstance(coding_payload, dict) else [])
+
+    if not str(public_config.get("function_signature") or "").strip():
+        raise HTTPException(status_code=400, detail="Coding questions need a function signature.")
+    if not str(public_config.get("starter_code") or "").strip():
+        raise HTTPException(status_code=400, detail="Coding questions need starter code.")
+
+    visible_tests = list(public_config.get("visible_tests") or [])
+    if not visible_tests:
+        raise HTTPException(status_code=400, detail="Coding questions need at least one visible test.")
+    if not hidden_tests:
+        raise HTTPException(status_code=400, detail="Coding questions need at least one hidden test.")
+
+    for index, test in enumerate(visible_tests, start=1):
+        if not str(test.get("input") or "").strip():
+            raise HTTPException(status_code=400, detail=f"Visible test {index} needs a sample input.")
+        if not str(test.get("output") or "").strip():
+            raise HTTPException(status_code=400, detail=f"Visible test {index} needs an expected output.")
+        if not str(test.get("code") or "").strip():
+            raise HTTPException(status_code=400, detail=f"Visible test {index} needs an autograder check.")
+
+    for index, test in enumerate(hidden_tests, start=1):
+        if not str(test.get("code") or "").strip():
+            raise HTTPException(status_code=400, detail=f"Hidden test {index} needs an autograder check.")
 
 def _variant_question_type(variant_type: str) -> str:
     vt = (variant_type or "").strip().upper()
@@ -573,7 +745,7 @@ def _save_variant_draft_question(
 
 def _is_auto_graded_question(question: Question) -> bool:
     qtype = (question.question_type or "").strip().lower()
-    return qtype in {"mcq", "true_false"}
+    return qtype in {"mcq", "true_false", "coding"}
 
 
 def _is_manual_question(question: Question) -> bool:
@@ -587,6 +759,9 @@ def _question_max_points(question: Question) -> float:
 
     if qtype in {"mcq", "true_false"}:
         return 1.0
+    if qtype == "coding":
+        config = _public_coding_config_from_question(question)
+        return max(0.0, float(config.get("points") or 1.0)) or 1.0
 
     if isinstance(answer_choices, list) and answer_choices and isinstance(answer_choices[0], dict):
         total = 0.0
@@ -664,6 +839,7 @@ def _build_grading_response(
     answers_by_question_id: dict[str, Any],
     grading_data: dict[str, Any],
     grade_submitted: bool,
+    submitted_at: Optional[datetime],
     stored_score_earned: Optional[float],
     stored_score_total: Optional[float],
 ) -> AssignmentGradingResponse:
@@ -680,9 +856,14 @@ def _build_grading_response(
         question_comment = str(question_grade.get("question_comment") or "")
 
         if _is_auto_graded_question(question):
-            normalized_student = str(student_answer).strip().lower() if student_answer is not None else ""
-            normalized_correct = str(question.correct_answer or "").strip().lower()
-            earned = max_points if normalized_student and normalized_student == normalized_correct else 0.0
+            coding_result = None
+            if _is_coding_question_type(question.question_type or ""):
+                coding_result = question_grade.get("coding_result", {}) if isinstance(question_grade, dict) else {}
+                earned = float(coding_result.get("earned_points") or 0.0)
+            else:
+                normalized_student = str(student_answer).strip().lower() if student_answer is not None else ""
+                normalized_correct = str(question.correct_answer or "").strip().lower()
+                earned = max_points if normalized_student and normalized_student == normalized_correct else 0.0
             total_earned += earned
             question_cards.append(
                 AssignmentQuestionGradeResponse(
@@ -696,9 +877,10 @@ def _build_grading_response(
                     requires_manual_grading=False,
                     is_fully_graded=True,
                     student_answer="" if student_answer is None else json.dumps(student_answer) if isinstance(student_answer, (dict, list)) else str(student_answer),
-                    correct_answer=question.correct_answer or "",
+                    correct_answer=None if _is_coding_question_type(question.question_type or "") else (question.correct_answer or ""),
                     question_comment=question_comment,
                     rubric_parts=[],
+                    coding_result=coding_result,
                 )
             )
             continue
@@ -727,18 +909,26 @@ def _build_grading_response(
         )
 
     all_fully_graded = all(card.is_fully_graded for card in question_cards)
+    raw_score_earned = total_earned
     final_score_earned = float(stored_score_earned) if (grade_submitted and stored_score_earned is not None) else total_earned
     final_score_total = float(stored_score_total) if (grade_submitted and stored_score_total is not None) else total_points
     score_percent = (final_score_earned / final_score_total * 100.0) if final_score_total > 0 else 0.0
+    late_penalty_fraction = _late_penalty_fraction(assignment.late_policy_id) if _is_submission_late(assignment, submitted_at) else 0.0
+    late_penalty_points = max(0.0, raw_score_earned - final_score_earned) if late_penalty_fraction > 0 else 0.0
+    late_penalty_applied = late_penalty_points > 1e-6
 
     return AssignmentGradingResponse(
         assignment_id=assignment.id,
         assignment_title=assignment.title,
         student_id=student_id,
         grade_submitted=grade_submitted,
+        raw_score_earned=round(raw_score_earned, 4),
         score_earned=round(final_score_earned, 4),
         score_total=round(final_score_total, 4),
         score_percent=round(score_percent, 4),
+        late_penalty_applied=late_penalty_applied,
+        late_penalty_fraction=round(late_penalty_fraction, 6),
+        late_penalty_points=round(late_penalty_points, 4),
         all_questions_fully_graded=all_fully_graded,
         questions=question_cards,
     )
@@ -857,7 +1047,7 @@ def _sync_assignment_post_due_grading(
         answers = _safe_json_loads(progress.answers if progress else "{}", {})
         grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
         normalized_grading_data = grading_data if isinstance(grading_data, dict) else {}
-        auto_graded_at = assignment.due_date_hard or finalized_at
+        auto_graded_at = _late_due_deadline_utc(assignment) or finalized_at
 
         next_score_earned: Optional[float] = None
         next_score_total: Optional[float] = None
@@ -875,6 +1065,7 @@ def _sync_assignment_post_due_grading(
                 answers_by_question_id={},
                 grading_data=normalized_grading_data,
                 grade_submitted=False,
+                submitted_at=None,
                 stored_score_earned=None,
                 stored_score_total=None,
             )
@@ -889,6 +1080,7 @@ def _sync_assignment_post_due_grading(
                 answers_by_question_id=answers if isinstance(answers, dict) else {},
                 grading_data=normalized_grading_data,
                 grade_submitted=False,
+                submitted_at=progress.submitted_at if progress else None,
                 stored_score_earned=None,
                 stored_score_total=None,
             )
@@ -1407,7 +1599,7 @@ def list_questions(
     )
     
     return QuestionListResponse(
-        questions=questions,
+        questions=[_build_question_response(session, question) for question in questions],
         total=total
     )
 
@@ -1424,7 +1616,7 @@ def list_draft_questions(
     total = get_draft_questions_count(session, user_id=user_id)
 
     return QuestionListResponse(
-        questions=questions,
+        questions=[_build_question_response(session, question) for question in questions],
         total=total
     )
 
@@ -1442,7 +1634,7 @@ def list_all_questions(
     total = session.exec(select(func.count(Question.id))).one()
     
     return QuestionListResponse(
-        questions=questions,
+        questions=[_build_question_response(session, question) for question in questions],
         total=total
     )
 
@@ -1458,7 +1650,11 @@ def get_question_by_id(
     question = get_question(session, question_id, user_id=None)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    return question
+    return _build_question_response(
+        session,
+        question,
+        include_hidden_coding=question.user_id == user_id,
+    )
 
 
 @app.post("/api/questions/{question_id}/variants", response_model=QuestionListResponse, status_code=201)
@@ -1521,7 +1717,10 @@ def generate_question_variants(
         for i, variant in enumerate(generated_variants, start=1)
     ]
 
-    return QuestionListResponse(questions=drafts, total=len(drafts))
+    return QuestionListResponse(
+        questions=[_build_question_response(session, draft) for draft in drafts],
+        total=len(drafts),
+    )
 
 
 @app.post("/api/questions/batch", response_model=QuestionListResponse)
@@ -1533,7 +1732,7 @@ def get_questions_batch(
     """Get multiple questions by IDs in a single request. More efficient than individual calls."""
     questions = get_questions_by_ids(session, question_ids)
     return QuestionListResponse(
-        questions=questions,
+        questions=[_build_question_response(session, question) for question in questions],
         total=len(questions)
     )
 
@@ -1552,6 +1751,7 @@ def create_new_question(
     blooms_taxonomy: str = Form(""),
     answer_choices: str = Form("[]"),
     correct_answer: str = Form(""),
+    coding_config: str = Form(""),
     pdf_url: Optional[str] = Form(None),
     source_pdf: Optional[str] = Form(None),
     image_url: Optional[str] = Form(None),
@@ -1567,6 +1767,14 @@ def create_new_question(
     """
     # Manual questions (without a source PDF) are verified by default.
     is_verified = source_pdf is None
+    coding_payload = _safe_json_loads(coding_config, {})
+    normalized_answer_choices = answer_choices
+    normalized_correct_answer = correct_answer
+    if _is_coding_question_type(question_type):
+        _validate_coding_authoring_payload(coding_payload)
+        public_coding = normalize_coding_public_config(coding_payload)
+        normalized_answer_choices = serialize_coding_public_config(public_coding)
+        normalized_correct_answer = "coding"
 
     question = create_question(
         session=session,
@@ -1580,15 +1788,21 @@ def create_new_question(
         course_type=course_type,
         question_type=question_type,
         blooms_taxonomy=blooms_taxonomy,
-        answer_choices=answer_choices,
-        correct_answer=correct_answer,
+        answer_choices=normalized_answer_choices,
+        correct_answer=normalized_correct_answer,
         pdf_url=pdf_url,
         source_pdf=source_pdf,
         image_url=image_url,
         user_id=user_id,
         is_verified=is_verified
     )
-    return question
+    if _is_coding_question_type(question_type):
+        upsert_coding_question_private(
+            session,
+            question.id,
+            serialize_coding_hidden_tests((coding_payload or {}).get("hidden_tests")),
+        )
+    return _build_question_response(session, question, include_hidden_coding=True)
 
 
 @app.put("/api/questions/{question_id}", response_model=QuestionResponse)
@@ -1621,7 +1835,43 @@ def update_existing_question(
     )
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    return question
+
+    if question_data.question_type is not None and _is_coding_question_type(question_data.question_type):
+        coding_payload = question_data.coding_config or {}
+        _validate_coding_authoring_payload(coding_payload)
+        question = update_question(
+            session=session,
+            question_id=question_id,
+            user_id=user_id,
+            answer_choices=serialize_coding_public_config(coding_payload),
+            correct_answer="coding",
+        )
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        upsert_coding_question_private(
+            session,
+            question.id,
+            serialize_coding_hidden_tests(coding_payload.get("hidden_tests")),
+        )
+    elif question.question_type == "coding" and question_data.coding_config is not None:
+        coding_payload = question_data.coding_config or {}
+        _validate_coding_authoring_payload(coding_payload)
+        question = update_question(
+            session=session,
+            question_id=question_id,
+            user_id=user_id,
+            answer_choices=serialize_coding_public_config(coding_payload),
+            correct_answer="coding",
+        )
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+        upsert_coding_question_private(
+            session,
+            question.id,
+            serialize_coding_hidden_tests(coding_payload.get("hidden_tests")),
+        )
+
+    return _build_question_response(session, question, include_hidden_coding=True)
 
 
 @app.delete("/api/questions/{question_id}", status_code=204)
@@ -2210,7 +2460,6 @@ def get_student_assignment_progress(
             research_id=_fetch_research_id_for_current_user(user_id),
         )
 
-    import json
     return AssignmentProgressResponse(
         assignment_id=progress.assignment_id,
         student_id=progress.student_id,
@@ -2247,7 +2496,6 @@ def get_my_assignment_grade(
     student_ids = list(course_payload.get("student_ids") or [])
     if not user_is_instructor and user_id not in student_ids:
         raise HTTPException(status_code=404, detail="You are not enrolled in this course")
-
     if not assignment.grade_released and not user_is_instructor:
         raise HTTPException(
             status_code=403,
@@ -2267,6 +2515,7 @@ def get_my_assignment_grade(
         answers_by_question_id=answers if isinstance(answers, dict) else {},
         grading_data=grading_data if isinstance(grading_data, dict) else {},
         grade_submitted=bool(progress and progress.grade_submitted),
+        submitted_at=progress.submitted_at if progress else None,
         stored_score_earned=progress.score_earned if progress else None,
         stored_score_total=progress.score_total if progress else None,
     )
@@ -2302,17 +2551,62 @@ def save_student_assignment_progress(
             detail="Assignment is closed because the late due date has passed.",
         )
 
+    existing_progress = get_assignment_progress(session, assignment_id, user_id)
+    existing_answers = _safe_json_loads(existing_progress.answers if existing_progress else "{}", {})
+    merged_answers = dict(existing_answers if isinstance(existing_answers, dict) else {})
+    if isinstance(progress_data.answers, dict):
+        merged_answers.update(progress_data.answers)
+
+    existing_grading_data = _safe_json_loads(existing_progress.grading_data if existing_progress else "{}", {})
+    merged_grading_data = dict(existing_grading_data if isinstance(existing_grading_data, dict) else {})
+
+    if progress_data.submitted:
+        question_ids = _safe_json_loads(assignment.assignment_questions, [])
+        questions = get_questions_by_ids(session, question_ids)
+        for question in questions:
+            if not _is_coding_question_type(question.question_type or ""):
+                continue
+            qid = str(question.id)
+            answer_payload = _normalize_coding_answer(merged_answers.get(qid))
+            source_code = answer_payload.get("source_code") or ""
+            if not source_code.strip():
+                continue
+            execution_result = _execute_coding_for_question(
+                session=session,
+                question=question,
+                source_code=source_code,
+                use_hidden_tests=True,
+            )
+            grading_snapshot = _coding_grading_result(question, execution_result)
+            merged_grading_data.setdefault(qid, {})
+            merged_grading_data[qid]["coding_result"] = grading_snapshot
+            run_row = create_coding_run(
+                session,
+                assignment_id=assignment_id,
+                question_id=question.id,
+                student_id=user_id,
+                language=answer_payload.get("language") or "cpp",
+                source_code=source_code,
+                status=str(execution_result.get("status") or ""),
+                verdict=str(execution_result.get("verdict") or ""),
+                compile_output=str(execution_result.get("compile_output") or ""),
+                runtime_output=str(execution_result.get("runtime_output") or ""),
+                result_json=json.dumps(execution_result),
+                is_submit_run=True,
+            )
+            merged_grading_data[qid]["latest_run_id"] = run_row.id
+
     progress = upsert_assignment_progress(
         session=session,
         assignment_id=assignment_id,
         student_id=user_id,
-        answers=progress_data.answers,
+        answers=merged_answers if (progress_data.answers is not None or progress_data.submitted) else None,
+        grading_data=merged_grading_data if progress_data.submitted else None,
         current_question_index=progress_data.current_question_index,
         submitted=progress_data.submitted,
         research_id=_fetch_research_id_for_current_user(user_id),
     )
 
-    import json
     return AssignmentProgressResponse(
         assignment_id=progress.assignment_id,
         student_id=progress.student_id,
@@ -2325,6 +2619,71 @@ def save_student_assignment_progress(
         score_earned=progress.score_earned if can_view_grade else None,
         score_total=progress.score_total if can_view_grade else None,
         updated_at=progress.updated_at
+    )
+
+
+@app.post("/api/assignments/{assignment_id}/questions/{question_id}/coding/run", response_model=CodingRunResponse)
+def run_assignment_coding_question(
+    assignment_id: int,
+    question_id: int,
+    payload: CodingRunRequest,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Run visible coding tests for one assignment question."""
+    assignment = get_assignment(session, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{assignment.course_id}",
+    )
+    user_is_instructor = course_payload.get("instructor_id") == user_id
+    student_ids = list(course_payload.get("student_ids") or [])
+    if not user_is_instructor and user_id not in student_ids:
+        raise HTTPException(status_code=404, detail="You are not enrolled in this course")
+
+    question_ids = _safe_json_loads(assignment.assignment_questions, [])
+    if int(question_id) not in question_ids:
+        raise HTTPException(status_code=404, detail="Question is not part of this assignment")
+
+    question = get_question(session, question_id, user_id=None)
+    if not question or not _is_coding_question_type(question.question_type or ""):
+        raise HTTPException(status_code=404, detail="Coding question not found")
+
+    execution_result = _execute_coding_for_question(
+        session=session,
+        question=question,
+        source_code=payload.source_code,
+        use_hidden_tests=False,
+    )
+    run_row = create_coding_run(
+        session,
+        assignment_id=assignment_id,
+        question_id=question.id,
+        student_id=user_id,
+        language=(payload.language or "cpp").strip().lower() or "cpp",
+        source_code=payload.source_code,
+        status=str(execution_result.get("status") or ""),
+        verdict=str(execution_result.get("verdict") or ""),
+        compile_output=str(execution_result.get("compile_output") or ""),
+        runtime_output=str(execution_result.get("runtime_output") or ""),
+        result_json=json.dumps(execution_result),
+        is_submit_run=False,
+    )
+    return CodingRunResponse(
+        run_id=run_row.id,
+        status=str(execution_result.get("status") or ""),
+        verdict=str(execution_result.get("verdict") or ""),
+        language=(payload.language or "cpp").strip().lower() or "cpp",
+        compile_output=str(execution_result.get("compile_output") or ""),
+        runtime_output=str(execution_result.get("runtime_output") or ""),
+        elapsed_ms=int(execution_result.get("elapsed_ms") or 0),
+        is_submit_run=False,
+        tests=[CodingRunTestResult(**test) for test in (execution_result.get("tests") or [])],
     )
 
 
@@ -2382,7 +2741,7 @@ def get_assignment_submission_status(
         if timing_status == "not_submitted":
             if assignment_phase in {"ungraded", "graded"}:
                 grade_submitted = True
-                grade_submitted_at = grade_submitted_at or assignment.due_date_hard
+                grade_submitted_at = grade_submitted_at or _late_due_deadline_utc(assignment)
                 score_earned = 0.0 if score_earned is None else score_earned
                 score_total = assignment_total_points if score_total is None else score_total
                 score_percent = 0.0 if assignment_total_points > 0 else None
@@ -2451,6 +2810,7 @@ def get_assignment_grading_state(
         answers_by_question_id=answers if isinstance(answers, dict) else {},
         grading_data=grading_data if isinstance(grading_data, dict) else {},
         grade_submitted=bool(progress and progress.grade_submitted),
+        submitted_at=progress.submitted_at if progress else None,
         stored_score_earned=progress.score_earned if progress else None,
         stored_score_total=progress.score_total if progress else None,
     )
@@ -2510,6 +2870,7 @@ def upsert_assignment_grading_state(
         answers_by_question_id=answers if isinstance(answers, dict) else {},
         grading_data=existing_grading_data,
         grade_submitted=False,
+        submitted_at=progress.submitted_at if progress else None,
         stored_score_earned=None,
         stored_score_total=None,
     )
@@ -2552,6 +2913,7 @@ def upsert_assignment_grading_state(
         answers_by_question_id=answers if isinstance(answers, dict) else {},
         grading_data=existing_grading_data,
         grade_submitted=bool(updated_progress.grade_submitted),
+        submitted_at=updated_progress.submitted_at,
         stored_score_earned=updated_progress.score_earned,
         stored_score_total=updated_progress.score_total,
     )

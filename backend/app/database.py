@@ -18,12 +18,14 @@ else:
 
 def create_db_and_tables():
     """Create core Caliber persistence tables."""
-    from .models import Question, Assignment, AssignmentProgress
+    from .models import Question, CodingQuestionPrivate, CodingRun, Assignment, AssignmentProgress
 
     SQLModel.metadata.create_all(
         engine,
         tables=[
             Question.__table__,
+            CodingQuestionPrivate.__table__,
+            CodingRun.__table__,
             Assignment.__table__,
             AssignmentProgress.__table__,
         ],

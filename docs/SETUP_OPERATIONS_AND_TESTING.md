@@ -32,11 +32,21 @@ Optional backend env values:
 - `M2_TESSERACT_TIMEOUT_SEC` (default: `45`, per-page OCR timeout safeguard)
 - `M2_RENDER_DPI` (default: `170`, lower = faster PDF rasterization/OCR)
 - `UPLOAD_DIR` (default: `uploads`)
+- `CODING_RUNNER_URL` (leave blank for localhost dev; set to `http://coding-runner:8010` in Docker/server mode)
+- `CODING_RUNNER_USE_DOCKER` (runner-only; set `true` when the dedicated runner should launch fresh Docker containers per execution)
+- `CODING_RUNNER_CPP_IMAGE` (runner-only C++ image, default `gcc:14`)
 - `LLM_CLEANUP_ENABLED`, `LLM_CLEANUP_BASE_URL`, `LLM_CLEANUP_MODEL`, `LLM_CLEANUP_TIMEOUT_SEC`
 - `LLM_CLEANUP_MODEL_FALLBACKS` (comma-separated model fallback chain)
 - `LLM_CLEANUP_FORCE` (run LLM cleanup for every question)
 - `LLM_CLEANUP_STYLE_GUIDE_PATH` (override markdown style-guide file path)
 - `LLM_CLEANUP_DEBUG` (emit formatter logs)
+
+Coding-question execution modes:
+
+- Localhost dev: leave `CODING_RUNNER_URL` blank and run only the backend.
+- Server / Docker: use the root `docker-compose.yml` so the backend can call the dedicated `coding-runner` service over Docker networking.
+
+See `docs/CODING_RUNNER.md` for the exact local-vs-server setup.
 
 ### Frontend
 ```bash
