@@ -84,6 +84,7 @@ export default function StudentGradeReport({ assignmentId, courseId, assignmentT
 
   const questions = data.questions || [];
   const scorePercent = data.score_total > 0 ? Math.round((data.score_earned / data.score_total) * 100) : 0;
+  const latePenaltyPercent = Math.round((Number(data.late_penalty_fraction || 0) * 100) * 100) / 100;
 
   return (
     <div style={styles.container}>
@@ -100,6 +101,12 @@ export default function StudentGradeReport({ assignmentId, courseId, assignmentT
         <div style={styles.totalValue}>
           {Math.round(data.score_earned * 100) / 100} / {Math.round(data.score_total * 100) / 100} ({scorePercent}%)
         </div>
+        {data.late_penalty_applied && (
+          <div style={{ marginTop: '0.65rem', color: '#92400e', fontSize: '0.92rem', fontWeight: 600 }}>
+            Raw score before late penalty: {Math.round(Number(data.raw_score_earned || 0) * 100) / 100} / {Math.round(data.score_total * 100) / 100}
+            {' '}and late policy reduced {Math.round(Number(data.late_penalty_points || 0) * 100) / 100} points ({latePenaltyPercent}%).
+          </div>
+        )}
       </div>
 
       <h2 style={styles.sectionTitle}>Question breakdown</h2>
@@ -115,10 +122,71 @@ export default function StudentGradeReport({ assignmentId, courseId, assignmentT
             </div>
           )}
           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.25rem' }}>Your answer</div>
-          <p style={{ margin: '0 0 0.5rem 0', whiteSpace: 'pre-wrap', color: '#374151', fontSize: '0.9rem' }}>{asDisplayAnswer(q.student_answer)}</p>
+          {q.question_type === 'coding' ? (
+            <pre style={{ margin: '0 0 0.5rem 0', whiteSpace: 'pre-wrap', color: '#e5e7eb', background: '#0f172a', padding: '0.85rem', borderRadius: '8px', overflowX: 'auto', fontSize: '0.85rem' }}>
+              {(() => {
+                try {
+                  const parsed = JSON.parse(q.student_answer || '{}');
+                  return parsed?.source_code || '';
+                } catch {
+                  return q.student_answer || '';
+                }
+              })()}
+            </pre>
+          ) : (
+            <p style={{ margin: '0 0 0.5rem 0', whiteSpace: 'pre-wrap', color: '#374151', fontSize: '0.9rem' }}>{asDisplayAnswer(q.student_answer)}</p>
+          )}
 
           {q.is_auto_graded && (
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#065f46', fontWeight: 600 }}>Auto-graded (MCQ / T/F)</p>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#065f46', fontWeight: 600 }}>
+              {q.question_type === 'coding' ? 'Auto-graded (coding tests)' : 'Auto-graded (MCQ / T/F)'}
+            </p>
+          )}
+
+          {q.coding_result && (
+            <div style={styles.rubricBlock}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', marginBottom: '0.5rem' }}>
+                Coding test results
+              </div>
+              {(q.coding_result.tests || []).map((test, idx2) => (
+                <div key={`${test.name}-${idx2}`} style={styles.rubricPart}>
+                  <strong>{test.name || `Test ${idx2 + 1}`}</strong>
+                  <div style={{ marginTop: '0.2rem', color: test.status === 'passed' ? '#166534' : '#991b1b', fontWeight: 600 }}>
+                    {test.status === 'passed' ? 'Passed' : 'Failed'}
+                  </div>
+                  {test.description && (
+                    <div style={{ marginTop: '0.2rem', color: '#6b7280', fontSize: '0.8rem' }}>{test.description}</div>
+                  )}
+                  {test.message && (
+                    <div style={{ marginTop: '0.2rem', color: '#374151', fontSize: '0.8rem' }}>{test.message}</div>
+                  )}
+                  {(test.expected_output || test.received_output) && (
+                    <div style={{ marginTop: '0.35rem', display: 'grid', gap: '0.35rem' }}>
+                      {test.expected_output && (
+                        <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                          <strong>Expected:</strong> {test.expected_output}
+                        </div>
+                      )}
+                      {test.received_output && (
+                        <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                          <strong>Received:</strong> {test.received_output}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {q.coding_result.compile_output && (
+                <pre style={{ whiteSpace: 'pre-wrap', color: '#e5e7eb', background: '#0f172a', padding: '0.85rem', borderRadius: '8px', overflowX: 'auto', fontSize: '0.85rem', marginTop: '0.75rem' }}>
+                  {q.coding_result.compile_output}
+                </pre>
+              )}
+              {q.coding_result.runtime_output && (
+                <pre style={{ whiteSpace: 'pre-wrap', color: '#e5e7eb', background: '#0f172a', padding: '0.85rem', borderRadius: '8px', overflowX: 'auto', fontSize: '0.85rem', marginTop: '0.75rem' }}>
+                  {q.coding_result.runtime_output}
+                </pre>
+              )}
+            </div>
           )}
 
           {!q.is_auto_graded && (q.rubric_parts || []).length > 0 && (

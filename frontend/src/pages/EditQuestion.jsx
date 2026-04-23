@@ -6,6 +6,8 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { getQuestion, updateQuestion, uploadImage, getImageSignedUrl } from '../api';
 import StudentPreview from '../components/StudentPreview';
+import CodingQuestionBuilder from '../components/CodingQuestionBuilder';
+import { createDefaultCodingConfig, normalizeEditableCodingConfig, sanitizeCodingConfigForSave, getQuestionCodingConfig, isCodingQuestion, getCodingAuthoringError } from '../utils/coding';
 
 const DEFAULT_RUBRIC_PARTS = [
   {
@@ -48,6 +50,7 @@ export default function EditQuestion() {
     correct_answer: '',
     rubric_parts: DEFAULT_RUBRIC_PARTS,
     short_answer_expected: '',
+    coding_config: createDefaultCodingConfig(),
   });
   const [originalImageUrl, setOriginalImageUrl] = useState(null);
   const [imageFile, setImageFile] = useState(null);
@@ -74,6 +77,7 @@ export default function EditQuestion() {
 
         let answerChoices = [];
         let rubricParts = DEFAULT_RUBRIC_PARTS;
+        const codingConfig = getQuestionCodingConfig(question);
 
         try {
           const parsed = JSON.parse(question.answer_choices || '[]');
@@ -108,7 +112,7 @@ export default function EditQuestion() {
           answerChoices = ['True', 'False'];
         }
 
-        while (answerChoices.length < 4 && question.question_type !== 'true_false') {
+        while (answerChoices.length < 4 && question.question_type !== 'true_false' && question.question_type !== 'coding') {
           answerChoices.push('');
         }
 
@@ -126,7 +130,8 @@ export default function EditQuestion() {
             answer_choices: answerChoices,
             correct_answer: question.question_type === 'short_answer' ? '' : (question.correct_answer || ''),
             rubric_parts: rubricParts,
-            short_answer_expected: ''
+            short_answer_expected: '',
+            coding_config: codingConfig,
           });
         }
 
@@ -258,6 +263,10 @@ export default function EditQuestion() {
         const firstPart = next.rubric_parts?.[0] || { part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] };
         next.rubric_parts = [firstPart];
       }
+      if (name === 'question_type' && value === 'coding') {
+        next.coding_config = normalizeEditableCodingConfig(next.coding_config);
+        next.correct_answer = 'coding';
+      }
       return next;
     });
   };
@@ -386,6 +395,10 @@ export default function EditQuestion() {
     return formData.question_type === 'short_answer';
   };
 
+  const isCoding = () => {
+    return isCodingQuestion(formData.question_type);
+  };
+
   // Check if question type needs rubric (both FR and Short Answer)
   const needsRubric = () => {
     return formData.question_type === 'fr' || formData.question_type === 'short_answer';
@@ -485,6 +498,15 @@ export default function EditQuestion() {
       }
     }
 
+    if (isCoding()) {
+      const codingError = getCodingAuthoringError(formData.coding_config);
+      if (codingError) {
+        setError(codingError);
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       let imageUrl = originalImageUrl;
 
@@ -503,7 +525,21 @@ export default function EditQuestion() {
       let answerChoicesData = '[]';
       let correctAnswerData = '';
 
-      if (needsAnswerChoices()) {
+      let codingConfigData = null;
+
+      if (isCoding()) {
+        codingConfigData = sanitizeCodingConfigForSave(formData.coding_config);
+        answerChoicesData = JSON.stringify({
+          language: codingConfigData.language,
+          function_signature: codingConfigData.function_signature,
+          starter_code: codingConfigData.starter_code,
+          visible_tests: codingConfigData.visible_tests,
+          time_limit_ms: codingConfigData.time_limit_ms,
+          memory_limit_mb: codingConfigData.memory_limit_mb,
+          points: codingConfigData.points,
+        });
+        correctAnswerData = 'coding';
+      } else if (needsAnswerChoices()) {
         const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
         answerChoicesData = JSON.stringify(validAnswers);
         correctAnswerData = formData.correct_answer;
@@ -525,6 +561,7 @@ export default function EditQuestion() {
         tags: formData.tags,
         answer_choices: answerChoicesData,
         correct_answer: correctAnswerData,
+        coding_config: codingConfigData,
         image_url: imageUrl
       });
 
@@ -562,6 +599,7 @@ export default function EditQuestion() {
           <option value="fr">Free Response (FR)</option>
           <option value="short_answer">Short Answer</option>
           <option value="true_false">True/False</option>
+          <option value="coding">Coding (C++)</option>
         </select>
         <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
       </div>
@@ -974,6 +1012,22 @@ export default function EditQuestion() {
               </div>
             )}
 
+            {isCoding() && (
+              <div style={styles.card}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={styles.label}>Coding Setup</label>
+                  <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+                    Students submit C++ code in a LeetCode-style editor. Each test body should return a boolean.
+                  </div>
+                </div>
+                <CodingQuestionBuilder
+                  codingConfig={normalizeEditableCodingConfig(formData.coding_config)}
+                  onChange={(nextCodingConfig) => setFormData((prev) => ({ ...prev, coding_config: nextCodingConfig }))}
+                  inputStyle={styles.input}
+                />
+              </div>
+            )}
+
             {viewMode === 'split' && renderMetadataCard()}
           </div>
 
@@ -1015,10 +1069,13 @@ export default function EditQuestion() {
                       title: formData.title,
                       text: formData.text,
                       question_type: formData.question_type,
-                      answer_choices: (formData.question_type === 'mcq' || formData.question_type === 'true_false')
-                        ? JSON.stringify(formData.answer_choices)
-                        : JSON.stringify(formData.rubric_parts),
-                      correct_answer: formData.correct_answer
+                      answer_choices: isCoding()
+                        ? JSON.stringify(sanitizeCodingConfigForSave(formData.coding_config))
+                        : (formData.question_type === 'mcq' || formData.question_type === 'true_false')
+                          ? JSON.stringify(formData.answer_choices)
+                          : JSON.stringify(formData.rubric_parts),
+                      correct_answer: formData.correct_answer,
+                      coding: isCoding() ? sanitizeCodingConfigForSave(formData.coding_config) : undefined,
                     }]}
                   />
                 </div>

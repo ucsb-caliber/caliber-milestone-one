@@ -1188,14 +1188,7 @@ export default function AssignmentView() {
                       <td style={styles.submissionCell}>
                         {hasSubmittedGrade ? (
                           gradeReleased ? (
-                            <span style={{
-                              display: 'inline-block',
-                              borderRadius: '999px',
-                              padding: '0.25rem 0.6rem',
-                              fontSize: '0.8rem',
-                              fontWeight: '700',
-                              ...(getSubmittedGradeStyle(row.score_percent))
-                            }}>
+                            <span style={{ fontSize: '0.9rem', fontWeight: '700', color: '#14532d' }}>
                               {`${Math.round(Number(row.score_earned) * 100) / 100} / ${Math.round(Number(row.score_total) * 100) / 100}`}
                             </span>
                           ) : (
@@ -1207,15 +1200,15 @@ export default function AssignmentView() {
                                 window.location.hash = `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(row.student_id)}`;
                               }}
                               style={{
-                                display: 'inline-block',
+                                display: 'inline',
                                 border: 'none',
-                                borderRadius: '999px',
-                                padding: '0.25rem 0.6rem',
-                                fontSize: '0.8rem',
+                                padding: 0,
+                                fontSize: '0.9rem',
                                 fontWeight: '700',
                                 cursor: 'pointer',
                                 background: 'transparent',
-                                ...(getSubmittedGradeStyle(row.score_percent))
+                                color: '#14532d',
+                                textDecoration: 'none',
                               }}
                               title="Click to edit grade"
                             >

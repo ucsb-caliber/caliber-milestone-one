@@ -7,6 +7,7 @@ import { parseScheduleDate } from '../utils/datetime';
 
 export default function StudentAssignmentPage() {
   const { user } = useAuth();
+  const [hashVersion, setHashVersion] = useState(0);
   const [assignment, setAssignment] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,8 +26,7 @@ export default function StudentAssignmentPage() {
   const latestProgressRef = useRef({ answers: {}, questionIndex: 0 });
   const skipUnmountSubmitRef = useRef(false);
 
-  const parseHash = () => {
-    const hash = window.location.hash;
+  const parseHash = (hash) => {
     const courseMatch = hash.match(/#student-course\/(\d+)/);
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const resubmitRequested = hash.includes("resubmit=1");
@@ -42,7 +42,16 @@ export default function StudentAssignmentPage() {
     };
   };
 
-  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash();
+  useEffect(() => {
+    const handleHashChange = () => {
+      setHashVersion((value) => value + 1);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const currentHash = React.useMemo(() => window.location.hash, [hashVersion]);
+  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash(currentHash);
   const hardDueDate = parseScheduleDate(assignment?.due_date_hard);
   const isSubmissionClosed = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
 
@@ -362,10 +371,11 @@ export default function StudentAssignmentPage() {
           </button>
         </div>
       )}
-    <StudentPreview
-      questions={questions}
-      assignmentTitle={assignment.title}
-      assignmentType={assignment.type}
+      <StudentPreview
+        assignmentId={assignmentId}
+        questions={questions}
+        assignmentTitle={assignment.title}
+        assignmentType={assignment.type}
       isPreviewMode={false}
       showCorrectAnswers={false}
       closeButtonText={isReadOnlyView ? 'Back to Course' : (resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment')}

@@ -569,6 +569,9 @@ export async function createQuestion(questionData) {
     formData.append('blooms_taxonomy', questionData.blooms_taxonomy || '');
     formData.append('answer_choices', questionData.answer_choices || '[]');
     formData.append('correct_answer', questionData.correct_answer || '');
+    if (questionData.coding_config) {
+      formData.append('coding_config', JSON.stringify(questionData.coding_config));
+    }
 
 
     if (questionData.source_pdf) {
@@ -691,6 +694,31 @@ export async function updateQuestion(id, updateData) {
     return response.json();
   } catch (error) {
     console.error("Update error:", error);
+    throw error;
+  }
+}
+
+export async function runCodingQuestion(assignmentId, questionId, payload) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/questions/${questionId}/coding/run`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to run coding question');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
     throw error;
   }
 }
