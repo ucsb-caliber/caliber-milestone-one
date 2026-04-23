@@ -4,7 +4,17 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl, getUserById, getUserInfo } from '../api';
+import {
+  getQuestions,
+  getDraftQuestions,
+  getAllQuestions,
+  deleteQuestion,
+  updateQuestion,
+  generateQuestionVariant,
+  getImageSignedUrl,
+  getUserById,
+  getUserInfo
+} from '../api';
 import { useAuth } from '../AuthContext';
 import QuestionCard from '../components/QuestionCard';
 import CollapsibleSection from '../components/CollapsibleSection';
@@ -82,14 +92,43 @@ const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
 // Sort function for newest-first ordering
 const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
 
+const BANK_TABS = {
+  QUESTIONS: 'questions',
+  DRAFTS: 'drafts',
+  ALL: 'all',
+};
+
+const getBankTabFromHash = () => {
+  const rawHash = window.location.hash.slice(1);
+  const [route, query = ''] = rawHash.split('?');
+  if (route !== 'questions') return BANK_TABS.QUESTIONS;
+
+  const params = new URLSearchParams(query);
+  const tab = (params.get('tab') || BANK_TABS.QUESTIONS).toLowerCase();
+  if (tab === BANK_TABS.DRAFTS || tab === BANK_TABS.ALL) {
+    return tab;
+  }
+  return BANK_TABS.QUESTIONS;
+};
+
+const setQuestionBankTabInHash = (tab) => {
+  if (tab && tab !== BANK_TABS.QUESTIONS) {
+    window.location.hash = `questions?tab=${tab}`;
+    return;
+  }
+  window.location.hash = 'questions';
+};
+
 export default function QuestionBank() {
   const { user } = useAuth();
   const [myQuestions, setMyQuestions] = useState([]);
+  const [draftQuestions, setDraftQuestions] = useState([]);
   const [allQuestions, setAllQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
+  const [draftQuestionsCollapsed, setDraftQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState('table'); // 'card' or 'table'
   const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
@@ -98,12 +137,67 @@ export default function QuestionBank() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all'); // 'all', 'keywords', 'tags', 'course', 'text'
   const [studentViewQuestion, setStudentViewQuestion] = useState(null);
+  const [activeBankTab, setActiveBankTab] = useState(getBankTabFromHash);
+  const [generationModalOpen, setGenerationModalOpen] = useState(false);
+  const [generationModalQuestion, setGenerationModalQuestion] = useState(null);
+  const [variantLoadingId, setVariantLoadingId] = useState(null);
+  const [pendingVariantCount, setPendingVariantCount] = useState(0);
+  const [approveDraftQuestion, setApproveDraftQuestion] = useState(null);
+  const [approveDraftLoading, setApproveDraftLoading] = useState(false);
 
   const itemsPerPage = 6;
 
   // Filtered questions
   const filteredMyQuestions = filterQuestionsBySearch(myQuestions, searchQuery, searchFilter);
+  const filteredDraftQuestions = filterQuestionsBySearch(draftQuestions, searchQuery, searchFilter);
   const filteredAllQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
+  const activeQuestions =
+    activeBankTab === BANK_TABS.DRAFTS
+      ? filteredDraftQuestions
+      : activeBankTab === BANK_TABS.ALL
+        ? filteredAllQuestions
+        : filteredMyQuestions;
+
+  const draftGenerationStatus = pendingVariantCount > 0
+    ? `${pendingVariantCount} generating...`
+    : '';
+
+  const hydrateQuestionMetadata = async (questions, replace = false) => {
+    const imageQuestions = questions.filter(q => q.image_url);
+    const urlPromises = imageQuestions.map(async (q) => {
+      const signedUrl = await getImageSignedUrl(q.image_url);
+      return { id: q.id, url: signedUrl };
+    });
+
+    const urls = await Promise.all(urlPromises);
+    const urlMap = {};
+    urls.forEach(({ id, url }) => {
+      if (url) {
+        urlMap[id] = url;
+      }
+    });
+    setImageUrls(prev => (replace ? urlMap : { ...prev, ...urlMap }));
+
+    const uniqueUserIds = [...new Set(questions.map(q => q.user_id).filter(Boolean))];
+    const userPromises = uniqueUserIds.map(async (userId) => {
+      try {
+        const userInfo = await getUserById(userId);
+        return { userId, userInfo };
+      } catch (error) {
+        console.error(`Failed to fetch user ${userId}:`, error);
+        return { userId, userInfo: null };
+      }
+    });
+
+    const users = await Promise.all(userPromises);
+    const userMap = {};
+    users.forEach(({ userId, userInfo }) => {
+      if (userInfo) {
+        userMap[userId] = userInfo;
+      }
+    });
+    setUserInfoCache(prev => (replace ? userMap : { ...prev, ...userMap }));
+  };
 
   // Fetch current user info to check if they are a teacher
   useEffect(() => {
@@ -121,12 +215,23 @@ export default function QuestionBank() {
     }
   }, [user]);
 
-  const loadQuestions = async () => {
+  useEffect(() => {
+    const syncTabFromHash = () => {
+      setActiveBankTab(getBankTabFromHash());
+    };
+
+    syncTabFromHash();
+    window.addEventListener('hashchange', syncTabFromHash);
+    return () => window.removeEventListener('hashchange', syncTabFromHash);
+  }, []);
+
+  const loadBankData = async () => {
     setLoading(true);
     setError('');
     try {
-      const [myData, allData] = await Promise.all([
-        getQuestions({ limit: 1000 }),
+      const [myData, draftData, allData] = await Promise.all([
+        getQuestions({ verified_only: true, limit: 1000 }),
+        getDraftQuestions({ limit: 1000 }),
         getAllQuestions({ limit: 1000 })
       ]);
 
@@ -135,49 +240,18 @@ export default function QuestionBank() {
         .filter(q => q.is_verified === true)
         .sort(sortByNewest);
 
+      const draftMyQuestions = (draftData.questions || [])
+        .filter(q => q.is_verified === false)
+        .sort(sortByNewest);
+
       const verifiedAllQuestions = (allData.questions || [])
         .filter(q => q.is_verified === true)
         .sort(sortByNewest);
 
       setMyQuestions(verifiedMyQuestions);
+      setDraftQuestions(draftMyQuestions);
       setAllQuestions(verifiedAllQuestions);
-
-      // Generate signed URLs for all questions with images
-      const allQuestionsWithImages = [...verifiedMyQuestions, ...verifiedAllQuestions].filter(q => q.image_url);
-      const urlPromises = allQuestionsWithImages.map(async (q) => {
-        const signedUrl = await getImageSignedUrl(q.image_url);
-        return { id: q.id, url: signedUrl };
-      });
-
-      const urls = await Promise.all(urlPromises);
-      const urlMap = {};
-      urls.forEach(({ id, url }) => {
-        if (url) {
-          urlMap[id] = url;
-        }
-      });
-      setImageUrls(urlMap);
-
-      // Fetch user info for all questions
-      const uniqueUserIds = [...new Set([...verifiedMyQuestions, ...verifiedAllQuestions].map(q => q.user_id))];
-      const userPromises = uniqueUserIds.map(async (userId) => {
-        try {
-          const userInfo = await getUserById(userId);
-          return { userId, userInfo };
-        } catch (error) {
-          console.error(`Failed to fetch user ${userId}:`, error);
-          return { userId, userInfo: null };
-        }
-      });
-
-      const users = await Promise.all(userPromises);
-      const userMap = {};
-      users.forEach(({ userId, userInfo }) => {
-        if (userInfo) {
-          userMap[userId] = userInfo;
-        }
-      });
-      setUserInfoCache(userMap);
+      await hydrateQuestionMetadata([...verifiedMyQuestions, ...draftMyQuestions, ...verifiedAllQuestions], true);
     } catch (err) {
       setError(err.message || 'Failed to load questions');
     } finally {
@@ -186,17 +260,78 @@ export default function QuestionBank() {
   };
 
   useEffect(() => {
-    loadQuestions();
+    loadBankData();
   }, []);
+
+  const refreshDraftQuestions = async () => {
+    try {
+      const draftData = await getDraftQuestions({ limit: 1000 });
+      const draftMyQuestions = (draftData.questions || []).sort(sortByNewest);
+      setDraftQuestions(draftMyQuestions);
+      await hydrateQuestionMetadata(draftMyQuestions, false);
+    } catch (err) {
+      console.error('Failed to refresh draft questions:', err);
+    }
+  };
 
   const handleDelete = async (questionId) => {
     try {
       await deleteQuestion(questionId);
       setDeleteConfirm(null);
-      await loadQuestions();
+      await loadBankData();
     } catch (err) {
       setError(err.message || 'Failed to delete question');
     }
+  };
+
+  const openApproveDraftModal = (question) => {
+    setApproveDraftQuestion(question);
+  };
+
+  const closeApproveDraftModal = () => {
+    setApproveDraftQuestion(null);
+    setApproveDraftLoading(false);
+  };
+
+  const handleApproveDraft = async () => {
+    if (!approveDraftQuestion) return;
+    setApproveDraftLoading(true);
+    try {
+      await updateQuestion(approveDraftQuestion.id, { is_verified: true });
+      closeApproveDraftModal();
+      await loadBankData();
+    } catch (err) {
+      setError(err.message || 'Failed to approve draft question');
+      setApproveDraftLoading(false);
+    }
+  };
+
+  const handleGenerateVariant = async (question) => {
+    setVariantLoadingId(question.id);
+    setPendingVariantCount((count) => count + 1);
+    setGenerationModalQuestion(question);
+    setGenerationModalOpen(true);
+    try {
+      await generateQuestionVariant(question.id);
+      await refreshDraftQuestions();
+    } catch (err) {
+      setError(err.message || 'Failed to generate question variant');
+    } finally {
+      setVariantLoadingId(null);
+      setPendingVariantCount((count) => Math.max(0, count - 1));
+    }
+  };
+
+  const closeGenerationModal = () => {
+    setGenerationModalOpen(false);
+    setGenerationModalQuestion(null);
+    setVariantLoadingId(null);
+  };
+
+  const openBankTab = (tab) => {
+    setActiveBankTab(tab);
+    closeGenerationModal();
+    setQuestionBankTabInHash(tab);
   };
 
   // Wrapper function to render table view using QuestionTable component
@@ -207,8 +342,13 @@ export default function QuestionBank() {
         userInfoCache={userInfoCache}
         user={user}
         showEditButton={isTeacher}
+        showVariantButton={isTeacher && activeBankTab !== BANK_TABS.DRAFTS}
+        showApproveButton={activeBankTab === BANK_TABS.DRAFTS}
+        variantLoadingId={variantLoadingId}
         showUniversity={true}
         onDelete={(id) => setDeleteConfirm(id)}
+        onGenerateVariant={handleGenerateVariant}
+        onApproveDraft={openApproveDraftModal}
       />
     );
   };
@@ -223,8 +363,13 @@ export default function QuestionBank() {
         showDeleteButton={showDeleteButton}
         showEditButton={showEditButton}
         showStudentViewButton={true}
+        showVariantButton={isTeacher && activeBankTab !== BANK_TABS.DRAFTS}
+        showApproveButton={activeBankTab === BANK_TABS.DRAFTS}
+        variantLoading={variantLoadingId === question.id}
         onDelete={(id) => setDeleteConfirm(id)}
         onStudentView={(q) => setStudentViewQuestion(q)}
+        onGenerateVariant={handleGenerateVariant}
+        onApproveDraft={openApproveDraftModal}
       />
     );
   };
@@ -255,7 +400,7 @@ export default function QuestionBank() {
             Question Bank
           </h1>
           <p style={{ margin: '0.45rem 0 0 0', color: '#475569', fontSize: '0.95rem' }}>
-            Search verified prompts quickly and use AI upload to generate new drafts from PDFs.
+            Browse verified questions, generated drafts, and AI-created variants from one place.
           </p>
         </div>
 
@@ -327,7 +472,7 @@ export default function QuestionBank() {
           </button>
 
           <button
-            onClick={loadQuestions}
+            onClick={loadBankData}
             disabled={loading}
             title={loading ? 'Refreshing questions' : 'Refresh questions'}
             aria-label={loading ? 'Refreshing questions' : 'Refresh questions'}
@@ -393,9 +538,75 @@ export default function QuestionBank() {
         onSearchFilterChange={setSearchFilter}
         onClearSearch={() => setSearchQuery('')}
         showResultCount={Boolean(searchQuery)}
-        resultCount={filteredMyQuestions.length + filteredAllQuestions.length}
+        resultCount={activeQuestions.length}
         containerStyle={{ marginBottom: '1.7rem' }}
       />
+
+      <div style={{ marginBottom: '1rem' }}>
+        <div
+          style={{
+            display: 'inline-flex',
+            background: '#f8fafc',
+            border: '1px solid #dbe5f1',
+            borderRadius: '11px',
+            padding: '0.25rem',
+            gap: '0.25rem',
+            flexWrap: 'wrap'
+          }}
+        >
+          <button
+            onClick={() => openBankTab(BANK_TABS.QUESTIONS)}
+            style={{
+              padding: '0.45rem 0.9rem',
+              background: activeBankTab === BANK_TABS.QUESTIONS ? '#ffffff' : 'transparent',
+              color: activeBankTab === BANK_TABS.QUESTIONS ? '#0f172a' : '#64748b',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: activeBankTab === BANK_TABS.QUESTIONS ? '700' : '600',
+              boxShadow: activeBankTab === BANK_TABS.QUESTIONS ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            My Questions
+          </button>
+          <button
+            onClick={() => openBankTab(BANK_TABS.DRAFTS)}
+            style={{
+              padding: '0.45rem 0.9rem',
+              background: activeBankTab === BANK_TABS.DRAFTS ? '#ffffff' : 'transparent',
+              color: activeBankTab === BANK_TABS.DRAFTS ? '#0f172a' : '#64748b',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: activeBankTab === BANK_TABS.DRAFTS ? '700' : '600',
+              boxShadow: activeBankTab === BANK_TABS.DRAFTS ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            My Drafts
+          </button>
+          <button
+            onClick={() => openBankTab(BANK_TABS.ALL)}
+            style={{
+              padding: '0.45rem 0.9rem',
+              background: activeBankTab === BANK_TABS.ALL ? '#ffffff' : 'transparent',
+              color: activeBankTab === BANK_TABS.ALL ? '#0f172a' : '#64748b',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: activeBankTab === BANK_TABS.ALL ? '700' : '600',
+              boxShadow: activeBankTab === BANK_TABS.ALL ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            All Questions
+          </button>
+        </div>
+      </div>
 
       {loading && <p style={{ color: '#64748b', fontWeight: 600 }}>Loading questions...</p>}
 
@@ -461,6 +672,77 @@ export default function QuestionBank() {
                 }}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {approveDraftQuestion && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.56)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '1rem'
+          }}
+          onClick={closeApproveDraftModal}
+        >
+          <div
+            style={{
+              background: 'white',
+              padding: '1.5rem',
+              borderRadius: '12px',
+              width: 'min(460px, 100%)',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 18px 50px rgba(15, 23, 42, 0.2)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: '0.65rem', color: '#0f172a' }}>
+              Approve Draft
+            </h3>
+            <p style={{ marginTop: 0, marginBottom: '1.25rem', color: '#475569', lineHeight: 1.5 }}>
+              Are you sure you want to approve this draft? This will save the question into our question database.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={closeApproveDraftModal}
+                disabled={approveDraftLoading}
+                style={{
+                  padding: '0.55rem 0.9rem',
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
+                  borderRadius: '8px',
+                  cursor: approveDraftLoading ? 'not-allowed' : 'pointer',
+                  fontWeight: '600',
+                  opacity: approveDraftLoading ? 0.6 : 1
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApproveDraft}
+                disabled={approveDraftLoading}
+                style={{
+                  padding: '0.55rem 0.9rem',
+                  border: 'none',
+                  background: '#15803d',
+                  color: 'white',
+                  borderRadius: '8px',
+                  cursor: approveDraftLoading ? 'not-allowed' : 'pointer',
+                  fontWeight: '700',
+                  opacity: approveDraftLoading ? 0.7 : 1
+                }}
+              >
+                {approveDraftLoading ? 'Approving...' : 'Approve'}
               </button>
             </div>
           </div>
@@ -533,6 +815,87 @@ export default function QuestionBank() {
         </div>
       )}
 
+      {generationModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 1250,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            overflowY: 'auto',
+            padding: '1rem'
+          }}
+          onClick={closeGenerationModal}
+        >
+          <div
+            style={{
+              width: 'min(720px, 100%)',
+              background: 'white',
+              borderRadius: '12px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 25px 60px rgba(15, 23, 42, 0.22)',
+              padding: '1.5rem'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.45rem' }}>
+                  Variant generation started
+                </div>
+                <p style={{ margin: 0, color: '#475569', fontSize: '0.98rem', lineHeight: 1.5 }}>
+                  Variant generation is happening in the background and may take a minute.
+                </p>
+                {generationModalQuestion?.title ? (
+                  <p style={{ margin: '0.75rem 0 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+                    Source: {generationModalQuestion.title}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={closeGenerationModal}
+                style={{
+                  padding: '0.4rem 0.6rem',
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#475569',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  closeGenerationModal();
+                  openBankTab(BANK_TABS.DRAFTS);
+                }}
+                style={{
+                  padding: '0.65rem 0.95rem',
+                  border: 'none',
+                  background: '#4f46e5',
+                  color: 'white',
+                  borderRadius: '9px',
+                  cursor: 'pointer',
+                  fontWeight: '700'
+                }}
+              >
+                My Drafts
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!loading && (
         <>
           <div style={{ marginBottom: '1rem' }}>
@@ -583,85 +946,152 @@ export default function QuestionBank() {
             </div>
           </div>
 
-          {/* My Questions Section */}
-          <div style={{ marginBottom: '4rem' }}>
-            <CollapsibleSection
-              title={searchQuery ? `My Questions (${filteredMyQuestions.length} of ${myQuestions.length})` : "My Questions"}
-              questions={filteredMyQuestions}
-              isCollapsed={myQuestionsCollapsed}
-              onToggle={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
-              borderColor="#007bff"
-              viewMode={viewMode}
-              itemsPerPage={itemsPerPage}
-              renderTableView={renderTableView}
-              renderQuestionCard={renderQuestionCard}
-              user={user}
-              isTeacher={isTeacher}
-              emptyStateContent={
-                <div style={{
-                  padding: '2rem',
-                  background: '#f8f9fa',
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                  color: '#666'
-                }}>
-                  {searchQuery ? (
-                    <p>No questions match your search in "My Questions".</p>
-                  ) : (
-                    <>
-                      <p>You haven't created any questions yet.</p>
-                      <button
-                        onClick={() => window.location.hash = 'create-question'}
-                        style={{
-                          marginTop: '1rem',
-                          padding: '0.5rem 1rem',
-                          background: '#28a745',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Create Your First Question
-                      </button>
-                    </>
-                  )}
-                </div>
-              }
-            />
-          </div>
+          {activeBankTab === BANK_TABS.QUESTIONS && (
+            <div style={{ marginBottom: '4rem' }}>
+              <CollapsibleSection
+                title={searchQuery ? `My Questions (${filteredMyQuestions.length} of ${myQuestions.length})` : "My Questions"}
+                questions={filteredMyQuestions}
+                isCollapsed={myQuestionsCollapsed}
+                onToggle={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
+                borderColor="#007bff"
+                viewMode={viewMode}
+                itemsPerPage={itemsPerPage}
+                renderTableView={renderTableView}
+                renderQuestionCard={renderQuestionCard}
+                user={user}
+                isTeacher={isTeacher}
+                emptyStateContent={
+                  <div style={{
+                    padding: '2rem',
+                    background: '#f8f9fa',
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    color: '#666'
+                  }}>
+                    {searchQuery ? (
+                      <p>No questions match your search in "My Questions".</p>
+                    ) : (
+                      <>
+                        <p>You haven't created any questions yet.</p>
+                        <button
+                          onClick={() => window.location.hash = 'create-question'}
+                          style={{
+                            marginTop: '1rem',
+                            padding: '0.5rem 1rem',
+                            background: '#28a745',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Create Your First Question
+                        </button>
+                      </>
+                    )}
+                  </div>
+                }
+              />
+            </div>
+          )}
 
-          {/* All Questions Section */}
-          <div>
-            <CollapsibleSection
-              title={searchQuery ? `All Questions (${filteredAllQuestions.length} of ${allQuestions.length})` : "All Questions"}
-              questions={filteredAllQuestions}
-              isCollapsed={allQuestionsCollapsed}
-              onToggle={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
-              borderColor="#28a745"
-              viewMode={viewMode}
-              itemsPerPage={itemsPerPage}
-              renderTableView={renderTableView}
-              renderQuestionCard={renderQuestionCard}
-              user={user}
-              isTeacher={isTeacher}
-              emptyStateContent={
-                <div style={{
-                  padding: '2rem',
-                  background: '#f8f9fa',
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                  color: '#666'
-                }}>
-                  {searchQuery ? (
-                    <p>No questions match your search in "All Questions".</p>
-                  ) : (
-                    <p>No questions found in the system.</p>
-                  )}
-                </div>
-              }
-            />
-          </div>
+          {activeBankTab === BANK_TABS.DRAFTS && (
+            <div style={{ marginBottom: '4rem' }}>
+              <CollapsibleSection
+                title="My Drafts"
+                questions={filteredDraftQuestions}
+                isCollapsed={draftQuestionsCollapsed}
+                onToggle={() => setDraftQuestionsCollapsed(!draftQuestionsCollapsed)}
+                borderColor="#4f46e5"
+                viewMode={viewMode}
+                itemsPerPage={itemsPerPage}
+                renderTableView={renderTableView}
+                renderQuestionCard={renderQuestionCard}
+                user={user}
+                isTeacher={isTeacher}
+                headerContent={
+                  draftGenerationStatus ? (
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.65rem',
+                        padding: '0.55rem 0.75rem',
+                        background: 'rgba(79, 70, 229, 0.08)',
+                        border: '1px solid rgba(79, 70, 229, 0.18)',
+                        borderRadius: '999px',
+                        color: '#4338ca',
+                        fontSize: '0.85rem',
+                        fontWeight: 700,
+                        boxShadow: '0 1px 2px rgba(15,23,42,0.06)'
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '50%',
+                          border: '2px solid rgba(67, 56, 202, 0.25)',
+                          borderTopColor: '#4338ca',
+                          animation: 'caliber-spin 0.8s linear infinite',
+                          flexShrink: 0
+                        }}
+                      />
+                      {draftGenerationStatus}
+                    </div>
+                  ) : null
+                }
+                emptyStateContent={
+                  <div style={{
+                    padding: '2rem',
+                    background: '#f8f9fa',
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    color: '#666'
+                  }}>
+                    {searchQuery ? (
+                      <p>No drafts match your search in "My Drafts".</p>
+                    ) : (
+                      <p>You do not have any draft questions yet.</p>
+                    )}
+                  </div>
+                }
+              />
+            </div>
+          )}
+
+          {activeBankTab === BANK_TABS.ALL && (
+            <div style={{ marginBottom: '4rem' }}>
+              <CollapsibleSection
+                title={searchQuery ? `All Questions (${filteredAllQuestions.length} of ${allQuestions.length})` : "All Questions"}
+                questions={filteredAllQuestions}
+                isCollapsed={allQuestionsCollapsed}
+                onToggle={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
+                borderColor="#28a745"
+                viewMode={viewMode}
+                itemsPerPage={itemsPerPage}
+                renderTableView={renderTableView}
+                renderQuestionCard={renderQuestionCard}
+                user={user}
+                isTeacher={isTeacher}
+                emptyStateContent={
+                  <div style={{
+                    padding: '2rem',
+                    background: '#f8f9fa',
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    color: '#666'
+                  }}>
+                    {searchQuery ? (
+                      <p>No questions match your search in "All Questions".</p>
+                    ) : (
+                      <p>No questions found in the system.</p>
+                    )}
+                  </div>
+                }
+              />
+            </div>
+          )}
         </>
       )}
     </div>

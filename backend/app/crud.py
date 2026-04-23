@@ -85,6 +85,17 @@ def get_questions(session: Session, user_id: Optional[str] = None,
     return list(session.exec(statement).all())
 
 
+def get_draft_questions(session: Session, user_id: str, skip: int = 0, limit: int = 100) -> List[Question]:
+    """Get unverified questions for the current user."""
+    return get_questions(
+        session,
+        user_id=user_id,
+        verified_only=False,
+        skip=skip,
+        limit=limit,
+    )
+
+
 def get_questions_count(session: Session, user_id: Optional[str] = None,
                        verified_only: Optional[bool] = None,
                        source_pdf: Optional[str] = None) -> int:
@@ -97,6 +108,11 @@ def get_questions_count(session: Session, user_id: Optional[str] = None,
     if source_pdf:
         statement = statement.where(Question.source_pdf == source_pdf)
     return session.exec(statement).one()
+
+
+def get_draft_questions_count(session: Session, user_id: str) -> int:
+    """Count unverified questions for the current user."""
+    return get_questions_count(session, user_id=user_id, verified_only=False)
 
 
 def get_all_questions(session: Session, skip: int = 0, limit: int = 100) -> List[Question]:

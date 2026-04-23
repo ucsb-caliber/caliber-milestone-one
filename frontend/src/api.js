@@ -396,6 +396,41 @@ export async function getQuestions(filters = {}) {
 }
 
 /**
+ * Fetch the current user's draft questions.
+ */
+export async function getDraftQuestions(filters = {}) {
+  try {
+    const headers = await getAuthHeaders();
+
+    const params = new URLSearchParams();
+    if (filters.skip !== undefined) params.append('skip', String(filters.skip));
+    if (filters.limit !== undefined) params.append('limit', String(filters.limit));
+
+    const url = `${API_BASE}/api/questions/drafts${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await apiFetch(url, { headers });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to fetch draft questions';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Fetch all questions from all users
  */
 export async function getAllQuestions(filters = {}) {
@@ -447,6 +482,46 @@ export async function getQuestion(id) {
   }
 
   return await response.json();
+}
+
+/**
+ * Generate an unverified draft variant from an existing question.
+ */
+export async function generateQuestionVariant(questionId, count = 1) {
+  try {
+    const headers = await getAuthHeaders();
+    const params = new URLSearchParams();
+    if (count !== undefined && count !== null) {
+      params.append('count', String(count));
+    }
+
+    const response = await apiFetch(
+      `${API_BASE}/api/questions/${questionId}/variants${params.toString() ? `?${params.toString()}` : ''}`,
+      {
+        method: 'POST',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to generate variant';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
 }
 
 /**

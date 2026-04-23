@@ -3,6 +3,7 @@ import threading
 import uuid
 import time
 import json
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -31,6 +32,7 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      AssignmentGradingResponse, AssignmentGradeUpsertRequest,
                      AssignmentQuestionGradeResponse, RubricPartGradeResponse, RubricLevelCriteria)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
+                  get_draft_questions, get_draft_questions_count,
                   get_questions_by_ids, update_question, delete_question,
                   get_course_assignments, create_assignment, get_assignment, update_assignment, 
                   delete_assignment, get_assignment_progress, upsert_assignment_progress,
@@ -52,6 +54,7 @@ from .roster_integration import (
     delete_local_course,
     fetch_research_id,
 )
+from .variant_gen import generate_variant, question_to_variant_gen_db
 
 load_dotenv()
 
@@ -448,6 +451,124 @@ def _safe_json_loads(raw: Any, default: Any):
         return json.loads(raw)
     except Exception:
         return default
+
+
+def _variant_question_type(variant_type: str) -> str:
+    vt = (variant_type or "").strip().upper()
+    if vt == "MCQ":
+        return "mcq"
+    if vt == "TRUE_FALSE":
+        return "true_false"
+    return "fr"
+
+
+def _normalize_variant_answer_label(raw_answer: Any) -> str:
+    answer = str(raw_answer or "").strip()
+    if not answer:
+        return ""
+    if answer.upper() in {"TRUE", "T", "YES"}:
+        return "True"
+    if answer.upper() in {"FALSE", "F", "NO"}:
+        return "False"
+    match = re.match(r"^\s*(?:option\s*)?([A-Z1-9])(?:[\.\)]|\s|$)", answer, flags=re.I)
+    return match.group(1).upper() if match else answer
+
+
+def _variant_answer_choices_and_correct_answer(variant: dict[str, Any]) -> tuple[str, str]:
+    qtype = _variant_question_type(str(variant.get("type") or ""))
+    answer = str(variant.get("answer") or "").strip()
+
+    if qtype == "true_false":
+        normalized = _normalize_variant_answer_label(answer)
+        correct = "False" if normalized.upper() == "FALSE" else "True"
+        return json.dumps(["True", "False"]), correct
+
+    if qtype != "mcq":
+        return "[]", answer
+
+    options = variant.get("options")
+    if not isinstance(options, dict) or not options:
+        return "[]", answer
+
+    labels = [str(k).strip() for k in options.keys() if str(k).strip()]
+    choices = [str(options[label]).strip() for label in labels if str(options.get(label) or "").strip()]
+    answer_label = _normalize_variant_answer_label(answer)
+
+    correct = ""
+    for label in labels:
+        if label.upper().rstrip(".):") == answer_label:
+            correct = str(options.get(label) or "").strip()
+            break
+    if not correct and answer in choices:
+        correct = answer
+    if not correct:
+        correct = answer
+
+    return json.dumps(choices), correct
+
+
+def _variant_draft_title(source_question: Question, number: int) -> str:
+    base = (source_question.title or f"Question {source_question.id}").strip()
+    return f"{base} Variant {number}"
+
+
+def _variant_draft_tags(source_question: Question, run_tag: str) -> str:
+    tags = [
+        tag.strip()
+        for tag in (source_question.tags or "").split(",")
+        if tag.strip()
+    ]
+    tags.extend(["variant", "ai-generated", run_tag])
+    seen = set()
+    unique = []
+    for tag in tags:
+        if tag not in seen:
+            unique.append(tag)
+            seen.add(tag)
+    return ",".join(unique)
+
+
+def _save_variant_draft_question(
+    *,
+    session: Session,
+    source_question: Question,
+    variant: dict[str, Any],
+    user_id: str,
+    run_source: str,
+    run_tag: str,
+    number: int,
+) -> Question:
+    answer_choices, correct_answer = _variant_answer_choices_and_correct_answer(variant)
+    question_type = _variant_question_type(str(variant.get("type") or ""))
+    metadata_keywords = [
+        str(variant.get("language") or "").strip(),
+        str(variant.get("algorithm") or "").strip(),
+        str(variant.get("scenario_domain") or "").strip(),
+    ]
+    merged_keywords = ",".join(
+        item for item in [source_question.keywords or "", *metadata_keywords] if item
+    )
+
+    return create_question(
+        session=session,
+        text=str(variant.get("question") or "").strip(),
+        title=_variant_draft_title(source_question, number),
+        tags=_variant_draft_tags(source_question, run_tag),
+        keywords=merged_keywords,
+        school=source_question.school or "",
+        user_school=source_question.user_school or source_question.school or "",
+        course=source_question.course or "",
+        course_type=source_question.course_type or "",
+        question_type=question_type,
+        blooms_taxonomy=source_question.blooms_taxonomy or "",
+        answer_choices=answer_choices,
+        correct_answer=correct_answer,
+        pdf_url=source_question.pdf_url,
+        source_pdf=None,
+        image_url=None,
+        user_id=user_id,
+        is_verified=False,
+    )
 
 
 def _is_auto_graded_question(question: Question) -> bool:
@@ -1291,6 +1412,23 @@ def list_questions(
     )
 
 
+@app.get("/api/questions/drafts", response_model=QuestionListResponse)
+def list_draft_questions(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """Get the current user's unverified draft questions."""
+    questions = get_draft_questions(session, user_id=user_id, skip=skip, limit=limit)
+    total = get_draft_questions_count(session, user_id=user_id)
+
+    return QuestionListResponse(
+        questions=questions,
+        total=total
+    )
+
+
 @app.get("/api/questions/all", response_model=QuestionListResponse)
 def list_all_questions(
     skip: int = 0,
@@ -1321,6 +1459,69 @@ def get_question_by_id(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     return question
+
+
+@app.post("/api/questions/{question_id}/variants", response_model=QuestionListResponse, status_code=201)
+def generate_question_variants(
+    question_id: int,
+    count: int = 1,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Generate AI variants for a question and save them as unverified draft questions.
+
+    The source question may be any verified question, or an unverified draft owned by
+    the current user. Generated drafts are owned by the current user and tagged with
+    their source question QID; they intentionally do not set ``source_pdf`` because
+    they originate from a question, not a PDF upload.
+    """
+    requested = max(1, min(int(count or 1), 10))
+    source_question = get_question(session, question_id, user_id=None)
+    if not source_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if not source_question.is_verified and source_question.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if not (source_question.text or "").strip():
+        raise HTTPException(status_code=400, detail="Source question has no text")
+
+    source_db = question_to_variant_gen_db(source_question)
+    generated_variants: list[dict[str, Any]] = []
+    max_outer_attempts = requested * 2
+
+    for _ in range(max_outer_attempts):
+        if len(generated_variants) >= requested:
+            break
+        variant = generate_variant(0, ingestion_index=0, questions_db=source_db)
+        if variant:
+            generated_variants.append(variant)
+
+    if len(generated_variants) < requested:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Generated {len(generated_variants)} of {requested} requested variants. "
+                "No drafts were saved for this run."
+            ),
+        )
+
+    source_label = source_question.qid or str(source_question.id)
+    run_source = f"variant:{source_label}:{uuid.uuid4().hex[:12]}"
+    run_tag = f"variant-source:{source_label}"
+    drafts = [
+        _save_variant_draft_question(
+            session=session,
+            source_question=source_question,
+            variant=variant,
+            user_id=user_id,
+            run_source=run_source,
+            run_tag=run_tag,
+            number=i,
+        )
+        for i, variant in enumerate(generated_variants, start=1)
+    ]
+
+    return QuestionListResponse(questions=drafts, total=len(drafts))
 
 
 @app.post("/api/questions/batch", response_model=QuestionListResponse)

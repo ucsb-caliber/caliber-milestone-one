@@ -194,9 +194,14 @@ const TableRow = ({
   showCourseType,
   showEditButton,
   showRemoveButton,
+  showVariantButton,
+  showApproveButton,
   onEdit,
   onRemove,
+  onGenerateVariant,
+  onApproveDraft,
   actionLoading,
+  variantLoading,
   hasActions,
   isDraggable,
 }) => {
@@ -325,6 +330,58 @@ const TableRow = ({
                 Edit
               </button>
             )}
+            {showVariantButton && onGenerateVariant && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGenerateVariant(question);
+                }}
+                disabled={actionLoading || variantLoading}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#0f766e',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: (actionLoading || variantLoading) ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  opacity: (actionLoading || variantLoading) ? 0.6 : 1,
+                  transition: 'background-color 0.15s ease',
+                  whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={(e) => { if (!actionLoading && !variantLoading) e.currentTarget.style.backgroundColor = '#0d9488'; }}
+                onMouseLeave={(e) => { if (!actionLoading && !variantLoading) e.currentTarget.style.backgroundColor = '#0f766e'; }}
+              >
+                {variantLoading ? 'Generating...' : 'Generate Variant'}
+              </button>
+            )}
+            {showApproveButton && onApproveDraft && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onApproveDraft(question);
+                }}
+                disabled={actionLoading}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#15803d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  opacity: actionLoading ? 0.6 : 1,
+                  transition: 'background-color 0.15s ease',
+                  whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#166534'; }}
+                onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#15803d'; }}
+              >
+                Approve
+              </button>
+            )}
             {showRemoveButton && onRemove && (
               <button
                 onClick={(e) => {
@@ -434,9 +491,14 @@ export default function QuestionTable({
   showCourseType = true,
   showEditButton = false,
   showRemoveButton = false,
+  showVariantButton = false,
+  showApproveButton = false,
   onEdit,
   onRemove,
+  onGenerateVariant,
+  onApproveDraft,
   actionLoading = false,
+  variantLoadingId = null,
   isDraggable = false,
 
   selectable = false,
@@ -483,7 +545,9 @@ export default function QuestionTable({
   const hasDeletableQuestions = showActions && user &&
     questions.some(q => q.user_id === user.id);
 
-  const hasActions = showEditButton || showRemoveButton || hasDeletableQuestions;
+  const hasVariantActions = showActions && showVariantButton;
+  const hasApproveActions = showActions && showApproveButton;
+  const hasActions = showEditButton || showRemoveButton || hasVariantActions || hasApproveActions || hasDeletableQuestions;
   const hasQID = !!showQID;
   const hasCourseType = !!showCourseType;
   const hasQuestionNumber = !!showQuestionNumber;
@@ -657,9 +721,14 @@ export default function QuestionTable({
                   showCourseType={hasCourseType}
                   showEditButton={showEditButton && canDelete}
                   showRemoveButton={showRemoveButton}
+                  showVariantButton={hasVariantActions}
+                  showApproveButton={hasApproveActions}
                   onEdit={onEdit}
                   onRemove={onRemove}
+                  onGenerateVariant={onGenerateVariant}
+                  onApproveDraft={onApproveDraft}
                   actionLoading={actionLoading}
+                  variantLoading={variantLoadingId === question.id}
                   hasActions={hasActions}
                   isDraggable={isDraggable}
                   onPreview={handlePreview}

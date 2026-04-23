@@ -15,6 +15,7 @@ import React, { useState, useEffect } from 'react';
  * @param {Object} user - Current user object (for permissions)
  * @param {boolean} isTeacher - Whether current user is a teacher
  * @param {React.ReactNode} emptyStateContent - Content to show when no questions exist
+ * @param {React.ReactNode} headerContent - Optional content rendered under the title
  */
 export default function CollapsibleSection({ 
   title, 
@@ -28,7 +29,8 @@ export default function CollapsibleSection({
   renderQuestionCard,
   user,
   isTeacher,
-  emptyStateContent
+  emptyStateContent,
+  headerContent
 }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState(1);
@@ -119,6 +121,11 @@ export default function CollapsibleSection({
         </span>
         {title} ({questions.length})
       </h3>
+      {headerContent && !isCollapsed && (
+        <div style={{ margin: '-0.35rem 0 0.9rem 1.35rem' }}>
+          {headerContent}
+        </div>
+      )}
       
       {!isCollapsed && (
         <>
