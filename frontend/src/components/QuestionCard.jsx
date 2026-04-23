@@ -98,11 +98,16 @@ export default function QuestionCard({
   showEditButton = false,
   showRemoveButton = false,
   showStudentViewButton = false,
+  showVariantButton = false,
+  showApproveButton = false,
   actionLoading = false,
+  variantLoading = false,
   onDelete,
   onEdit,
   onRemove,
   onStudentView,
+  onGenerateVariant,
+  onApproveDraft,
   compact = false,
   showUserIcon = true,
   questionNumber,
@@ -579,12 +584,12 @@ export default function QuestionCard({
       })()}
 
       {/* Action buttons */}
-      {(showStudentViewButton || showDeleteButton || showEditButton || showRemoveButton) && (
+      {(showStudentViewButton || showVariantButton || showApproveButton || showDeleteButton || showEditButton || showRemoveButton) && (
         <div 
           onPointerDown={(e) => e.stopPropagation()}
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}
         >
-          <div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             {showStudentViewButton && (
               <button
                 onClick={(e) => {
@@ -606,6 +611,56 @@ export default function QuestionCard({
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0ea5e9'; }}
               >
                 Student View
+              </button>
+            )}
+            {showVariantButton && onGenerateVariant && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGenerateVariant(question);
+                }}
+                disabled={actionLoading || variantLoading}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#0f766e',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: (actionLoading || variantLoading) ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  opacity: (actionLoading || variantLoading) ? 0.6 : 1,
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseEnter={(e) => { if (!actionLoading && !variantLoading) e.currentTarget.style.backgroundColor = '#0d9488'; }}
+                onMouseLeave={(e) => { if (!actionLoading && !variantLoading) e.currentTarget.style.backgroundColor = '#0f766e'; }}
+              >
+                {variantLoading ? 'Generating...' : 'Generate Variant'}
+              </button>
+            )}
+            {showApproveButton && onApproveDraft && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onApproveDraft(question);
+                }}
+                disabled={actionLoading}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#15803d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  opacity: actionLoading ? 0.6 : 1,
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#166534'; }}
+                onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#15803d'; }}
+              >
+                Approve
               </button>
             )}
           </div>

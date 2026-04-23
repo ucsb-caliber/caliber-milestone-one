@@ -123,3 +123,8 @@
   }
 }
 
+@keyframes caliber-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
