@@ -32,7 +32,9 @@ export default function CreateQuestion() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [viewMode, setViewMode] = useState('edit');//edit preview and split 
+  const [viewMode, setViewMode] = useState('edit');
+  const [isSplitView, setIsSplitView] = useState(false);
+  const [showStudentPreview, setShowStudentPreview] = useState(false);
   const [profileSchool, setProfileSchool] = useState('');
 
   // Auto-save to LocalStorage whenever formData changes
@@ -319,6 +321,22 @@ export default function CreateQuestion() {
     return formData.question_type === 'fr' || formData.question_type === 'short_answer';
   };
 
+  const getStudentPreviewQuestion = () => {
+    const answerChoices = needsAnswerChoices()
+      ? (isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(choice => choice.trim()))
+      : formData.rubric_parts;
+
+    return {
+      id: 'live-preview',
+      title: formData.title || 'Untitled Question',
+      text: formData.text,
+      question_type: formData.question_type,
+      answer_choices: JSON.stringify(answerChoices),
+      correct_answer: formData.correct_answer,
+      image_url: imagePreview || undefined
+    };
+  };
+
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -565,6 +583,21 @@ export default function CreateQuestion() {
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button type="button" style={styles.secondaryBtn} onClick={() => window.location.hash = 'questions'}>Cancel</button>
+            <button
+              type="button"
+              onClick={() => setIsSplitView((current) => !current)}
+              style={{
+                ...styles.secondaryBtn,
+                backgroundColor: isSplitView ? '#eef2ff' : 'white',
+                borderColor: isSplitView ? '#4f46e5' : '#cbd5e0',
+                color: isSplitView ? '#3730a3' : '#4a5568'
+              }}
+            >
+              Split View
+            </button>
+            <button type="button" style={styles.secondaryBtn} onClick={() => setShowStudentPreview(true)}>
+              Student Preview
+            </button>
             <button type="submit" onClick={handleSubmit} style={styles.primaryBtn} disabled={loading}>
               {loading ? 'Saving...' : 'Publish Question'}
             </button>
@@ -577,7 +610,7 @@ export default function CreateQuestion() {
         <form onSubmit={handleSubmit} style={{
           display: 'grid',
           // Dynamically adjust grid: 1:1 for Split View, 1:Sidebar for others
-          gridTemplateColumns: viewMode === 'split' ? '1fr 1fr' : '1fr 350px',
+          gridTemplateColumns: isSplitView ? '1fr 1fr' : '1fr 350px',
           gap: '24px',
           alignItems: 'start'
         }}>
@@ -603,7 +636,7 @@ export default function CreateQuestion() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <label style={styles.label}>Question Body</label>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', background: '#f7fafc', padding: '2px', borderRadius: '6px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '76px 76px', background: '#f7fafc', padding: '2px', borderRadius: '6px' }}>
                     <button
                       type="button"
                       onClick={() => setViewMode('edit')}
@@ -611,6 +644,9 @@ export default function CreateQuestion() {
                         styles.secondaryBtn, 
                         padding: '4px 12px', 
                         border: 'none', 
+                        width: '76px',
+                        minWidth: '76px',
+                        textAlign: 'center',
                         background: viewMode === 'edit' ? 'white' : 'transparent', 
                         boxShadow: viewMode === 'edit' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
                        }}>
@@ -623,23 +659,13 @@ export default function CreateQuestion() {
                         styles.secondaryBtn, 
                         padding: '4px 12px',
                         border: 'none', 
+                        width: '76px',
+                        minWidth: '76px',
+                        textAlign: 'center',
                         background: viewMode === 'preview' ? 'white' : 'transparent', 
                         boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
                         }}>
                       Preview
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('split')}
-                      style={{ ...
-                      styles.secondaryBtn, 
-                      padding: '4px 12px', 
-                      border: 'none', 
-                      background: viewMode === 'split' ? 'white' : 'transparent', 
-                      boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' ,
-                      fontWeight: viewMode === 'split' ? '700' : '500'
-                      }}>
-                      Student View
                     </button>
                   </div>
                 </div>
@@ -900,14 +926,14 @@ export default function CreateQuestion() {
               </div>
             )}
 
-            {viewMode === 'split' && renderMetadataCard()}
+            {isSplitView && renderMetadataCard()}
           </div>
 
           {/* Sidebar / Split View (Right Column) */}
           <aside style={{ 
             position: 'sticky',
             top: '20px' }}>
-            {viewMode === 'split' ? (
+            {isSplitView ? (
               /* --- SPLIT VIEW PREVIEW --- */
               <div style={styles.card}>
                 <div style={{ 
@@ -932,30 +958,31 @@ export default function CreateQuestion() {
                   }}>
                   <StudentPreview
                     inline={true}
-                    isPreviewMode={true}
-                    forceReadOnly={true}
+                    isPreviewMode={false}
                     showStatusBanner={false}
                     showPrevNextButtons={false}
                     assignmentTitle={formData.title || "Untitled Question"}
-                    questions={[{
-                      id: 'live-preview',
-                      title: formData.title,
-                      text: formData.text,
-                      question_type: formData.question_type,
-                      answer_choices: (formData.question_type === 'mcq' || formData.question_type === 'true_false')
-                        ? JSON.stringify(formData.answer_choices.filter(c => c.trim() !== ''))
-                        : JSON.stringify(formData.rubric_parts),
-                      correct_answer: formData.correct_answer,
-                      school: formData.school,
-                      course: formData.course,
-                      course_type: formData.course_type
-                    }]}
+                    assignmentType={formData.question_type?.toUpperCase() || 'Question'}
+                    questions={[getStudentPreviewQuestion()]}
                   />
                 </div>
               </div>
             ) : renderMetadataCard()}
           </aside>
         </form>
+
+        {showStudentPreview && (
+          <StudentPreview
+            isPreviewMode={false}
+            showStatusBanner={false}
+            showPrevNextButtons={false}
+            assignmentTitle={formData.title || "Untitled Question"}
+            assignmentType={formData.question_type?.toUpperCase() || 'Question'}
+            closeButtonText="Back to Editor"
+            onClose={() => setShowStudentPreview(false)}
+            questions={[getStudentPreviewQuestion()]}
+          />
+        )}
       </div>
     </div>
   );

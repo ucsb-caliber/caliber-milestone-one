@@ -81,7 +81,9 @@ export default function StudentPreview({
       const urls = {};
       for (const question of questions) {
         if (question.image_url) {
-          const signedUrl = await getImageSignedUrl(question.image_url);
+          const signedUrl = /^(data:|blob:|https?:\/\/)/.test(question.image_url)
+            ? question.image_url
+            : await getImageSignedUrl(question.image_url);
           if (signedUrl) {
             urls[question.id] = signedUrl;
           }
