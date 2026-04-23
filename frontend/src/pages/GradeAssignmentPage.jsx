@@ -518,20 +518,24 @@ export default function GradeAssignmentPage() {
                     {studentRows.map((row) => {
                       const graded = isStudentGraded(row);
                       const isCurrent = row.student_id === selectedStudentId;
+                      const rowBackground = graded
+                        ? (isCurrent ? '#dcfce7' : '#f0fdf4')
+                        : (isCurrent ? '#fee2e2' : '#fef2f2');
+                      const rowTextColor = graded ? '#14532d' : '#991b1b';
                       return (
                         <tr
                           key={row.student_id}
                           onClick={() => navigateToStudent(row.student_id)}
                           style={{
-                            background: isCurrent ? '#dbeafe' : (graded ? '#f0fdf4' : '#fef2f2'),
+                            background: rowBackground,
                             cursor: saveState === 'saving' ? 'not-allowed' : 'pointer',
                             opacity: saveState === 'saving' ? 0.65 : 1,
                           }}
                         >
-                          <td style={{ ...styles.studentMenuCell, color: graded ? '#166534' : '#991b1b', fontWeight: 700 }}>
+                          <td style={{ ...styles.studentMenuCell, color: rowTextColor, fontWeight: 700 }}>
                             {row.student_name}
                           </td>
-                          <td style={{ ...styles.studentMenuCell, color: graded ? '#166534' : '#991b1b', fontWeight: 700 }}>
+                          <td style={{ ...styles.studentMenuCell, color: rowTextColor, fontWeight: 700 }}>
                             {formatStudentScore(row)}
                           </td>
                         </tr>
@@ -560,6 +564,15 @@ export default function GradeAssignmentPage() {
           )}
         </div>
       </div>
+
+      {data?.late_penalty_applied && (
+        <div style={{ ...styles.loadingPanel, marginBottom: '1rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d' }}>
+          Late policy applied: raw score {Math.round(Number(data.raw_score_earned || 0) * 100) / 100}/{Math.round(Number(data.score_total || 0) * 100) / 100},
+          penalty {Math.round(Number(data.late_penalty_points || 0) * 100) / 100} points
+          ({Math.round(Number(data.late_penalty_fraction || 0) * 10000) / 100}%),
+          final score {Math.round(Number(data.score_earned || 0) * 100) / 100}/{Math.round(Number(data.score_total || 0) * 100) / 100}.
+        </div>
+      )}
 
       {error && (
         <div style={{ ...styles.loadingPanel, marginBottom: '1rem', color: '#dc2626', background: '#fee2e2' }}>
@@ -617,7 +630,58 @@ export default function GradeAssignmentPage() {
           ) : null}
 
           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}>Student answer</div>
-          <p style={{ whiteSpace: 'pre-wrap', color: '#374151' }}>{asDisplayAnswer(currentQuestion.student_answer)}</p>
+          {currentQuestion.question_type === 'coding' ? (
+            <pre style={{ whiteSpace: 'pre-wrap', color: '#e5e7eb', background: '#0f172a', padding: '0.9rem', borderRadius: '8px', overflowX: 'auto' }}>
+              {(() => {
+                try {
+                  const parsed = JSON.parse(currentQuestion.student_answer || '{}');
+                  return parsed?.source_code || '';
+                } catch {
+                  return currentQuestion.student_answer || '';
+                }
+              })()}
+            </pre>
+          ) : (
+            <p style={{ whiteSpace: 'pre-wrap', color: '#374151' }}>{asDisplayAnswer(currentQuestion.student_answer)}</p>
+          )}
+
+          {currentQuestion.coding_result && (
+            <div style={{ marginTop: '1rem', border: '1px solid #dbeafe', borderRadius: '10px', padding: '0.9rem', background: '#f8fbff' }}>
+              <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: '0.6rem' }}>
+                {`Autograder: ${String(currentQuestion.coding_result.verdict || '').replaceAll('_', ' ')}`}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                {(currentQuestion.coding_result.tests || []).map((test, idx) => (
+                  <div key={`${test.name}-${idx}`} style={{ border: '1px solid #dbeafe', borderRadius: '8px', padding: '0.7rem', background: 'white' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                      <strong>{test.name || `Test ${idx + 1}`}</strong>
+                      <span style={{ color: test.status === 'passed' ? '#166534' : '#991b1b', fontWeight: 700 }}>
+                        {test.status === 'passed' ? 'Passed' : 'Failed'}
+                      </span>
+                    </div>
+                    {test.description && <div style={{ color: '#475569', fontSize: '0.84rem', marginTop: '0.2rem' }}>{test.description}</div>}
+                    {test.message && <div style={{ color: '#334155', fontSize: '0.84rem', marginTop: '0.2rem' }}>{test.message}</div>}
+                    {(test.expected_output || test.received_output) && (
+                      <div style={{ marginTop: '0.3rem', display: 'grid', gap: '0.25rem', fontSize: '0.82rem', color: '#475569' }}>
+                        {test.expected_output && <div><strong>Expected:</strong> {test.expected_output}</div>}
+                        {test.received_output && <div><strong>Received:</strong> {test.received_output}</div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {currentQuestion.coding_result.compile_output && (
+                <pre style={{ whiteSpace: 'pre-wrap', color: '#e5e7eb', background: '#0f172a', padding: '0.9rem', borderRadius: '8px', overflowX: 'auto', marginTop: '0.75rem' }}>
+                  {currentQuestion.coding_result.compile_output}
+                </pre>
+              )}
+              {currentQuestion.coding_result.runtime_output && (
+                <pre style={{ whiteSpace: 'pre-wrap', color: '#e5e7eb', background: '#0f172a', padding: '0.9rem', borderRadius: '8px', overflowX: 'auto', marginTop: '0.75rem' }}>
+                  {currentQuestion.coding_result.runtime_output}
+                </pre>
+              )}
+            </div>
+          )}
 
           {currentQuestion.requires_manual_grading && (
             <div style={{ marginTop: '1rem' }}>

@@ -7,6 +7,8 @@ import 'katex/dist/katex.min.css';
 import { createQuestion, uploadImage, getUserInfo } from '../api';
 import { useAuth } from '../AuthContext';
 import StudentPreview from '../components/StudentPreview';
+import CodingQuestionBuilder from '../components/CodingQuestionBuilder';
+import { createDefaultCodingConfig, normalizeEditableCodingConfig, sanitizeCodingConfigForSave, isCodingQuestion, getCodingAuthoringError } from '../utils/coding';
 
 export default function CreateQuestion() {
   const { user } = useAuth();
@@ -25,6 +27,7 @@ export default function CreateQuestion() {
     is_verified: true,
     rubric_parts: [{ part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] }],
     short_answer_expected: '',
+    coding_config: createDefaultCodingConfig(),
   });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -188,6 +191,10 @@ export default function CreateQuestion() {
         const firstPart = next.rubric_parts?.[0] || { part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] };
         next.rubric_parts = [firstPart];
       }
+      if (name === 'question_type' && value === 'coding') {
+        next.coding_config = normalizeEditableCodingConfig(next.coding_config);
+        next.correct_answer = 'coding';
+      }
       return next;
     });
   };
@@ -316,15 +323,21 @@ export default function CreateQuestion() {
     return formData.question_type === 'short_answer';
   };
 
+  const isCoding = () => {
+    return isCodingQuestion(formData.question_type);
+  };
+
   // Check if question type needs rubric (both FR and Short Answer)
   const needsRubric = () => {
     return formData.question_type === 'fr' || formData.question_type === 'short_answer';
   };
 
   const getStudentPreviewQuestion = () => {
-    const answerChoices = needsAnswerChoices()
-      ? (isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(choice => choice.trim()))
-      : formData.rubric_parts;
+    const answerChoices = isCoding()
+      ? sanitizeCodingConfigForSave(formData.coding_config)
+      : needsAnswerChoices()
+        ? (isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(choice => choice.trim()))
+        : formData.rubric_parts;
 
     return {
       id: 'live-preview',
@@ -333,6 +346,7 @@ export default function CreateQuestion() {
       question_type: formData.question_type,
       answer_choices: JSON.stringify(answerChoices),
       correct_answer: formData.correct_answer,
+      coding: isCoding() ? sanitizeCodingConfigForSave(formData.coding_config) : undefined,
       image_url: imagePreview || undefined
     };
   };
@@ -430,6 +444,15 @@ export default function CreateQuestion() {
       }
     }
 
+    if (isCoding()) {
+      const codingError = getCodingAuthoringError(formData.coding_config);
+      if (codingError) {
+        setError(codingError);
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       let imageUrl = null;
 
@@ -448,7 +471,21 @@ export default function CreateQuestion() {
       let answerChoicesData = '[]';
       let correctAnswerData = '';
 
-      if (needsAnswerChoices()) {
+      let codingConfigData = null;
+
+      if (isCoding()) {
+        codingConfigData = sanitizeCodingConfigForSave(formData.coding_config);
+        answerChoicesData = JSON.stringify({
+          language: codingConfigData.language,
+          function_signature: codingConfigData.function_signature,
+          starter_code: codingConfigData.starter_code,
+          visible_tests: codingConfigData.visible_tests,
+          time_limit_ms: codingConfigData.time_limit_ms,
+          memory_limit_mb: codingConfigData.memory_limit_mb,
+          points: codingConfigData.points,
+        });
+        correctAnswerData = 'coding';
+      } else if (needsAnswerChoices()) {
         const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
         answerChoicesData = JSON.stringify(validAnswers);
         correctAnswerData = formData.correct_answer;
@@ -471,6 +508,7 @@ export default function CreateQuestion() {
         tags: formData.tags,
         answer_choices: answerChoicesData,
         correct_answer: correctAnswerData,
+        coding_config: codingConfigData,
         image_url: imageUrl,
         is_verified: true
       });
@@ -492,7 +530,8 @@ export default function CreateQuestion() {
         answer_choices: ['', '', '', ''],
         correct_answer: '',
         rubric_parts: [{ part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] }],
-        short_answer_expected: ''
+        short_answer_expected: '',
+        coding_config: createDefaultCodingConfig(),
       });
       setImageFile(null);
       setImagePreview(null);
@@ -529,6 +568,7 @@ export default function CreateQuestion() {
           <option value="fr">Free Response (FR)</option>
           <option value="short_answer">Short Answer</option>
           <option value="true_false">True/False</option>
+          <option value="coding">Coding (C++)</option>
         </select>
         <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
       </div>
@@ -923,6 +963,22 @@ export default function CreateQuestion() {
                     <span style={{ fontSize: '18px' }}>+</span> Add Another Part
                   </button>
                 )}
+              </div>
+            )}
+
+            {isCoding() && (
+              <div style={styles.card}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={styles.label}>Coding Setup</label>
+                  <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+                    Students submit C++ code in a LeetCode-style editor. Each test body should return a boolean.
+                  </div>
+                </div>
+                <CodingQuestionBuilder
+                  codingConfig={normalizeEditableCodingConfig(formData.coding_config)}
+                  onChange={(nextCodingConfig) => setFormData((prev) => ({ ...prev, coding_config: nextCodingConfig }))}
+                  inputStyle={styles.input}
+                />
               </div>
             )}
 

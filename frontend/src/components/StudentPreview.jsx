@@ -4,7 +4,9 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { getImageSignedUrl } from '../api';
+import { getImageSignedUrl, runCodingQuestion } from '../api';
+import CodeEditor from './CodeEditor';
+import { getQuestionCodingConfig, isCodingQuestion } from '../utils/coding';
 
 /**
  * StudentPreview - A reusable component to display an assignment as students would see it
@@ -40,6 +42,7 @@ export default function StudentPreview({
   showHeader = true,
   onAnswersChange,
   onQuestionChange,
+  assignmentId = null,
   inline = false, //new prop
   onSubmit,
   isSubmitting = false,
@@ -50,6 +53,9 @@ export default function StudentPreview({
   const [answers, setAnswers] = useState(initialAnswers || {});
   const [submitted, setSubmitted] = useState(Boolean(initialSubmitted));
   const [imageUrls, setImageUrls] = useState({});
+  const [codingRuns, setCodingRuns] = useState({});
+  const [runningCodingId, setRunningCodingId] = useState(null);
+  const [codingRunError, setCodingRunError] = useState('');
   const isReadOnly = submitted || forceReadOnly;
   const isSubmitAction = !isPreviewMode && !isReadOnly && typeof onSubmit === 'function';
   const primaryButtonText = isSubmitAction
@@ -107,6 +113,22 @@ export default function StudentPreview({
     }
   };
 
+  const getCodingConfig = (question) => getQuestionCodingConfig(question);
+
+  const getCodingAnswerPayload = (questionId) => {
+    const raw = answers[questionId];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return {
+        language: String(raw.language || 'cpp'),
+        source_code: String(raw.source_code || ''),
+      };
+    }
+    return {
+      language: 'cpp',
+      source_code: typeof raw === 'string' ? raw : '',
+    };
+  };
+
   const handleAnswerSelect = (questionId, answer) => {
     if (isReadOnly) return;
     setAnswers(prev => {
@@ -131,6 +153,41 @@ export default function StudentPreview({
     });
   };
 
+  const handleCodingAnswer = (questionId, sourceCode) => {
+    if (isReadOnly) return;
+    setAnswers((prev) => {
+      const previous = prev[questionId];
+      const next = {
+        ...prev,
+        [questionId]: {
+          language: 'cpp',
+          ...(previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}),
+          source_code: sourceCode,
+        }
+      };
+      if (onAnswersChange) onAnswersChange(next);
+      return next;
+    });
+  };
+
+  const handleRunCoding = async (question) => {
+    if (!assignmentId || isReadOnly) return;
+    const answerPayload = getCodingAnswerPayload(question.id);
+    setCodingRunError('');
+    setRunningCodingId(question.id);
+    try {
+      const result = await runCodingQuestion(assignmentId, question.id, {
+        language: 'cpp',
+        source_code: answerPayload.source_code || getCodingConfig(question).starter_code || '',
+      });
+      setCodingRuns((prev) => ({ ...prev, [question.id]: result }));
+    } catch (error) {
+      setCodingRunError(error.message || 'Failed to run code');
+    } finally {
+      setRunningCodingId(null);
+    }
+  };
+
   const handlePrevious = () => {
     if (currentIndex > 0) {
       const nextIndex = currentIndex - 1;
@@ -148,8 +205,15 @@ export default function StudentPreview({
   };
 
   const isQuestionAnswered = (questionId) => {
+    const question = questions.find((item) => item.id === questionId);
     const value = answers[questionId];
     if (value === undefined || value === null) return false;
+    if (question && isCodingQuestion(question.question_type)) {
+      const codingConfig = getCodingConfig(question);
+      const payload = getCodingAnswerPayload(questionId);
+      const code = String(payload.source_code || '').trim();
+      return code !== '' && code !== String(codingConfig.starter_code || '').trim();
+    }
     if (typeof value === 'string') return value.trim() !== '';
     return true;
   };
@@ -390,6 +454,87 @@ export default function StudentPreview({
       transition: 'border-color 0.15s',
       boxSizing: 'border-box'
     },
+    codeMetaRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '1rem',
+      flexWrap: 'wrap',
+      marginBottom: '0.85rem'
+    },
+    codeBadgeRow: {
+      display: 'flex',
+      gap: '0.5rem',
+      flexWrap: 'wrap'
+    },
+    codeBadge: {
+      background: '#eff6ff',
+      color: '#1d4ed8',
+      borderRadius: '999px',
+      padding: '0.35rem 0.7rem',
+      fontSize: '0.8rem',
+      fontWeight: '700'
+    },
+    runButton: {
+      border: 'none',
+      background: '#2563eb',
+      color: 'white',
+      borderRadius: '8px',
+      padding: '0.7rem 1rem',
+      fontSize: '0.9rem',
+      fontWeight: '700',
+      cursor: 'pointer'
+    },
+    codingResultPanel: {
+      marginTop: '1rem',
+      border: '1px solid #dbeafe',
+      background: '#f8fbff',
+      borderRadius: '10px',
+      padding: '1rem'
+    },
+    codingResultHeading: {
+      fontSize: '0.9rem',
+      fontWeight: '700',
+      color: '#1e3a8a',
+      marginBottom: '0.75rem'
+    },
+    codingOutput: {
+      background: '#0f172a',
+      color: '#e2e8f0',
+      borderRadius: '8px',
+      padding: '0.9rem',
+      fontSize: '0.85rem',
+      overflowX: 'auto',
+      whiteSpace: 'pre-wrap',
+      marginTop: '0.75rem'
+    },
+    sampleIOGrid: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: '0.6rem',
+      marginTop: '0.6rem'
+    },
+    sampleIOCard: {
+      background: 'white',
+      border: '1px solid #e2e8f0',
+      borderRadius: '8px',
+      padding: '0.55rem 0.65rem'
+    },
+    sampleIOLabel: {
+      color: '#64748b',
+      fontSize: '0.76rem',
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: '0.04em',
+      marginBottom: '0.25rem'
+    },
+    sampleIOValue: {
+      color: '#0f172a',
+      fontSize: '0.84rem',
+      whiteSpace: 'pre-wrap',
+      fontFamily: 'monospace',
+      margin: 0
+    },
     navigation: {
       display: 'flex',
       justifyContent: 'space-between',
@@ -555,9 +700,16 @@ export default function StudentPreview({
     (answerChoices.length > 0 && typeof answerChoices[0] === 'string');
   const isFreeResponse = questionType === 'fr';
   const isShortAnswer = questionType === 'short_answer';
+  const isCoding = isCodingQuestion(questionType);
+  const codingConfig = isCoding ? getCodingConfig(currentQuestion) : null;
   const rubricParts = (isFreeResponse || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object' 
     ? answerChoices : [];
   const selectedAnswer = answers[currentQuestion.id];
+  const selectedCodingAnswer = isCoding ? getCodingAnswerPayload(currentQuestion.id) : { language: 'cpp', source_code: '' };
+  const codeEditorValue = isCoding
+    ? (selectedCodingAnswer.source_code || codingConfig?.starter_code || '')
+    : '';
+  const currentCodingRun = codingRuns[currentQuestion.id];
   const isLastQuestion = currentIndex === totalQuestions - 1;
   const showFinishPreviewButton = isLastQuestion && isPreviewMode && onClose;
   const showNavigationFooter = showPrevNextButtons || showFinishPreviewButton;
@@ -925,6 +1077,122 @@ export default function StudentPreview({
               </>
             )}
 
+            {isCoding && codingConfig && (
+              <>
+                <div style={styles.codeMetaRow}>
+                  <div>
+                    <div style={styles.answerLabel}>Your C++ solution:</div>
+                    <div style={styles.codeBadgeRow}>
+                      <span style={styles.codeBadge}>C++</span>
+                      {codingConfig.function_signature && (
+                        <span style={{ ...styles.codeBadge, background: '#ecfdf5', color: '#047857' }}>
+                          {codingConfig.function_signature}
+                        </span>
+                      )}
+                      <span style={{ ...styles.codeBadge, background: '#fff7ed', color: '#c2410c' }}>
+                        {`${codingConfig.points || 1} pts`}
+                      </span>
+                    </div>
+                  </div>
+                  {!isPreviewMode && assignmentId && (
+                    <button
+                      type="button"
+                      style={{ ...styles.runButton, opacity: runningCodingId === currentQuestion.id ? 0.7 : 1 }}
+                      onClick={() => handleRunCoding(currentQuestion)}
+                      disabled={isReadOnly || runningCodingId === currentQuestion.id}
+                    >
+                      {runningCodingId === currentQuestion.id ? 'Running...' : 'Run Code'}
+                    </button>
+                  )}
+                </div>
+
+                {(codingConfig.visible_tests || []).length > 0 && (
+                  <div style={{ marginBottom: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {(codingConfig.visible_tests || []).map((test, idx) => (
+                      <div key={`${test.name}-${idx}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem' }}>
+                        <div style={{ fontWeight: '700', color: '#111827', fontSize: '0.9rem' }}>{test.name || `Sample ${idx + 1}`}</div>
+                        {test.description && (
+                          <div style={{ color: '#475569', fontSize: '0.85rem', marginTop: '0.25rem' }}>{test.description}</div>
+                        )}
+                        {(test.input || test.output) && (
+                          <div style={styles.sampleIOGrid}>
+                            <div style={styles.sampleIOCard}>
+                              <div style={styles.sampleIOLabel}>Input</div>
+                              <pre style={styles.sampleIOValue}>{test.input || '—'}</pre>
+                            </div>
+                            <div style={styles.sampleIOCard}>
+                              <div style={styles.sampleIOLabel}>Expected Output</div>
+                              <pre style={styles.sampleIOValue}>{test.output || '—'}</pre>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <CodeEditor
+                  language="cpp"
+                  height={inline ? '280px' : '360px'}
+                  readOnly={isReadOnly}
+                  value={codeEditorValue}
+                  onChange={(nextCode) => handleCodingAnswer(currentQuestion.id, nextCode)}
+                />
+
+                {codingRunError && (
+                  <div style={{ marginTop: '0.75rem', color: '#b91c1c', fontWeight: '600' }}>{codingRunError}</div>
+                )}
+
+                {currentCodingRun && (
+                  <div style={styles.codingResultPanel}>
+                    <div style={styles.codingResultHeading}>
+                      {`Run Result: ${String(currentCodingRun.verdict || '').replaceAll('_', ' ') || 'complete'}`}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                      {(currentCodingRun.tests || []).map((test, idx) => (
+                        <div key={`${test.name}-${idx}`} style={{ border: '1px solid #dbeafe', borderRadius: '8px', padding: '0.75rem', background: 'white' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
+                            <strong style={{ color: '#111827' }}>{test.name || `Test ${idx + 1}`}</strong>
+                            <span style={{ color: test.status === 'passed' ? '#047857' : '#b91c1c', fontWeight: '700' }}>
+                              {test.status === 'passed' ? 'Passed' : 'Failed'}
+                            </span>
+                          </div>
+                          {test.description && (
+                            <div style={{ color: '#475569', fontSize: '0.85rem', marginTop: '0.25rem' }}>{test.description}</div>
+                          )}
+                          {test.message && (
+                            <div style={{ color: '#334155', fontSize: '0.85rem', marginTop: '0.35rem' }}>{test.message}</div>
+                          )}
+                          {(test.input || test.expected_output || test.received_output) && (
+                            <div style={styles.sampleIOGrid}>
+                              <div style={styles.sampleIOCard}>
+                                <div style={styles.sampleIOLabel}>Input</div>
+                                <pre style={styles.sampleIOValue}>{test.input || '—'}</pre>
+                              </div>
+                              <div style={styles.sampleIOCard}>
+                                <div style={styles.sampleIOLabel}>Expected</div>
+                                <pre style={styles.sampleIOValue}>{test.expected_output || '—'}</pre>
+                              </div>
+                              <div style={{ ...styles.sampleIOCard, gridColumn: '1 / -1' }}>
+                                <div style={styles.sampleIOLabel}>Received</div>
+                                <pre style={styles.sampleIOValue}>{test.received_output || (test.status === 'passed' ? 'Matched expected output' : '—')}</pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {currentCodingRun.compile_output && (
+                      <pre style={styles.codingOutput}>{currentCodingRun.compile_output}</pre>
+                    )}
+                    {currentCodingRun.runtime_output && (
+                      <pre style={styles.codingOutput}>{currentCodingRun.runtime_output}</pre>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             {(isFreeResponse || isShortAnswer) && rubricParts.length === 0 && (
               <>
                 <div style={styles.answerLabel}>Your response:</div>
@@ -940,7 +1208,7 @@ export default function StudentPreview({
               </>
             )}
 
-            {!isMCQ && !isFreeResponse && !isShortAnswer && (
+            {!isMCQ && !isFreeResponse && !isShortAnswer && !isCoding && (
               <>
                 <div style={styles.answerLabel}>Your answer:</div>
                 <textarea

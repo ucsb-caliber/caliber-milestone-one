@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { getQuestionCodingConfig, isCodingQuestion } from '../utils/coding';
 
 // Color palettes for keyword and tag bubbles
 const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
@@ -435,6 +436,7 @@ export default function QuestionCard({
         const isMCQ = questionType === 'mcq' || questionType === 'true_false';
         const isFR = questionType === 'fr';
         const isShortAnswer = questionType === 'short_answer';
+        const isCoding = isCodingQuestion(questionType);
 
         // For MCQ/True-False: show answer choices
         if (isMCQ && answerChoices.length > 0) {
@@ -533,6 +535,48 @@ export default function QuestionCard({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          );
+        }
+
+        if (isCoding) {
+          const codingConfig = getQuestionCodingConfig(question);
+          return (
+            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 'bold', color: '#333' }}>
+                  Coding Question
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '700' }}>C++</span>
+                  <span style={{ background: '#ecfdf5', color: '#047857', padding: '2px 8px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '700' }}>{`${codingConfig.points || 1} pts`}</span>
+                </div>
+              </div>
+              {codingConfig.function_signature && (
+                <div style={{ fontSize: '0.84rem', color: '#334155', marginBottom: '0.5rem', fontFamily: 'monospace' }}>
+                  {codingConfig.function_signature}
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {(codingConfig.visible_tests || []).map((test, index) => (
+                  <div key={`${test.name}-${index}`} style={{ padding: '0.6rem 0.75rem', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: '700', color: '#111827' }}>{test.name || `Sample ${index + 1}`}</div>
+                    {test.description && <div style={{ marginTop: '0.2rem', color: '#475569' }}>{test.description}</div>}
+                    {(test.input || test.output) && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem', marginTop: '0.45rem' }}>
+                        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.45rem 0.5rem' }}>
+                          <div style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Input</div>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace', color: '#0f172a' }}>{test.input || '—'}</pre>
+                        </div>
+                        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.45rem 0.5rem' }}>
+                          <div style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Expected Output</div>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace', color: '#0f172a' }}>{test.output || '—'}</pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           );

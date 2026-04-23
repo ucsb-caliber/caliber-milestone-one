@@ -88,6 +88,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 - `docs/FEATURES_AND_API.md` for current feature scope, routes, and endpoint map
 - `docs/SETUP_OPERATIONS_AND_TESTING.md` for setup, migrations, storage policy setup, and smoke testing
+- `docs/CODING_RUNNER.md` for coding-question execution modes, Docker Compose setup, and runner env vars
 
 ## Quick Start
 
@@ -144,6 +145,7 @@ Edit your `backend/.env` file and replace placeholders:
 - Optional: `M2_TESSERACT_TIMEOUT_SEC` to cap per-page OCR time (default `45`)
 - Optional: `M2_RENDER_DPI` to control PDF rasterization cost (default `170`)
 - Optional: configure `LLM_CLEANUP_*` and `ROSTER_*` values only if you plan to use those integrations locally
+- Optional: leave `CODING_RUNNER_URL` blank for localhost dev, or set it to `http://coding-runner:8010` when using the Docker runner service on a server
 
 **Run database migrations** (first time setup):
 ```bash
@@ -159,6 +161,10 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 The backend will be available at http://localhost:8000
+
+For coding questions:
+- Local dev: leave `CODING_RUNNER_URL` blank and the backend will use the built-in local executor.
+- Server / Docker: use the root `docker-compose.yml` so the backend can reach the dedicated `coding-runner` service at `http://coding-runner:8010`.
 
 ### Frontend Setup
 
