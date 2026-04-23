@@ -85,7 +85,7 @@ function App() {
   });
 
 
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const isInstructorOrAdmin = Boolean(userInfo?.teacher || userInfo?.admin);
 
   // Check if user profile is complete and load preferences
@@ -284,6 +284,22 @@ function App() {
                   <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page === 'profile' ? 'bold' : 'normal' }}>{user.email}</span>
                 </span>
               </a>
+              <button
+                type="button"
+                onClick={signOut}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.35)',
+                  borderRadius: 6,
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  padding: '0.4rem 0.65rem'
+                }}
+              >
+                Log out
+              </button>
             </>
           )}
         </div>
