@@ -100,6 +100,13 @@ def _odl_timeout_sec() -> int:
 
 _TEXT_TYPES = {"paragraph", "heading", "caption", "list item"}
 _CONTAINER_TYPES = {"page", "header", "footer", "text block", "table cell"}
+# Container types we transparently descend through when flattening the tree.
+# `page` is included so we accept both the legacy "root.kids=[page, ...]"
+# shape and the current flat "root.kids=[content elements]" shape that
+# opendataloader-pdf actually emits.
+_DESCEND_TYPES = {"page", "text block", "header", "footer"}
+_ORDERED_LIST_HINTS = ("ordered", "decimal", "number", "arabic", "roman")
+_NUMERIC_LIST_PREFIX_RE = re.compile(r"^\s*\d+\.\s+")
 
 
 def _safe_str(v: Any) -> str:
@@ -142,7 +149,19 @@ def _render_list_item(node: Dict[str, Any], marker: str) -> str:
             nested_lines.extend(
                 "    " + ln if ln else "" for ln in rendered.splitlines()
             )
-    head = f"{marker} {content}".rstrip() if content else marker
+
+    # opendataloader-pdf often inlines the numeral into the item's `content`
+    # (e.g. content="1. (15 points) Write..."). Prepending an ordered marker
+    # blindly produces "1. 1. (15 points) ..." which breaks downstream title
+    # extraction and question-start regexes.
+    is_ordered_marker = bool(re.fullmatch(r"\d+\.", marker.strip()))
+    if is_ordered_marker and content and _NUMERIC_LIST_PREFIX_RE.match(content):
+        head = content
+    elif content:
+        head = f"{marker} {content}".rstrip()
+    else:
+        head = marker
+
     if nested_lines:
         return "\n".join([head, *nested_lines])
     return head
@@ -245,38 +264,75 @@ def _render_node(node: Dict[str, Any]) -> str:
     return content
 
 
+def _coerce_page_num(value: Any, fallback: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def _flatten_top_level_elements(
     root: Dict[str, Any],
 ) -> Iterable[Tuple[Dict[str, Any], int]]:
     """
     Yield (element_node, page_number) pairs in reading order.
 
-    Top-level kids are page nodes. Inside each page, we walk its `kids` and
-    yield one event per "block-level" element (paragraph, heading, list,
-    table, caption, image, ...). We descend through pure container elements
-    (text block, header, footer) so we don't lose their content.
+    Handles two JSON shapes that opendataloader-pdf has emitted across
+    versions:
+      1. flat   - root.kids = [paragraph, heading, list, ...]   (current)
+      2. paged  - root.kids = [page, page, ...]; page.kids = [...]
+    We transparently descend through container elements (`page`, `text
+    block`, `header`, `footer`) and yield one event per block-level element
+    (paragraph, heading, list, table, caption, image, ...).
     """
-    pages = root.get("kids") or []
-    for page in pages:
-        if not isinstance(page, dict):
-            continue
-        try:
-            page_num = int(page.get("page number") or 0)
-        except (TypeError, ValueError):
-            page_num = 0
 
-        def _walk(container: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
-            for child in container.get("kids") or []:
-                if not isinstance(child, dict):
+    def _walk(container: Dict[str, Any], inherited_page: int) -> Iterable[Tuple[Dict[str, Any], int]]:
+        page_num = _coerce_page_num(container.get("page number"), inherited_page)
+        for child in container.get("kids") or []:
+            if not isinstance(child, dict):
+                continue
+            child_type = (_safe_str(child.get("type")) or "").lower()
+            child_page = _coerce_page_num(child.get("page number"), page_num)
+            if child_type in _DESCEND_TYPES:
+                yield from _walk(child, child_page)
+            else:
+                yield child, child_page
+
+    yield from _walk(root, 0)
+
+
+def _is_ordered_numbered_list(node: Dict[str, Any]) -> bool:
+    if not isinstance(node, dict):
+        return False
+    if (_safe_str(node.get("type")) or "").lower() != "list":
+        return False
+    style = (_safe_str(node.get("numbering style")) or "").lower()
+    return any(hint in style for hint in _ORDERED_LIST_HINTS)
+
+
+def _iter_question_candidates(
+    root: Dict[str, Any],
+) -> Iterable[Tuple[Dict[str, Any], int, str]]:
+    """
+    Yield (element, page_number, rendered_markdown) tuples in reading order.
+
+    Special-cases ordered/numbered top-level lists so each list item is
+    emitted as its own candidate; without this, opendataloader-pdf's habit of
+    grouping every numbered question into one `list` element would collapse
+    all questions into a single chunk and our segmenter would only see one
+    question-start line.
+    """
+    for element, page_num in _flatten_top_level_elements(root):
+        if _is_ordered_numbered_list(element):
+            items = element.get("list items") or []
+            for idx, item in enumerate(items, start=1):
+                if not isinstance(item, dict):
                     continue
-                ctype = (_safe_str(child.get("type")) or "").lower()
-                if ctype in {"text block", "header", "footer"}:
-                    yield from _walk(child)
-                else:
-                    yield child
-
-        for element in _walk(page):
-            yield element, page_num
+                rendered = _render_list_item(item, f"{idx}.")
+                item_page = _coerce_page_num(item.get("page number"), page_num)
+                yield item, item_page, rendered
+        else:
+            yield element, page_num, _render_node(element)
 
 
 # ===================== ODL EXECUTION =====================
@@ -466,8 +522,7 @@ def _segment_questions(
     questions: List[Dict[str, Any]] = []
     current: Optional[Dict[str, Any]] = None
 
-    for element, page_num in _flatten_top_level_elements(root):
-        rendered = _render_node(element)
+    for _element, page_num, rendered in _iter_question_candidates(root):
         if not rendered or not rendered.strip():
             continue
 
@@ -492,6 +547,16 @@ def _segment_questions(
     if current is not None:
         questions.append(current)
     return questions
+
+
+def _summarize_top_level_shape(root: Dict[str, Any]) -> str:
+    kids = root.get("kids") or []
+    types: List[str] = []
+    for child in kids[:8]:
+        if isinstance(child, dict):
+            types.append((_safe_str(child.get("type")) or "?").lower())
+    suffix = "" if len(kids) <= 8 else f",+{len(kids) - 8}"
+    return f"top_kids={len(kids)} types=[{','.join(types)}{suffix}]"
 
 
 def _join_chunks(chunks: List[str]) -> str:
@@ -580,7 +645,15 @@ def extract_questions_with_odl(
             progress_callback(0, 1, "Segmenting questions")
 
         raw_questions = _segment_questions(root)
-        print(f"[odl] segmented {len(raw_questions)} raw questions")
+        print(
+            f"[odl] segmented {len(raw_questions)} raw questions "
+            f"({_summarize_top_level_shape(root)})"
+        )
+        if not raw_questions:
+            print(
+                "[odl] no question markers found - falling back to legacy extractor; "
+                f"json_path={json_path}"
+            )
 
         formatting_total = max(1, len(raw_questions))
         if progress_callback:
