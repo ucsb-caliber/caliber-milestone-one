@@ -111,8 +111,50 @@ function scoreColorMeta(scorePercent) {
   };
 }
 
+function summaryScoreColorMeta(scorePercent) {
+  if (scorePercent == null || !Number.isFinite(Number(scorePercent))) {
+    return {
+      background: '#f8fafc',
+      color: '#0f172a',
+      labelColor: '#475569',
+      border: '#dbe4ee',
+    };
+  }
+
+  const normalized = clamp(Number(scorePercent) / 100, 0, 1);
+  if (normalized >= 0.5) {
+    const intensity = clamp((normalized - 0.5) * 2, 0, 1);
+    const greenStart = [246, 250, 247];
+    const greenEnd = [220, 243, 229];
+    const borderStart = [209, 226, 216];
+    const borderEnd = [134, 183, 153];
+    const backgroundRgb = greenStart.map((value, idx) => Math.round(value + (greenEnd[idx] - value) * intensity));
+    const borderRgb = borderStart.map((value, idx) => Math.round(value + (borderEnd[idx] - value) * intensity));
+    return {
+      background: `rgb(${backgroundRgb[0]}, ${backgroundRgb[1]}, ${backgroundRgb[2]})`,
+      color: '#14532d',
+      labelColor: '#166534',
+      border: `rgb(${borderRgb[0]}, ${borderRgb[1]}, ${borderRgb[2]})`,
+    };
+  }
+
+  const intensity = clamp((0.5 - normalized) * 2, 0, 1);
+  const redStart = [255, 248, 247];
+  const redEnd = [250, 228, 226];
+  const borderStart = [245, 218, 215];
+  const borderEnd = [229, 159, 151];
+  const backgroundRgb = redStart.map((value, idx) => Math.round(value + (redEnd[idx] - value) * intensity));
+  const borderRgb = borderStart.map((value, idx) => Math.round(value + (borderEnd[idx] - value) * intensity));
+  return {
+    background: `rgb(${backgroundRgb[0]}, ${backgroundRgb[1]}, ${backgroundRgb[2]})`,
+    color: '#7f1d1d',
+    labelColor: '#991b1b',
+    border: `rgb(${borderRgb[0]}, ${borderRgb[1]}, ${borderRgb[2]})`,
+  };
+}
+
 function StatCard({ label, value, scorePercent = null }) {
-  const colorMeta = scoreColorMeta(scorePercent);
+  const colorMeta = summaryScoreColorMeta(scorePercent);
   return (
     <div
       style={{
@@ -121,9 +163,10 @@ function StatCard({ label, value, scorePercent = null }) {
         border: `1px solid ${colorMeta.border}`,
         background: colorMeta.background,
         minHeight: 84,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55)',
       }}
     >
-      <div style={{ fontSize: '0.75rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>
+      <div style={{ fontSize: '0.75rem', color: colorMeta.labelColor, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>
         {label}
       </div>
       <div style={{ marginTop: '0.35rem', fontSize: '1.35rem', fontWeight: 800, color: colorMeta.color }}>
@@ -169,10 +212,10 @@ function ScoreBandBarChart({ data }) {
   );
 }
 
-function AssignmentTrendChart({ rows }) {
-  const series = (rows || []).filter((row) => row.mean_score_percent != null);
+function TrendSeriesChart({ rows }) {
+  const series = (rows || []).filter((row) => row.average_score_percent != null);
   if (!series.length) {
-    return <div style={{ color: '#64748b', fontSize: '0.9rem' }}>No assignment trend data available for this filter.</div>;
+    return <div style={{ color: '#64748b', fontSize: '0.9rem' }}>No trend data available for this filter.</div>;
   }
   const width = 560;
   const height = 240;
@@ -189,7 +232,7 @@ function AssignmentTrendChart({ rows }) {
     return { x, y };
   };
   const polyline = series
-    .map((point, index) => toPoint(point.mean_score_percent || 0, index))
+    .map((point, index) => toPoint(point.average_score_percent || 0, index))
     .map((point) => `${point.x},${point.y}`)
     .join(' ');
 
@@ -199,14 +242,14 @@ function AssignmentTrendChart({ rows }) {
       <line x1={left} y1={top} x2={left} y2={height - bottom} stroke="#94a3b8" strokeWidth="1" />
       <polyline points={polyline} fill="none" stroke="#2563eb" strokeWidth="3" />
       {series.map((point, index) => {
-        const { x, y } = toPoint(point.mean_score_percent || 0, index);
-        const colorMeta = scoreColorMeta(point.mean_score_percent || 0);
-        const label = String(point.assignment_title || '').trim();
+        const { x, y } = toPoint(point.average_score_percent || 0, index);
+        const colorMeta = scoreColorMeta(point.average_score_percent || 0);
+        const label = String(point.bucket_label || '').trim();
         const shortLabel = label.length > 10 ? `${label.slice(0, 10)}…` : label;
         return (
-          <g key={`${point.assignment_id}-${index}`}>
+          <g key={`${label}-${index}`}>
             <circle cx={x} cy={y} r="4.5" fill={colorMeta.background} stroke="#1e3a8a" />
-            <title>{`${label}: ${formatPercent(point.mean_score_percent)}`}</title>
+            <title>{`${label}: ${formatPercent(point.average_score_percent)}`}</title>
             <text x={x} y={height - 14} textAnchor="middle" style={{ fill: '#475569', fontSize: 10 }}>
               {shortLabel}
             </text>
@@ -285,6 +328,7 @@ export default function Analytics() {
   const perStudentRows = analytics?.per_student_trend || [];
   const riskRows = analytics?.students_at_risk || [];
   const promptRows = analytics?.per_prompt_summary || [];
+  const trendSeries = analytics?.trend_series || [];
   const [assignmentQuestionView, setAssignmentQuestionView] = React.useState('table');
   const [studentTrendView, setStudentTrendView] = React.useState('table');
   const [assignmentSummaryView, setAssignmentSummaryView] = React.useState('table');
@@ -576,11 +620,11 @@ export default function Analytics() {
               <ScoreBandBarChart data={analytics.score_distribution} />
             </section>
             <section style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.75rem', background: 'white' }}>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Grade trend by assignment</h2>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Grade trend over time</h2>
               <p style={{ margin: '0.35rem 0 0.4rem 0', color: '#64748b', fontSize: '0.86rem' }}>
-                Trend line of mean grade percentages by assignment.
+                Trend line of average grade percentages over time.
               </p>
-              <AssignmentTrendChart rows={perAssignmentSummaryRows} />
+              <TrendSeriesChart rows={trendSeries} />
             </section>
           </div>
 
@@ -601,9 +645,6 @@ export default function Analytics() {
                     return (
                       <div key={row.student_id} style={{ border: `1px solid ${colorMeta.border}`, background: colorMeta.background, borderRadius: 10, padding: '0.55rem 0.65rem' }}>
                         <div style={{ fontWeight: 700, color: '#0f172a' }}>{row.student_name}</div>
-                        <div style={{ marginTop: '0.18rem', fontSize: '0.82rem', color: colorMeta.color }}>
-                          ID: {row.student_id}
-                        </div>
                         <div style={{ marginTop: '0.18rem', fontSize: '0.82rem', color: colorMeta.color }}>
                           Low-score streak: {row.consecutive_low_score_streak}
                         </div>
@@ -632,11 +673,10 @@ export default function Analytics() {
                 Submission count, average score, and latest activity per student.
               </p>
               {studentTrendView === 'table' ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1060 }}>
                 <thead>
                   <tr>
                     {renderSortableHeader('Student', 'student_name', studentTrendSort, setStudentTrendSort)}
-                    {renderSortableHeader('Student ID', 'student_id', studentTrendSort, setStudentTrendSort)}
                     {renderSortableHeader('Submissions', 'submission_count', studentTrendSort, setStudentTrendSort)}
                     {renderSortableHeader('Grade', 'grade', studentTrendSort, setStudentTrendSort)}
                     {renderSortableHeader('Avg Score', 'average_score_percent', studentTrendSort, setStudentTrendSort)}
@@ -653,7 +693,6 @@ export default function Analytics() {
                     return (
                       <tr key={row.student_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.student_name}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{row.student_id}</td>
                         <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{row.submission_count}</td>
                         <td style={{ padding: '0.58rem 0.55rem', color: '#334155', fontWeight: 700 }}>
                           {getLetterGrade(row.average_score_percent)}

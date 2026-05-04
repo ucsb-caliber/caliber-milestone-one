@@ -1217,6 +1217,59 @@ def _fetch_research_id_for_current_user(user_id: str) -> Optional[str]:
     )
 
 
+def _display_name_from_user_payload(user_id: str, payload: dict[str, Any]) -> str:
+    first_name = str(payload.get("first_name") or "").strip()
+    last_name = str(payload.get("last_name") or "").strip()
+    if first_name and last_name:
+        return f"{first_name} {last_name}"
+
+    full_name = str(payload.get("name") or payload.get("full_name") or "").strip()
+    if full_name:
+        return full_name
+
+    email = str(payload.get("email") or "").strip()
+    if email:
+        return email
+
+    return user_id
+
+
+def _resolve_student_name_map(
+    session: Session,
+    current_user_id: str,
+    student_ids: list[str],
+    course_payload: dict[str, Any],
+) -> dict[str, str]:
+    provided = course_payload.get("student_name_by_id") or {}
+    student_name_by_id: dict[str, str] = {}
+    if isinstance(provided, dict):
+        for student_id, name in provided.items():
+            normalized_student_id = str(student_id)
+            display_name = str(name or "").strip()
+            if display_name and display_name != normalized_student_id:
+                student_name_by_id[normalized_student_id] = display_name
+
+    missing_ids = [sid for sid in student_ids if not student_name_by_id.get(sid)]
+    for student_id in missing_ids:
+        try:
+            user_payload = _roster_call_for_user(
+                session,
+                current_user_id,
+                "GET",
+                f"/api/users/{student_id}",
+            )
+        except Exception:
+            student_name_by_id[student_id] = student_id
+            continue
+
+        if isinstance(user_payload, dict):
+            student_name_by_id[student_id] = _display_name_from_user_payload(student_id, user_payload)
+        else:
+            student_name_by_id[student_id] = student_id
+
+    return student_name_by_id
+
+
 def _build_course_response_from_roster(session: Session, payload: dict[str, Any]) -> CourseResponse:
     # Keep roster as source-of-truth for course/user metadata and Caliber DB for assignments.
     course_id = int(payload["id"])
@@ -2315,10 +2368,8 @@ def get_instructor_analytics(
         raise HTTPException(status_code=403, detail="Only the course instructor can view analytics")
 
     course_name = str(course_payload.get("course_name") or "")
-    student_ids = list(course_payload.get("student_ids") or [])
-    student_name_by_id = course_payload.get("student_name_by_id") or {}
-    if not isinstance(student_name_by_id, dict):
-        student_name_by_id = {}
+    student_ids = [str(student_id) for student_id in list(course_payload.get("student_ids") or [])]
+    student_name_by_id = _resolve_student_name_map(session, user_id, student_ids, course_payload)
 
     all_assignments = get_course_assignments(session, course_id)
     assignment_options = [
@@ -2438,7 +2489,7 @@ def get_instructor_analytics(
         for question in get_questions_by_ids(session, question_ids):
             assignment_question_map[question.id] = question
 
-    prompt_agg: dict[int, dict[str, Any]] = {}
+    prompt_agg: dict[tuple[int, int], dict[str, Any]] = {}
     for record in records:
         for question_id_raw, question_data in record.question_scores.items():
             try:
@@ -2449,9 +2500,11 @@ def get_instructor_analytics(
             if not question:
                 continue
 
+            prompt_key = (record.assignment_id, question_id)
             agg = prompt_agg.setdefault(
-                question_id,
+                prompt_key,
                 {
+                    "prompt_id": question_id,
                     "prompt_title": question.title or f"Prompt {question_id}",
                     "assignment_id": record.assignment_id,
                     "assignment_title": record.assignment_title,
@@ -2470,7 +2523,7 @@ def get_instructor_analytics(
 
     per_prompt_summary = [
         PromptSummaryItem(
-            prompt_id=prompt_id,
+            prompt_id=data["prompt_id"],
             prompt_title=data["prompt_title"],
             assignment_id=data["assignment_id"],
             assignment_title=data["assignment_title"],
@@ -2482,7 +2535,7 @@ def get_instructor_analytics(
             stddev_score_percent=round(_stddev_or_none(data["score_values"]), 4) if data["score_values"] else None,
             below_target_percent=round((data["below_target_count"] / data["count"]) * 100.0, 4) if data["count"] else 0.0,
         )
-        for prompt_id, data in prompt_agg.items()
+        for data in prompt_agg.values()
     ]
     per_prompt_summary.sort(key=lambda item: (-(item.below_target_percent or 0.0), item.prompt_title.lower()))
 
@@ -2558,9 +2611,11 @@ def get_instructor_analytics(
             record.assignment_id,
             {
                 "assignment_title": record.assignment_title,
+                "submission_count": 0,
                 "scores": [],
             },
         )
+        agg["submission_count"] += 1
         for question_data in record.question_scores.values():
             q_percent = float(question_data.get("percent") or 0.0)
             agg["scores"].append(q_percent)
@@ -2569,7 +2624,7 @@ def get_instructor_analytics(
         AssignmentQuestionScoreSummaryItem(
             assignment_id=assignment_id_key,
             assignment_title=data["assignment_title"],
-            submission_count=len(data["scores"]),
+            submission_count=int(data["submission_count"]),
             mean_score_percent=round(_mean_or_none(data["scores"]), 4) if data["scores"] else None,
             median_score_percent=round(float(statistics.median(data["scores"])), 4) if data["scores"] else None,
             min_score_percent=round(min(data["scores"]), 4) if data["scores"] else None,
