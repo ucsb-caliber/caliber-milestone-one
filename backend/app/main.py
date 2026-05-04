@@ -44,6 +44,7 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   upsert_coding_question_private, create_coding_run)
 from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
 from .m2_pipeline import extract_questions_with_m2
+from .odl_pipeline import extract_questions_with_odl
 from .auth import (
     get_current_user,
     get_current_user_email,
@@ -1295,11 +1296,19 @@ def process_pdf_background(
         mark_canceled("before processing started")
         return
 
-    # Primary path: run the copied Milestone 2 layout parser from this repo.
+    # Primary path: opendataloader-pdf by default, M2 layout parser as a flag-gated fallback.
+    parser_choice = (os.getenv("PDF_PARSER", "odl") or "odl").strip().lower()
+    if parser_choice == "m2":
+        primary_extractor = extract_questions_with_m2
+        primary_label = "m2"
+    else:
+        primary_extractor = extract_questions_with_odl
+        primary_label = "odl"
+
     _update_upload_job(job_id, status="running", progress_percent=10, message="Parsing PDF layout")
     try:
-        m2_start = time.time()
-        question_dicts = extract_questions_with_m2(
+        parse_start = time.time()
+        question_dicts = primary_extractor(
             file_content=file_content,
             source_name=storage_path,
             output_dir=Path(UPLOAD_DIR) / "layout_debug",
@@ -1307,11 +1316,11 @@ def process_pdf_background(
             should_cancel=cancel_requested,
         )
         print(
-            f"[m2] completed source={storage_path} "
-            f"questions={len(question_dicts)} elapsed={time.time() - m2_start:.1f}s"
+            f"[{primary_label}] completed source={storage_path} "
+            f"questions={len(question_dicts)} elapsed={time.time() - parse_start:.1f}s"
         )
     except Exception as e:
-        print(f"Error running copied M2 parser for {storage_path}: {e!r}")
+        print(f"Error running {primary_label} parser for {storage_path}: {e!r}")
 
     if cancel_requested() and not question_dicts:
         mark_canceled("PDF parsing")

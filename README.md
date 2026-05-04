@@ -70,10 +70,11 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 ### Question Pipeline
 - PDF upload starts background parsing
-- Milestone 2 parser files are vendored into `backend/app/m2/` and executed from Milestone 1 backend
-- Upload processing runs the copied M2 layout pipeline first (layout detection + OCR extraction)
-- Fallback parser performs question segmentation from PDF text, with OCR fallback for scanned PDFs
-- Question bank supports verification/editing and assignment inclusion
+- Tier 1 (default): `opendataloader-pdf` (Apache-2.0, Java + Python wrapper) emits structured JSON + Markdown with bounding boxes and reading order; `backend/app/odl_pipeline.py` segments questions over its JSON output.
+- Tier 1 (legacy, behind `PDF_PARSER=m2`): copied Milestone 2 layout pipeline in `backend/app/m2/` (Detectron2/EfficientDet + Tesseract).
+- Tier 2: in-repo text + OCR extractor (`extract_questions_from_pdf_bytes`).
+- Tier 3: agent-pipeline compatibility fallback for edge cases.
+- Question bank supports verification/editing and assignment inclusion.
 
 ## Architecture Snapshot
 
@@ -94,7 +95,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 ### Backend Setup
 
-Use Python 3.10 or 3.11 for the Milestone 2 parser dependencies (`torch==2.1.2`, `effdet`).
+Use Python 3.10 or 3.11. (Required by both `opendataloader-pdf` and the legacy `torch==2.1.2`/`effdet` parser kept for rollback.)
 
 ```bash
 cd backend
@@ -104,13 +105,24 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Install system dependencies required by the copied Milestone 2 parser:
-- macOS: `brew install poppler tesseract`
-- Ubuntu/Debian: `sudo apt-get install -y poppler-utils tesseract-ocr`
+Install system dependencies:
+
+- **Java 11+** (required by the default `opendataloader-pdf` parser):
+  - macOS: `brew install --cask temurin`
+  - Ubuntu/Debian: `sudo apt-get install -y openjdk-17-jre`
+  - Verify: `java -version`
+- **Poppler + Tesseract** (only needed if you set `PDF_PARSER=m2` to roll back to the legacy parser, or for the Tier 2 OCR fallback):
+  - macOS: `brew install poppler tesseract`
+  - Ubuntu/Debian: `sudo apt-get install -y poppler-utils tesseract-ocr`
 
 Notes:
-- The first PDF upload may take longer because model files are downloaded and cached.
-- The `torch` / `effdet` stack is required to run the copied `backend/app/m2/layout_ingest.py`.
+- `opendataloader-pdf` spawns a JVM per PDF; expect ~1-2 s of cold-start overhead on the first call.
+- For scanned PDFs, optionally run the hybrid backend in another terminal and set `ODL_HYBRID_ENABLED=true`:
+  ```bash
+  pip install "opendataloader-pdf[hybrid]"
+  opendataloader-pdf-hybrid --port 5002 --force-ocr --ocr-lang eng
+  ```
+- The legacy M2 parser still downloads/caches model weights on first use if you flip `PDF_PARSER=m2`.
 
 Then install Ollama, which runs a local LLM to clean PDF extraction output:
 ```bash
@@ -142,8 +154,10 @@ Edit your `backend/.env` file and replace placeholders:
 - `OIDC_ISSUER` and/or `OIDC_JWKS_URL` for your Keycloak realm
 - `OIDC_AUDIENCE` if your tokens enforce audience checks
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` so `/api/upload-pdf` can store files in `question-pdfs`
-- Optional: `M2_TESSERACT_TIMEOUT_SEC` to cap per-page OCR time (default `45`)
-- Optional: `M2_RENDER_DPI` to control PDF rasterization cost (default `170`)
+- Optional: `PDF_PARSER` to pick the parser (`odl` default, `m2` for legacy rollback)
+- Optional: `ODL_HYBRID_ENABLED` / `ODL_HYBRID_URL` if running the `opendataloader-pdf-hybrid` sidecar
+- Optional: `ODL_TIMEOUT_SEC` to cap per-PDF parse time (default `120`)
+- Optional (legacy `m2` only): `M2_TESSERACT_TIMEOUT_SEC` (default `45`), `M2_RENDER_DPI` (default `170`)
 - Optional: configure `LLM_CLEANUP_*` and `ROSTER_*` values only if you plan to use those integrations locally
 - Optional: leave `CODING_RUNNER_URL` blank for localhost dev, or set it to `http://coding-runner:8010` when using the Docker runner service on a server
 
@@ -244,6 +258,7 @@ Then open `http://localhost:8003` (or through your reverse proxy path).
 ## Notes
 
 - Run migrations whenever pulling schema/model changes.
-- OCR fallback requires a local `tesseract` binary in `PATH`.
-- Milestone 2 parser code is copied into `backend/app/m2/` and called by `POST /api/upload-pdf`.
+- Default Tier 1 parser is `opendataloader-pdf` (`backend/app/odl_pipeline.py`); requires `java -version` 11+.
+- Tier 2 OCR fallback requires a local `tesseract` binary in `PATH`.
+- Legacy M2 parser code is still vendored at `backend/app/m2/` and used when `PDF_PARSER=m2`.
 - Local LLM markdown cleanup is optional and uses Ollama (no API key).

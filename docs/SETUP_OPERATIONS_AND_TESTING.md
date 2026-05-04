@@ -6,9 +6,17 @@
 - Python 3.10 or 3.11 (recommended for parser stack compatibility)
 - Node.js + npm
 - Supabase project (URL, anon key, database connection string)
-- System tools for PDF/OCR:
+- **Java 11+** for the default `opendataloader-pdf` parser:
+  - macOS: `brew install --cask temurin`
+  - Ubuntu/Debian: `sudo apt-get install -y openjdk-17-jre`
+  - Verify: `java -version` and `opendataloader-pdf --help`
+- System tools for the optional Tier 2 OCR fallback (and the legacy `PDF_PARSER=m2` rollback path):
   - macOS: `brew install poppler tesseract`
   - Ubuntu/Debian: `sudo apt-get install -y poppler-utils tesseract-ocr`
+- Optional hybrid backend (scanned PDFs / complex tables):
+  - `pip install "opendataloader-pdf[hybrid]"`
+  - `opendataloader-pdf-hybrid --port 5002 --force-ocr --ocr-lang eng`
+  - Then set `ODL_HYBRID_ENABLED=true` in `backend/.env`.
 
 ### Backend
 ```bash
@@ -29,8 +37,13 @@ Required backend env values (`backend/.env`):
 Optional backend env values:
 - `SUPABASE_STORAGE_PDF_BUCKET` (default: `question-pdfs`)
 - `SUPABASE_STORAGE_TIMEOUT_SEC` (default: `25`)
-- `M2_TESSERACT_TIMEOUT_SEC` (default: `45`, per-page OCR timeout safeguard)
-- `M2_RENDER_DPI` (default: `170`, lower = faster PDF rasterization/OCR)
+- `PDF_PARSER` (default: `odl`; set to `m2` to roll back to the legacy Detectron2/Tesseract parser)
+- `ODL_HYBRID_ENABLED` (default: `false`; set `true` when running `opendataloader-pdf-hybrid`)
+- `ODL_HYBRID_URL` (default: `http://127.0.0.1:5002`)
+- `ODL_OCR_LANG` (default: `eng`; consumed by the hybrid sidecar)
+- `ODL_TIMEOUT_SEC` (default: `120`, per-PDF parser timeout)
+- `M2_TESSERACT_TIMEOUT_SEC` (default: `45`, legacy parser only)
+- `M2_RENDER_DPI` (default: `170`, legacy parser only)
 - `UPLOAD_DIR` (default: `uploads`)
 - `CODING_RUNNER_URL` (leave blank for localhost dev; set to `http://coding-runner:8010` in Docker/server mode)
 - `CODING_RUNNER_USE_DOCKER` (runner-only; set `true` when the dedicated runner should launch fresh Docker containers per execution)
@@ -157,8 +170,10 @@ alembic upgrade head
 - Confirm password and host are correct.
 
 ### Upload parsing or OCR issues
-- Check `tesseract` and poppler binaries are installed and on `PATH`.
-- First parse can be slower due to model initialization/downloads.
+- For the default `PDF_PARSER=odl`: confirm `java -version` reports 11+ and `opendataloader-pdf --help` works.
+- First `opendataloader-pdf` invocation has ~1-2 s of JVM cold-start overhead; large PDFs may exceed `ODL_TIMEOUT_SEC`.
+- For scanned PDFs, run the hybrid sidecar (`opendataloader-pdf-hybrid --port 5002 --force-ocr`) and set `ODL_HYBRID_ENABLED=true`.
+- For the legacy `PDF_PARSER=m2`: check `tesseract` and poppler binaries are installed and on `PATH`. First parse can be slower due to model initialization/downloads.
 
 ### Storage upload/sign URL failures
 - Confirm bucket names exactly match (`question-images`, `question-pdfs`).
