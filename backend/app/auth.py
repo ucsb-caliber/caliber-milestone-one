@@ -28,6 +28,7 @@ TEST_TOKEN_ALLOWED = os.getenv("TEST_TOKEN_ALLOWED", "false").lower() in ("1", "
 TEST_TOKEN_USER_ID = os.getenv("TEST_TOKEN_USER_ID", "test-user-1")
 
 _oidc_jwks_client = None
+_current_user_id: ContextVar[Optional[str]] = ContextVar("current_user_id", default=None)
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
 _current_user_name: ContextVar[Optional[str]] = ContextVar("current_user_name", default=None)
 _current_user_token: ContextVar[Optional[str]] = ContextVar("current_user_token", default=None)
@@ -61,6 +62,87 @@ def _is_local_test_token_enabled() -> bool:
 
 # Security scheme for Bearer token (optional to allow cookie auth)
 security = HTTPBearer(auto_error=False)
+
+
+def _set_current_user_context(
+    *,
+    user_id: Optional[str],
+    email: Optional[str],
+    full_name: Optional[str],
+    token: Optional[str],
+) -> None:
+    _current_user_id.set(user_id)
+    _current_user_email.set(email)
+    _current_user_name.set(full_name)
+    _current_user_token.set(token)
+
+
+def _extract_request_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Optional[str]:
+    token = None
+
+    if credentials:
+        token = credentials.credentials
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    return token.strip() if token else None
+
+
+def resolve_request_user_context(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+    *,
+    raise_on_error: bool,
+) -> Optional[tuple[str, Optional[str], Optional[str], str]]:
+    token = _extract_request_token(request, credentials)
+    if not token:
+        _set_current_user_context(
+            user_id=None,
+            email=None,
+            full_name=None,
+            token=None,
+        )
+        if raise_on_error:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return None
+
+    if _is_local_test_token_enabled() and token == "test-token-1":
+        _set_current_user_context(
+            user_id=TEST_TOKEN_USER_ID,
+            email=None,
+            full_name=None,
+            token=token,
+        )
+        return TEST_TOKEN_USER_ID, None, None, token
+
+    try:
+        user_id, email, full_name = verify_jwt_token(token)
+    except HTTPException:
+        _set_current_user_context(
+            user_id=None,
+            email=None,
+            full_name=None,
+            token=None,
+        )
+        if raise_on_error:
+            raise
+        return None
+
+    _set_current_user_context(
+        user_id=user_id,
+        email=email,
+        full_name=full_name,
+        token=token,
+    )
+    return user_id, email, full_name, token
 
 
 def _decode_keycloak_token(token: str) -> tuple[str, Optional[str], Optional[str]]:
@@ -153,37 +235,13 @@ async def get_current_user(
     Raises:
         HTTPException: If no valid token is found or token is invalid
     """
-    token = None
-    
-    # Try to get token from Authorization header first
-    if credentials:
-        token = credentials.credentials
-    
-    # If not in header, try to get from cookie
-    if not token:
-        # Try to get the access_token from cookies
-        token = request.cookies.get("access_token")
-    
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Only allow the fixed test token in explicit local-dev mode.
-    if _is_local_test_token_enabled() and token.strip() == "test-token-1":
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_user_token.set(token.strip())
-        return TEST_TOKEN_USER_ID
-
-    # Verify the token using the common verification function
-    user_id, email, full_name = verify_jwt_token(token)
-    _current_user_email.set(email)
-    _current_user_name.set(full_name)
-    _current_user_token.set(token)
-    return user_id
+    resolved = resolve_request_user_context(
+        request,
+        credentials,
+        raise_on_error=True,
+    )
+    assert resolved is not None
+    return resolved[0]
 
 
 async def get_optional_user(
@@ -196,33 +254,16 @@ async def get_optional_user(
     
     Checks both Bearer token and cookie authentication, same as get_current_user.
     """
-    token = None
-    
-    # Try to get token from Authorization header first
-    if credentials:
-        token = credentials.credentials
-    
-    # If not in header, try to get from cookie
-    if not token:
-        token = request.cookies.get("access_token")
-    
-    if not token:
-        return None
+    resolved = resolve_request_user_context(
+        request,
+        credentials,
+        raise_on_error=False,
+    )
+    return resolved[0] if resolved else None
 
-    if _is_local_test_token_enabled() and token.strip() == "test-token-1":
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_user_token.set(token.strip())
-        return TEST_TOKEN_USER_ID
-    
-    try:
-        user_id, email, full_name = verify_jwt_token(token)
-        _current_user_email.set(email)
-        _current_user_name.set(full_name)
-        _current_user_token.set(token)
-        return user_id
-    except Exception:
-        return None
+
+def get_current_user_id() -> Optional[str]:
+    return _current_user_id.get()
 
 
 def get_current_user_email() -> Optional[str]:
