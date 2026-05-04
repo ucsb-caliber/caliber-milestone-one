@@ -1030,6 +1030,44 @@ export async function getCourse(courseId) {
 }
 
 /**
+ * Get instructor analytics for one course.
+ */
+export async function getInstructorAnalytics(courseId, { assignmentId = null, dateRange = '30d' } = {}) {
+  try {
+    const headers = await getAuthHeaders();
+    const params = new URLSearchParams();
+    params.append('course_id', String(courseId));
+    params.append('date_range', String(dateRange || '30d'));
+    if (assignmentId != null && assignmentId !== '') {
+      params.append('assignment_id', String(assignmentId));
+    }
+
+    const response = await apiFetch(`${API_BASE}/api/instructor/analytics?${params.toString()}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to fetch instructor analytics';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Create a new course
  */
 export async function createCourse(courseData) {

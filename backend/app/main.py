@@ -5,9 +5,11 @@ import time
 import json
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone
+from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
+import statistics
+from collections import defaultdict
 import jwt
 from jwt import ExpiredSignatureError, InvalidTokenError
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, BackgroundTasks, Form, Request, status
@@ -32,7 +34,11 @@ from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, Qu
                      AssignmentGradingResponse, AssignmentGradeUpsertRequest,
                      AssignmentQuestionGradeResponse, RubricPartGradeResponse, RubricLevelCriteria,
                      CodingQuestionConfigResponse, CodingTestCase,
-                     CodingRunRequest, CodingRunResponse, CodingRunTestResult)
+                     CodingRunRequest, CodingRunResponse, CodingRunTestResult,
+                     InstructorAnalyticsResponse, AssignmentOption, AnalyticsSummaryStats,
+                     ScoreDistributionItem, PerStudentTrendItem, StudentAtRiskItem,
+                     PromptSummaryItem, AssignmentQuestionScoreSummaryItem,
+                     AnalyticsTrendPoint, AnalyticsSubmissionRecord)
 from .crud import (create_question, get_question, get_questions, get_questions_count, get_all_questions,
                   get_draft_questions, get_draft_questions_count,
                   get_questions_by_ids, update_question, delete_question,
@@ -1022,6 +1028,43 @@ def _all_students_graded_for_assignment(
     return True
 
 
+def _score_band_label(score_percent: float) -> str:
+    pct = max(0.0, min(100.0, float(score_percent)))
+    if pct >= 90.0:
+        return "90-100"
+    if pct >= 80.0:
+        return "80-89"
+    if pct >= 70.0:
+        return "70-79"
+    if pct >= 60.0:
+        return "60-69"
+    return "<60"
+
+
+def _analytics_cutoff_utc(date_range: str) -> Optional[datetime]:
+    now_utc = datetime.now(timezone.utc)
+    normalized = (date_range or "all").strip().lower()
+    if normalized == "7d":
+        return now_utc - timedelta(days=7)
+    if normalized == "30d":
+        return now_utc - timedelta(days=30)
+    return None
+
+
+def _mean_or_none(values: list[float]) -> Optional[float]:
+    if not values:
+        return None
+    return float(sum(values) / len(values))
+
+
+def _stddev_or_none(values: list[float]) -> Optional[float]:
+    if not values:
+        return None
+    if len(values) == 1:
+        return 0.0
+    return float(statistics.pstdev(values))
+
+
 def _sync_assignment_post_due_grading(
     session: Session,
     *,
@@ -1181,6 +1224,59 @@ def _fetch_research_id_for_current_user(user_id: str) -> Optional[str]:
         user_name=get_current_user_name(),
         user_token=get_current_user_token(),
     )
+
+
+def _display_name_from_user_payload(user_id: str, payload: dict[str, Any]) -> str:
+    first_name = str(payload.get("first_name") or "").strip()
+    last_name = str(payload.get("last_name") or "").strip()
+    if first_name and last_name:
+        return f"{first_name} {last_name}"
+
+    full_name = str(payload.get("name") or payload.get("full_name") or "").strip()
+    if full_name:
+        return full_name
+
+    email = str(payload.get("email") or "").strip()
+    if email:
+        return email
+
+    return user_id
+
+
+def _resolve_student_name_map(
+    session: Session,
+    current_user_id: str,
+    student_ids: list[str],
+    course_payload: dict[str, Any],
+) -> dict[str, str]:
+    provided = course_payload.get("student_name_by_id") or {}
+    student_name_by_id: dict[str, str] = {}
+    if isinstance(provided, dict):
+        for student_id, name in provided.items():
+            normalized_student_id = str(student_id)
+            display_name = str(name or "").strip()
+            if display_name and display_name != normalized_student_id:
+                student_name_by_id[normalized_student_id] = display_name
+
+    missing_ids = [sid for sid in student_ids if not student_name_by_id.get(sid)]
+    for student_id in missing_ids:
+        try:
+            user_payload = _roster_call_for_user(
+                session,
+                current_user_id,
+                "GET",
+                f"/api/users/{student_id}",
+            )
+        except Exception:
+            student_name_by_id[student_id] = student_id
+            continue
+
+        if isinstance(user_payload, dict):
+            student_name_by_id[student_id] = _display_name_from_user_payload(student_id, user_payload)
+        else:
+            student_name_by_id[student_id] = student_id
+
+    return student_name_by_id
 
 
 def _build_course_response_from_roster(session: Session, payload: dict[str, Any]) -> CourseResponse:
@@ -2263,6 +2359,334 @@ def update_course_pin(
         "PUT",
         f"/api/courses/{course_id}/pin",
         json_body=payload.model_dump(exclude_none=True),
+    )
+
+
+@app.get("/api/instructor/analytics", response_model=InstructorAnalyticsResponse)
+def get_instructor_analytics(
+    course_id: int,
+    assignment_id: Optional[int] = None,
+    date_range: str = "30d",
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    normalized_range = (date_range or "all").strip().lower()
+    if normalized_range not in {"7d", "30d", "all"}:
+        raise HTTPException(status_code=400, detail="date_range must be one of: 7d, 30d, all")
+
+    course_payload = _roster_call_for_user(
+        session,
+        user_id,
+        "GET",
+        f"/api/courses/{course_id}",
+    )
+    if course_payload.get("instructor_id") != user_id:
+        raise HTTPException(status_code=403, detail="Only the course instructor can view analytics")
+
+    course_name = str(course_payload.get("course_name") or "")
+    student_ids = [str(student_id) for student_id in list(course_payload.get("student_ids") or [])]
+    student_name_by_id = _resolve_student_name_map(session, user_id, student_ids, course_payload)
+
+    all_assignments = get_course_assignments(session, course_id)
+    assignment_options = [
+        AssignmentOption(id=assignment.id, title=assignment.title or f"Assignment {assignment.id}")
+        for assignment in all_assignments
+    ]
+
+    selected_assignments = list(all_assignments)
+    if assignment_id is not None:
+        selected_assignments = [assignment for assignment in all_assignments if assignment.id == assignment_id]
+        if not selected_assignments:
+            raise HTTPException(status_code=404, detail="Assignment not found in this course")
+
+    for assignment in selected_assignments:
+        _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=student_ids)
+
+    cutoff_utc = _analytics_cutoff_utc(normalized_range)
+    records: list[AnalyticsSubmissionRecord] = []
+
+    for assignment in selected_assignments:
+        question_ids = _safe_json_loads(assignment.assignment_questions, [])
+        assignment_questions = get_questions_by_ids(session, question_ids)
+        progress_rows = list_assignment_progress_for_students(session, assignment.id, student_ids)
+        progress_by_student_id = {row.student_id: row for row in progress_rows}
+
+        for student_id in student_ids:
+            progress = progress_by_student_id.get(student_id)
+            if not progress:
+                continue
+            if not bool(progress.submitted or progress.grade_submitted):
+                continue
+
+            submitted_at = _normalize_datetime_utc(progress.submitted_at)
+            graded_at = _normalize_datetime_utc(progress.grade_submitted_at)
+            event_time = submitted_at or graded_at
+            if cutoff_utc is not None:
+                if event_time is None or event_time < cutoff_utc:
+                    continue
+
+            answers = _safe_json_loads(progress.answers, {})
+            grading_data = _safe_json_loads(progress.grading_data, {})
+            computed = _build_grading_response(
+                assignment=assignment,
+                student_id=student_id,
+                questions=assignment_questions,
+                answers_by_question_id=answers if isinstance(answers, dict) else {},
+                grading_data=grading_data if isinstance(grading_data, dict) else {},
+                grade_submitted=bool(progress.grade_submitted),
+                submitted_at=progress.submitted_at,
+                stored_score_earned=progress.score_earned,
+                stored_score_total=progress.score_total,
+            )
+            if computed.score_total <= 0:
+                continue
+
+            question_scores: dict[str, dict[str, float]] = {}
+            for question_card in computed.questions:
+                q_percent = 0.0
+                if question_card.max_points > 0:
+                    q_percent = (float(question_card.earned_points) / float(question_card.max_points)) * 100.0
+                question_scores[str(question_card.question_id)] = {
+                    "earned": float(question_card.earned_points),
+                    "max": float(question_card.max_points),
+                    "percent": float(round(q_percent, 4)),
+                }
+
+            student_name = str(student_name_by_id.get(student_id) or student_id)
+            score_percent = float(computed.score_percent)
+            records.append(
+                AnalyticsSubmissionRecord(
+                    assignment_id=assignment.id,
+                    assignment_title=assignment.title or f"Assignment {assignment.id}",
+                    student_id=student_id,
+                    student_name=student_name,
+                    submitted_at=event_time,
+                    score_percent=score_percent,
+                    question_scores=question_scores,
+                )
+            )
+
+    assignment_score_percents = [float(record.score_percent) for record in records]
+    question_score_percents: list[float] = []
+    for record in records:
+        for question_data in record.question_scores.values():
+            question_score_percents.append(float(question_data.get("percent") or 0.0))
+
+    summary = AnalyticsSummaryStats(
+        average_assignment_score_percent=round(_mean_or_none(assignment_score_percents), 4) if assignment_score_percents else None,
+        average_question_score_percent=round(_mean_or_none(question_score_percents), 4) if question_score_percents else None,
+        average_overall_grade_percent=round(_mean_or_none(assignment_score_percents), 4) if assignment_score_percents else None,
+        median_score_percent=round(float(statistics.median(assignment_score_percents)), 4) if assignment_score_percents else None,
+        min_score_percent=round(min(assignment_score_percents), 4) if assignment_score_percents else None,
+        max_score_percent=round(max(assignment_score_percents), 4) if assignment_score_percents else None,
+        stddev_score_percent=round(_stddev_or_none(assignment_score_percents), 4) if assignment_score_percents else None,
+        submission_count=len(records),
+        graded_count=len(records),
+    )
+
+    score_bins = {
+        "90-100": 0,
+        "80-89": 0,
+        "70-79": 0,
+        "60-69": 0,
+        "<60": 0,
+    }
+    for record in records:
+        label = _score_band_label(record.score_percent)
+        score_bins[label] = score_bins.get(label, 0) + 1
+    score_distribution = [
+        ScoreDistributionItem(band_label=label, count=count)
+        for label, count in score_bins.items()
+    ]
+
+    assignment_question_map: dict[int, Question] = {}
+    for assignment in selected_assignments:
+        question_ids = _safe_json_loads(assignment.assignment_questions, [])
+        for question in get_questions_by_ids(session, question_ids):
+            assignment_question_map[question.id] = question
+
+    prompt_agg: dict[tuple[int, int], dict[str, Any]] = {}
+    for record in records:
+        for question_id_raw, question_data in record.question_scores.items():
+            try:
+                question_id = int(question_id_raw)
+            except (TypeError, ValueError):
+                continue
+            question = assignment_question_map.get(question_id)
+            if not question:
+                continue
+
+            prompt_key = (record.assignment_id, question_id)
+            agg = prompt_agg.setdefault(
+                prompt_key,
+                {
+                    "prompt_id": question_id,
+                    "prompt_title": question.title or f"Prompt {question_id}",
+                    "assignment_id": record.assignment_id,
+                    "assignment_title": record.assignment_title,
+                    "count": 0,
+                    "score_sum": 0.0,
+                    "score_values": [],
+                    "below_target_count": 0,
+                },
+            )
+            q_percent = float(question_data.get("percent") or 0.0)
+            agg["count"] += 1
+            agg["score_sum"] += q_percent
+            agg["score_values"].append(q_percent)
+            if q_percent < 70.0:
+                agg["below_target_count"] += 1
+
+    per_prompt_summary = [
+        PromptSummaryItem(
+            prompt_id=data["prompt_id"],
+            prompt_title=data["prompt_title"],
+            assignment_id=data["assignment_id"],
+            assignment_title=data["assignment_title"],
+            submission_count=data["count"],
+            mean_score_percent=round(data["score_sum"] / data["count"], 4) if data["count"] else None,
+            median_score_percent=round(float(statistics.median(data["score_values"])), 4) if data["score_values"] else None,
+            min_score_percent=round(min(data["score_values"]), 4) if data["score_values"] else None,
+            max_score_percent=round(max(data["score_values"]), 4) if data["score_values"] else None,
+            stddev_score_percent=round(_stddev_or_none(data["score_values"]), 4) if data["score_values"] else None,
+            below_target_percent=round((data["below_target_count"] / data["count"]) * 100.0, 4) if data["count"] else 0.0,
+        )
+        for data in prompt_agg.values()
+    ]
+    per_prompt_summary.sort(key=lambda item: (-(item.below_target_percent or 0.0), item.prompt_title.lower()))
+
+    student_records: dict[str, list[AnalyticsSubmissionRecord]] = defaultdict(list)
+    for record in records:
+        student_records[record.student_id].append(record)
+
+    per_student_trend: list[PerStudentTrendItem] = []
+    students_at_risk: list[StudentAtRiskItem] = []
+    for student_id, entries in student_records.items():
+        sorted_entries = sorted(
+            entries,
+            key=lambda item: (
+                item.submitted_at or datetime.min.replace(tzinfo=timezone.utc),
+                item.assignment_id,
+            ),
+        )
+        streak = 0
+        max_streak = 0
+        for entry in sorted_entries:
+            if float(entry.score_percent) < 70.0:
+                streak += 1
+                max_streak = max(max_streak, streak)
+            else:
+                streak = 0
+
+        avg_score = _mean_or_none([float(item.score_percent) for item in sorted_entries])
+        score_values = [float(item.score_percent) for item in sorted_entries]
+        last_submission = max(
+            (item.submitted_at for item in sorted_entries if item.submitted_at is not None),
+            default=None,
+        )
+        student_name = sorted_entries[0].student_name
+
+        per_student_trend.append(
+            PerStudentTrendItem(
+                student_id=student_id,
+                student_name=student_name,
+                submission_count=len(sorted_entries),
+                average_score_percent=round(avg_score, 4) if avg_score is not None else None,
+                median_score_percent=round(float(statistics.median(score_values)), 4) if score_values else None,
+                min_score_percent=round(min(score_values), 4) if score_values else None,
+                max_score_percent=round(max(score_values), 4) if score_values else None,
+                stddev_score_percent=round(_stddev_or_none(score_values), 4) if score_values else None,
+                last_submission_date=last_submission,
+            )
+        )
+
+        if max_streak >= 2:
+            latest_entry = sorted_entries[-1]
+            students_at_risk.append(
+                StudentAtRiskItem(
+                    student_id=student_id,
+                    student_name=student_name,
+                    consecutive_low_score_streak=max_streak,
+                    latest_score_percent=round(float(latest_entry.score_percent), 4),
+                    latest_submission_date=latest_entry.submitted_at,
+                )
+            )
+
+    per_student_trend.sort(key=lambda item: (item.student_name.lower(), item.student_id))
+    students_at_risk.sort(
+        key=lambda item: (
+            -item.consecutive_low_score_streak,
+            item.student_name.lower(),
+            item.student_id,
+        )
+    )
+
+    assignment_question_score_agg: dict[int, dict[str, Any]] = {}
+    for record in records:
+        agg = assignment_question_score_agg.setdefault(
+            record.assignment_id,
+            {
+                "assignment_title": record.assignment_title,
+                "submission_count": 0,
+                "scores": [],
+            },
+        )
+        agg["submission_count"] += 1
+        for question_data in record.question_scores.values():
+            q_percent = float(question_data.get("percent") or 0.0)
+            agg["scores"].append(q_percent)
+
+    assignment_question_score_summary = [
+        AssignmentQuestionScoreSummaryItem(
+            assignment_id=assignment_id_key,
+            assignment_title=data["assignment_title"],
+            submission_count=int(data["submission_count"]),
+            mean_score_percent=round(_mean_or_none(data["scores"]), 4) if data["scores"] else None,
+            median_score_percent=round(float(statistics.median(data["scores"])), 4) if data["scores"] else None,
+            min_score_percent=round(min(data["scores"]), 4) if data["scores"] else None,
+            max_score_percent=round(max(data["scores"]), 4) if data["scores"] else None,
+            stddev_score_percent=round(_stddev_or_none(data["scores"]), 4) if data["scores"] else None,
+        )
+        for assignment_id_key, data in assignment_question_score_agg.items()
+    ]
+    assignment_question_score_summary.sort(key=lambda item: item.assignment_title.lower())
+
+    trend_agg: dict[str, dict[str, float]] = {}
+    for record in records:
+        if record.submitted_at:
+            bucket = record.submitted_at.astimezone(timezone.utc).date().isoformat()
+        else:
+            bucket = "Undated"
+        row = trend_agg.setdefault(bucket, {"count": 0.0, "score_sum": 0.0})
+        row["count"] += 1.0
+        row["score_sum"] += float(record.score_percent)
+
+    trend_series: list[AnalyticsTrendPoint] = []
+    sorted_buckets = sorted(trend_agg.keys(), key=lambda label: (label == "Undated", label))
+    for label in sorted_buckets:
+        count = int(trend_agg[label]["count"])
+        score_sum = float(trend_agg[label]["score_sum"])
+        trend_series.append(
+            AnalyticsTrendPoint(
+                bucket_label=label,
+                submission_count=count,
+                average_score_percent=round(score_sum / count, 4) if count > 0 else None,
+            )
+        )
+
+    return InstructorAnalyticsResponse(
+        course_id=course_id,
+        course_name=course_name,
+        assignment_options=assignment_options,
+        selected_assignment_id=assignment_id,
+        date_range=normalized_range,
+        summary=summary,
+        score_distribution=score_distribution,
+        per_student_trend=per_student_trend,
+        students_at_risk=students_at_risk,
+        assignment_question_score_summary=assignment_question_score_summary,
+        per_prompt_summary=per_prompt_summary,
+        trend_series=trend_series,
     )
 
 
