@@ -26,3 +26,4 @@ PyJWT==2.8.0
 cryptography==42.0.5
 alembic==1.13.1
 requests==2.32.3
+opendataloader-pdf>=2.4.0
