@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -541,3 +541,101 @@ class CodingRunResponse(BaseModel):
     elapsed_ms: int = 0
     is_submit_run: bool = False
     tests: List[CodingRunTestResult] = []
+
+
+class AnalyticsSummaryStats(BaseModel):
+    average_assignment_score_percent: Optional[float] = None
+    average_question_score_percent: Optional[float] = None
+    average_overall_grade_percent: Optional[float] = None
+    median_score_percent: Optional[float] = None
+    min_score_percent: Optional[float] = None
+    max_score_percent: Optional[float] = None
+    stddev_score_percent: Optional[float] = None
+    submission_count: int = 0
+    graded_count: int = 0
+
+
+class ScoreDistributionItem(BaseModel):
+    band_label: str
+    count: int
+
+
+class AnalyticsSubmissionRecord(BaseModel):
+    assignment_id: int
+    assignment_title: str
+    student_id: str
+    student_name: str
+    submitted_at: Optional[datetime] = None
+    score_percent: float
+    question_scores: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+
+
+class PerStudentTrendItem(BaseModel):
+    student_id: str
+    student_name: str
+    submission_count: int = 0
+    average_score_percent: Optional[float] = None
+    median_score_percent: Optional[float] = None
+    min_score_percent: Optional[float] = None
+    max_score_percent: Optional[float] = None
+    stddev_score_percent: Optional[float] = None
+    last_submission_date: Optional[datetime] = None
+
+
+class StudentAtRiskItem(BaseModel):
+    student_id: str
+    student_name: str
+    consecutive_low_score_streak: int
+    latest_score_percent: Optional[float] = None
+    latest_submission_date: Optional[datetime] = None
+
+
+class PromptSummaryItem(BaseModel):
+    prompt_id: int
+    prompt_title: str
+    assignment_id: int
+    assignment_title: str
+    submission_count: int = 0
+    mean_score_percent: Optional[float] = None
+    median_score_percent: Optional[float] = None
+    min_score_percent: Optional[float] = None
+    max_score_percent: Optional[float] = None
+    stddev_score_percent: Optional[float] = None
+    below_target_percent: float = 0.0
+
+
+class AssignmentQuestionScoreSummaryItem(BaseModel):
+    assignment_id: int
+    assignment_title: str
+    submission_count: int = 0
+    mean_score_percent: Optional[float] = None
+    median_score_percent: Optional[float] = None
+    min_score_percent: Optional[float] = None
+    max_score_percent: Optional[float] = None
+    stddev_score_percent: Optional[float] = None
+
+
+class AnalyticsTrendPoint(BaseModel):
+    bucket_label: str
+    submission_count: int = 0
+    average_score_percent: Optional[float] = None
+
+
+class AssignmentOption(BaseModel):
+    id: int
+    title: str
+
+
+class InstructorAnalyticsResponse(BaseModel):
+    course_id: int
+    course_name: str
+    assignment_options: List[AssignmentOption] = []
+    selected_assignment_id: Optional[int] = None
+    date_range: str
+    summary: AnalyticsSummaryStats
+    score_distribution: List[ScoreDistributionItem] = []
+    per_student_trend: List[PerStudentTrendItem] = []
+    students_at_risk: List[StudentAtRiskItem] = []
+    assignment_question_score_summary: List[AssignmentQuestionScoreSummaryItem] = []
+    per_prompt_summary: List[PromptSummaryItem] = []
+    trend_series: List[AnalyticsTrendPoint] = []

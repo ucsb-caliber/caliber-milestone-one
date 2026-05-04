@@ -242,7 +242,12 @@ function App() {
                 <NavLink href="#questions" active={page === 'questions'}>Question Bank</NavLink>
               )}
               {isInstructorOrAdmin && (
-                <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
+                <NavLink
+                  href="#instructor/analytics"
+                  active={page === 'instructor/analytics' || page === 'analytics'}
+                >
+                  Analytics
+                </NavLink>
               )}
               <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
                 {isInstructorOrAdmin ? 'Student View' : 'Courses'}
@@ -346,7 +351,7 @@ function App() {
                 <InstructorCoursesPage />
               </ProtectedRoute>
             )}
-            {isInstructorOrAdmin && page === 'analytics' && (
+            {isInstructorOrAdmin && (page === 'analytics' || page === 'instructor/analytics') && (
               <ProtectedRoute>
                 <Analytics />
               </ProtectedRoute>
