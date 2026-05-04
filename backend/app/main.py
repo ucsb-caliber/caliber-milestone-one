@@ -17,7 +17,7 @@ from sqlmodel import Session, select, func
 from sqlalchemy import inspect, text
 from dotenv import load_dotenv
 
-from .database import create_db_and_tables, get_session, engine
+from .database import create_db_and_tables, get_session, engine, session_with_rls, temporary_rls_mode
 from .models import Question, Assignment, AssignmentProgress
 from .schemas import (QuestionResponse, UploadResponse, QuestionListResponse, QuestionUpdate,
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
@@ -47,6 +47,7 @@ from .m2_pipeline import extract_questions_with_m2
 from .auth import (
     get_current_user,
     get_current_user_email,
+    get_current_user_id,
     get_current_user_name,
     get_current_user_token,
     get_optional_user,
@@ -351,7 +352,7 @@ def backfill_existing_assignment_dates():
     default_release = datetime(2026, 2, 14, 0, 0, 0)
     default_due = datetime(2026, 2, 15, 0, 0, 0)
 
-    with Session(engine) as session:
+    with session_with_rls(mode="service") as session:
         assignments = list(session.exec(select(Assignment)).all())
         changed = False
 
@@ -561,7 +562,15 @@ def _execute_coding_for_question(
     public_config = _public_coding_config_from_question(question)
     hidden_tests = []
     if use_hidden_tests:
-        private_row = get_coding_question_private(session, question.id)
+        current_user_id = get_current_user_id()
+        with temporary_rls_mode(
+            session,
+            user_id=None,
+            mode="service",
+            restore_user_id=current_user_id,
+            restore_mode="authenticated" if current_user_id else "anonymous",
+        ):
+            private_row = get_coding_question_private(session, question.id)
         hidden_tests = normalize_coding_tests(private_row.hidden_tests if private_row else "[]")
     tests = hidden_tests if use_hidden_tests else list(public_config.get("visible_tests") or [])
 
@@ -1361,7 +1370,7 @@ def process_pdf_background(
     )
 
     try:
-        with Session(engine) as session:
+        with session_with_rls(user_id=user_id, mode="authenticated") as session:
             selected_school = (school or "").strip()
             selected_course = (course or "").strip()
             selected_course_type = (course_type or "").strip()
@@ -2212,7 +2221,14 @@ def delete_existing_course(
     Delete a course. Only accessible by the course instructor.
     """
     _roster_call_for_user(session, user_id, "DELETE", f"/api/courses/{course_id}")
-    delete_local_course(session, course_id)
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        delete_local_course(session, course_id)
     return
 
 
@@ -2281,22 +2297,29 @@ def create_new_assignment(
     student_ids_for_progress = roster_course_payload.get("student_ids") or []
 
     # Create the assignment
-    assignment = create_assignment(
-        session=session,
-        course_id=assignment_data.course_id,
-        instructor_id=user_id,
-        title=assignment_data.title,
-        type=assignment_data.type,
-        description=assignment_data.description,
-        node_id=assignment_data.node_id,
-        release_date=assignment_data.release_date,
-        due_date_soft=assignment_data.due_date_soft,
-        due_date_hard=assignment_data.due_date_hard,
-        late_policy_id=assignment_data.late_policy_id,
-        assignment_questions=assignment_data.assignment_questions,
-        course_name=course_name,
-        student_ids=student_ids_for_progress,
-    )
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        assignment = create_assignment(
+            session=session,
+            course_id=assignment_data.course_id,
+            instructor_id=user_id,
+            title=assignment_data.title,
+            type=assignment_data.type,
+            description=assignment_data.description,
+            node_id=assignment_data.node_id,
+            release_date=assignment_data.release_date,
+            due_date_soft=assignment_data.due_date_soft,
+            due_date_hard=assignment_data.due_date_hard,
+            late_policy_id=assignment_data.late_policy_id,
+            assignment_questions=assignment_data.assignment_questions,
+            course_name=course_name,
+            student_ids=student_ids_for_progress,
+        )
 
     instructor_email = roster_course_payload.get("instructor_email") if roster_course_payload else None
     return build_assignment_response(session, assignment, instructor_email=instructor_email)
@@ -2322,6 +2345,16 @@ def get_assignment_by_id(
         "GET",
         f"/api/courses/{assignment.course_id}",
     )
+    if course_payload.get("instructor_id") != user_id:
+        upsert_assignment_progress(
+            session=session,
+            assignment_id=assignment.id,
+            student_id=user_id,
+            answers=None,
+            current_question_index=None,
+            submitted=None,
+            research_id=_fetch_research_id_for_current_user(user_id),
+        )
     return build_assignment_response(
         session,
         assignment,
@@ -2354,30 +2387,38 @@ def update_existing_assignment(
     if course_payload.get("instructor_id") != user_id:
         raise HTTPException(status_code=403, detail="Only the course instructor can update assignments")
 
-    assignment = update_assignment(
-        session=session,
-        assignment_id=assignment_id,
-        # Use persisted owner value to satisfy legacy ownership checks in CRUD.
-        instructor_id=existing_assignment.instructor_id,
-        title=assignment_data.title,
-        type=assignment_data.type,
-        description=assignment_data.description,
-        node_id=assignment_data.node_id,
-        release_date=assignment_data.release_date,
-        due_date_soft=assignment_data.due_date_soft,
-        due_date_hard=assignment_data.due_date_hard,
-        late_policy_id=assignment_data.late_policy_id,
-        assignment_questions=assignment_data.assignment_questions
-    )
-    
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        assignment = update_assignment(
+            session=session,
+            assignment_id=assignment_id,
+            # Use persisted owner value to satisfy legacy ownership checks in CRUD.
+            instructor_id=existing_assignment.instructor_id,
+            title=assignment_data.title,
+            type=assignment_data.type,
+            description=assignment_data.description,
+            node_id=assignment_data.node_id,
+            release_date=assignment_data.release_date,
+            due_date_soft=assignment_data.due_date_soft,
+            due_date_hard=assignment_data.due_date_hard,
+            late_policy_id=assignment_data.late_policy_id,
+            assignment_questions=assignment_data.assignment_questions
+        )
+
+        if assignment:
+            _sync_assignment_post_due_grading(
+                session,
+                assignment=assignment,
+                student_ids=list(course_payload.get("student_ids") or []),
+            )
+
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to update it")
-
-    _sync_assignment_post_due_grading(
-        session,
-        assignment=assignment,
-        student_ids=list(course_payload.get("student_ids") or []),
-    )
 
     instructor_email = course_payload.get("instructor_email")
 
@@ -2391,12 +2432,19 @@ def release_assignment_now(
     user_id: str = Depends(get_current_user)
 ):
     """Release an assignment immediately by setting release_date to now (UTC)."""
-    assignment = update_assignment(
-        session=session,
-        assignment_id=assignment_id,
-        instructor_id=user_id,
-        release_date=datetime.now(timezone.utc)
-    )
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        assignment = update_assignment(
+            session=session,
+            assignment_id=assignment_id,
+            instructor_id=user_id,
+            release_date=datetime.now(timezone.utc)
+        )
 
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to release it")
@@ -2421,7 +2469,14 @@ def delete_existing_assignment(
     """
     Delete an assignment. Only accessible by the course instructor.
     """
-    success = delete_assignment(session, assignment_id, instructor_id=user_id)
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        success = delete_assignment(session, assignment_id, instructor_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Assignment not found or you don't have permission to delete it")
 
@@ -2709,8 +2764,15 @@ def get_assignment_submission_status(
         raise HTTPException(status_code=403, detail="Only the course instructor can view submission status")
 
     student_ids = list(course_payload.get("student_ids") or [])
-    _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=student_ids)
-    progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=student_ids)
+        progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
     progress_by_student_id = {row.student_id: row for row in progress_rows}
     assignment_question_ids = _safe_json_loads(assignment.assignment_questions, [])
     assignment_questions = get_questions_by_ids(session, assignment_question_ids)
@@ -2795,11 +2857,17 @@ def get_assignment_grading_state(
     if student_id not in (course_payload.get("student_ids") or []):
         raise HTTPException(status_code=404, detail="Student is not enrolled in this course")
 
-    _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=[student_id])
-
-    progress = get_assignment_progress(session, assignment_id, student_id)
-    answers = _safe_json_loads(progress.answers if progress else "{}", {})
-    grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=[student_id])
+        progress = get_assignment_progress(session, assignment_id, student_id)
+        answers = _safe_json_loads(progress.answers if progress else "{}", {})
+        grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
     question_ids = _safe_json_loads(assignment.assignment_questions, [])
     questions = get_questions_by_ids(session, question_ids)
 
@@ -2840,11 +2908,17 @@ def upsert_assignment_grading_state(
     if student_id not in (course_payload.get("student_ids") or []):
         raise HTTPException(status_code=404, detail="Student is not enrolled in this course")
 
-    _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=[student_id])
-
-    progress = get_assignment_progress(session, assignment_id, student_id)
-    answers = _safe_json_loads(progress.answers if progress else "{}", {})
-    existing_grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=[student_id])
+        progress = get_assignment_progress(session, assignment_id, student_id)
+        answers = _safe_json_loads(progress.answers if progress else "{}", {})
+        existing_grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
     if not isinstance(existing_grading_data, dict):
         existing_grading_data = {}
 
@@ -2896,15 +2970,22 @@ def upsert_assignment_grading_state(
     score_total_to_write = final_score_total if should_submit_grade else None
     grade_submitted_state = should_submit_grade if (payload.submit_grade or already_submitted_grade) else None
 
-    updated_progress = update_assignment_grading(
-        session=session,
-        assignment_id=assignment_id,
-        student_id=student_id,
-        grading_data=existing_grading_data,
-        grade_submitted=grade_submitted_state,
-        score_earned=score_earned_to_write,
-        score_total=score_total_to_write,
-    )
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        updated_progress = update_assignment_grading(
+            session=session,
+            assignment_id=assignment_id,
+            student_id=student_id,
+            grading_data=existing_grading_data,
+            grade_submitted=grade_submitted_state,
+            score_earned=score_earned_to_write,
+            score_total=score_total_to_write,
+        )
 
     return _build_grading_response(
         assignment=assignment,
@@ -2946,8 +3027,15 @@ def release_assignment_grades(
             detail="Grades can only be released after the late due date has passed.",
         )
 
-    _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=student_ids)
-    progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        _sync_assignment_post_due_grading(session, assignment=assignment, student_ids=student_ids)
+        progress_rows = list_assignment_progress_for_students(session, assignment_id, student_ids)
     progress_by_student_id = {row.student_id: row for row in progress_rows}
 
     for sid in student_ids:
@@ -2958,12 +3046,19 @@ def release_assignment_grades(
                 detail="All student assignments must have a graded date before release.",
             )
 
-    assignment.grade_released = True
-    assignment.grade_released_at = datetime.utcnow()
-    assignment.updated_at = datetime.utcnow()
-    session.add(assignment)
-    session.commit()
-    session.refresh(assignment)
+    with temporary_rls_mode(
+        session,
+        user_id=None,
+        mode="service",
+        restore_user_id=user_id,
+        restore_mode="authenticated",
+    ):
+        assignment.grade_released = True
+        assignment.grade_released_at = datetime.utcnow()
+        assignment.updated_at = datetime.utcnow()
+        session.add(assignment)
+        session.commit()
+        session.refresh(assignment)
 
     return {
         "assignment_id": assignment_id,
