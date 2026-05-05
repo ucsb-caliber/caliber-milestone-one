@@ -49,47 +49,76 @@ function getGradeRank(scorePercent) {
   return Number(scorePercent);
 }
 
-function MetricsBarGraph({ rows, getLabel, maxRows = 12 }) {
-  const metrics = [
-    { key: 'mean_score_percent', label: 'Mean', color: dashboardPalette.navy },
-    { key: 'median_score_percent', label: 'Median', color: dashboardPalette.goldDark },
-    { key: 'min_score_percent', label: 'Min', color: dashboardPalette.dangerText },
-    { key: 'max_score_percent', label: 'Max', color: dashboardPalette.navyMid },
+function getScoreRangeLabel(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return null;
+  if (value >= 90) return '90-100';
+  if (value >= 80) return '80-89';
+  if (value >= 70) return '70-79';
+  if (value >= 60) return '60-69';
+  return '<60';
+}
+
+function buildRangeDistribution(rows, scoreKey) {
+  const bins = [
+    { label: '90-100', count: 0 },
+    { label: '80-89', count: 0 },
+    { label: '70-79', count: 0 },
+    { label: '60-69', count: 0 },
+    { label: '<60', count: 0 },
   ];
-  const displayRows = (rows || []).slice(0, maxRows);
-  if (!displayRows.length) {
+  const binByLabel = Object.fromEntries(bins.map((bin) => [bin.label, bin]));
+  for (const row of rows || []) {
+    const label = getScoreRangeLabel(row?.[scoreKey]);
+    if (!label) continue;
+    binByLabel[label].count += 1;
+  }
+  return bins;
+}
+
+function RangeDistributionBarChart({ rows, scoreKey, title }) {
+  const distribution = buildRangeDistribution(rows, scoreKey);
+  const total = distribution.reduce((sum, item) => sum + item.count, 0);
+  if (!total) {
     return <div style={{ color: dashboardPalette.muted, fontSize: '0.9rem' }}>No data available for bar graph.</div>;
   }
 
+  const maxCount = Math.max(...distribution.map((item) => item.count), 1);
+  const chartWidth = 560;
+  const chartHeight = 230;
+  const barWidth = 80;
+  const gap = 18;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
-      <div style={{ display: 'flex', gap: '0.9rem', flexWrap: 'wrap' }}>
-        {metrics.map((metric) => (
-          <div key={metric.key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: dashboardPalette.muted, fontWeight: 700 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 2, background: metric.color, display: 'inline-block' }} />
-            {metric.label}
-          </div>
-        ))}
+    <div>
+      <div style={{ marginBottom: '0.45rem', color: dashboardPalette.muted, fontSize: '0.82rem', fontWeight: 600 }}>
+        {title}
       </div>
-      {displayRows.map((row, idx) => (
-        <div key={`${getLabel(row)}-${idx}`} style={{ border: `1px solid ${dashboardPalette.border}`, borderRadius: 8, padding: '0.45rem 0.55rem' }}>
-          <div style={{ marginBottom: '0.32rem', fontWeight: 700, color: dashboardPalette.navy, fontSize: '0.85rem' }}>{getLabel(row)}</div>
-          <div style={{ display: 'grid', gap: '0.26rem' }}>
-            {metrics.map((metric) => {
-              const val = row[metric.key] == null || !Number.isFinite(Number(row[metric.key])) ? 0 : Number(row[metric.key]);
-              return (
-                <div key={metric.key} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 56px', alignItems: 'center', gap: '0.45rem' }}>
-                  <span style={{ fontSize: '0.74rem', color: dashboardPalette.muted, fontWeight: 700 }}>{metric.label}</span>
-                  <div style={{ height: 10, borderRadius: 999, background: dashboardPalette.border, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${clamp(val, 0, 100)}%`, background: metric.color }} />
-                  </div>
-                  <span style={{ fontSize: '0.74rem', color: dashboardPalette.text, fontWeight: 700, textAlign: 'right' }}>{formatPercent(val)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', height: 250 }}>
+        <line x1="42" y1="185" x2="538" y2="185" stroke="#94a3b8" strokeWidth="1" />
+        {distribution.map((bin, idx) => {
+          const x = 54 + idx * (barWidth + gap);
+          const height = maxCount > 0 ? (bin.count / maxCount) * 130 : 0;
+          const y = 185 - height;
+          const fill = scoreColorMeta(
+            bin.label === '90-100' ? 95 :
+            bin.label === '80-89' ? 85 :
+            bin.label === '70-79' ? 75 :
+            bin.label === '60-69' ? 65 : 50
+          ).background;
+          return (
+            <g key={bin.label}>
+              <rect x={x} y={y} width={barWidth} height={height} fill={fill} rx="8" />
+              <text x={x + barWidth / 2} y={y - 8} textAnchor="middle" style={{ fill: dashboardPalette.navy, fontSize: 12, fontWeight: 700 }}>
+                {bin.count}
+              </text>
+              <text x={x + barWidth / 2} y={203} textAnchor="middle" style={{ fill: dashboardPalette.muted, fontSize: 12, fontWeight: 700 }}>
+                {bin.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
@@ -599,10 +628,10 @@ export default function Analytics() {
               </tbody>
             </table>
             ) : (
-              <MetricsBarGraph
+              <RangeDistributionBarChart
                 rows={sortedAssignmentQuestionRows}
-                getLabel={(row) => row.assignment_title}
-                maxRows={12}
+                scoreKey="mean_score_percent"
+                title="Distribution of assignment-level mean question scores"
               />
             )}
           </SurfaceCard>
@@ -709,10 +738,10 @@ export default function Analytics() {
                 </tbody>
               </table>
               ) : (
-                <MetricsBarGraph
+                <RangeDistributionBarChart
                   rows={sortedPerStudentRows}
-                  getLabel={(row) => row.student_name}
-                  maxRows={16}
+                  scoreKey="average_score_percent"
+                  title="Distribution of student average grades"
                 />
               )}
             </SurfaceCard>
@@ -774,10 +803,10 @@ export default function Analytics() {
               </tbody>
             </table>
             ) : (
-              <MetricsBarGraph
+              <RangeDistributionBarChart
                 rows={sortedPerAssignmentSummaryRows}
-                getLabel={(row) => row.assignment_title}
-                maxRows={12}
+                scoreKey="mean_score_percent"
+                title="Distribution of per-assignment mean grades"
               />
             )}
           </SurfaceCard>
