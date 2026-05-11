@@ -42,6 +42,7 @@ export default function StudentAssignmentPage() {
   const [initialQuestionIndex, setInitialQuestionIndex] = useState(0);
   const [initialSubmitted, setInitialSubmitted] = useState(false);
   const [liveAnswers, setLiveAnswers] = useState({});
+  const [liveQuestionTimeMs, setLiveQuestionTimeMs] = useState({});
   const [liveQuestionIndex, setLiveQuestionIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [progressReady, setProgressReady] = useState(false);
@@ -49,8 +50,9 @@ export default function StudentAssignmentPage() {
   const [wasPreviouslySubmitted, setWasPreviouslySubmitted] = useState(false);
   const [readOnlyUnsubmitted, setReadOnlyUnsubmitted] = useState(false);
   const isSubmittingOnExitRef = useRef(false);
-  const latestProgressRef = useRef({ answers: {}, questionIndex: 0 });
+  const latestProgressRef = useRef({ answers: {}, questionIndex: 0, questionTimeMs: {} });
   const skipUnmountSubmitRef = useRef(false);
+  const activeQuestionTimerRef = useRef({ questionId: null, startedAtMs: 0 });
 
   const parseHash = (hash) => {
     const courseMatch = hash.match(/#student-course\/(\d+)/);
@@ -108,11 +110,13 @@ export default function StudentAssignmentPage() {
           setWasPreviouslySubmitted(false);
           setReadOnlyUnsubmitted(false);
           setLiveAnswers({});
+          setLiveQuestionTimeMs({});
           setLiveQuestionIndex(0);
           setProgressReady(false);
         } else {
           const progressData = await getAssignmentProgress(assignmentId);
           const loadedAnswers = progressData?.answers || {};
+          const loadedQuestionTimeMs = progressData?.question_time_ms || {};
           const loadedIndex = progressData?.current_question_index || 0;
           const hasPriorSubmission = Boolean(progressData?.submitted || progressData?.submitted_at);
           const hardDue = parseScheduleDate(assignmentData?.due_date_hard);
@@ -130,6 +134,7 @@ export default function StudentAssignmentPage() {
           setInitialSubmitted(loadedSubmitted);
           setReadOnlyUnsubmitted(forceReadOnlyUnsubmitted);
           setLiveAnswers(loadedAnswers);
+          setLiveQuestionTimeMs(loadedQuestionTimeMs);
           setLiveQuestionIndex(initialIndexForSession);
           setProgressReady(true);
         }
@@ -152,12 +157,55 @@ export default function StudentAssignmentPage() {
 
   const isReadOnlyView = initialSubmitted || readOnlyUnsubmitted || isSubmissionClosed;
 
+  const getQuestionTimeSnapshot = useCallback(() => {
+    const baseTimes = { ...(liveQuestionTimeMs || {}) };
+    const active = activeQuestionTimerRef.current;
+    if (active?.questionId != null && active.startedAtMs > 0) {
+      const elapsedMs = Math.max(0, Date.now() - active.startedAtMs);
+      baseTimes[String(active.questionId)] = Math.max(0, Number(baseTimes[String(active.questionId)] || 0) + elapsedMs);
+    }
+    return baseTimes;
+  }, [liveQuestionTimeMs]);
+
+  useEffect(() => {
+    if (!progressReady || !questions.length || isInstructorPreview || isReadOnlyView || isSubmissionClosed) {
+      activeQuestionTimerRef.current = { questionId: null, startedAtMs: 0 };
+      return;
+    }
+
+    const activeQuestion = questions[liveQuestionIndex];
+    if (!activeQuestion?.id) {
+      activeQuestionTimerRef.current = { questionId: null, startedAtMs: 0 };
+      return;
+    }
+
+    const now = Date.now();
+    const nextQuestionId = String(activeQuestion.id);
+    const current = activeQuestionTimerRef.current;
+    if (current?.questionId != null && current.startedAtMs > 0 && String(current.questionId) !== nextQuestionId) {
+      const elapsedMs = Math.max(0, now - current.startedAtMs);
+      if (elapsedMs > 0) {
+        setLiveQuestionTimeMs((prev) => {
+          const next = { ...(prev || {}) };
+          const prevMs = Math.max(0, Number(next[String(current.questionId)] || 0));
+          next[String(current.questionId)] = prevMs + elapsedMs;
+          return next;
+        });
+      }
+    }
+
+    if (String(current?.questionId) !== nextQuestionId) {
+      activeQuestionTimerRef.current = { questionId: nextQuestionId, startedAtMs: now };
+    }
+  }, [progressReady, questions, liveQuestionIndex, isInstructorPreview, isReadOnlyView, isSubmissionClosed]);
+
   useEffect(() => {
     latestProgressRef.current = {
       answers: liveAnswers || {},
-      questionIndex: liveQuestionIndex || 0
+      questionIndex: liveQuestionIndex || 0,
+      questionTimeMs: getQuestionTimeSnapshot(),
     };
-  }, [liveAnswers, liveQuestionIndex]);
+  }, [liveAnswers, liveQuestionIndex, getQuestionTimeSnapshot]);
 
   useEffect(() => {
     if (!assignmentId || !progressReady || isInstructorPreview || isReadOnlyView || resubmitRequested || isSubmissionClosed) return;
@@ -165,6 +213,7 @@ export default function StudentAssignmentPage() {
       try {
         await saveAssignmentProgress(assignmentId, {
           answers: liveAnswers,
+          question_time_ms: getQuestionTimeSnapshot(),
           current_question_index: liveQuestionIndex
         });
       } catch (err) {
@@ -172,7 +221,7 @@ export default function StudentAssignmentPage() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested, isSubmissionClosed]);
+  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested, isSubmissionClosed, getQuestionTimeSnapshot]);
 
   const saveDraftOnExit = useCallback(async () => {
     if (isInstructorPreview || !assignmentId || !progressReady || isSubmittingOnExitRef.current) {
@@ -182,6 +231,7 @@ export default function StudentAssignmentPage() {
     try {
       const savedProgress = await saveAssignmentProgress(assignmentId, {
         answers: latestProgressRef.current.answers || {},
+        question_time_ms: latestProgressRef.current.questionTimeMs || {},
         current_question_index: latestProgressRef.current.questionIndex || 0
       });
       return savedProgress;
@@ -204,6 +254,7 @@ export default function StudentAssignmentPage() {
     try {
       const savedProgress = await saveAssignmentProgress(assignmentId, {
         answers: latestProgressRef.current.answers || {},
+        question_time_ms: latestProgressRef.current.questionTimeMs || {},
         current_question_index: latestProgressRef.current.questionIndex || 0,
         submitted: true
       });
@@ -266,6 +317,7 @@ export default function StudentAssignmentPage() {
     isSubmittingOnExitRef.current = true;
     void saveAssignmentProgress(assignmentId, {
       answers: latestProgressRef.current.answers || {},
+      question_time_ms: latestProgressRef.current.questionTimeMs || {},
       current_question_index: latestProgressRef.current.questionIndex || 0
     }).catch((err) => {
       console.error('Unmount save failed:', err);

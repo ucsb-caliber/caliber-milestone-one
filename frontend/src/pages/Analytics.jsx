@@ -20,6 +20,15 @@ function formatPercent(value) {
   return `${Number(value).toFixed(1)}%`;
 }
 
+function formatDurationSeconds(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—';
+  const totalSeconds = Math.max(0, Math.round(Number(value)));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
 function formatDate(value) {
   if (!value) return '—';
   const date = new Date(value);
@@ -371,7 +380,7 @@ export default function Analytics() {
   const [studentTrendView, setStudentTrendView] = React.useState('table');
   const [assignmentSummaryView, setAssignmentSummaryView] = React.useState('table');
   const [assignmentQuestionSort, setAssignmentQuestionSort] = React.useState({ key: 'assignment_title', direction: 'asc' });
-  const [studentTrendSort, setStudentTrendSort] = React.useState({ key: 'average_score_percent', direction: 'desc' });
+  const [studentTrendSort, setStudentTrendSort] = React.useState({ key: 'student_name', direction: 'asc' });
   const [assignmentSummarySort, setAssignmentSummarySort] = React.useState({ key: 'assignment_title', direction: 'asc' });
   const tableHeaderCell = {
     textAlign: 'left',
@@ -570,6 +579,11 @@ export default function Analytics() {
         <>
           <div style={{ marginBottom: '1rem', display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
             <StatCard label="Average Overall Grade" value={averageLabel} scorePercent={summary.average_overall_grade_percent} />
+            <StatCard
+              label="Class Avg Time / Question"
+              value={formatDurationSeconds(summary.average_time_per_question_seconds)}
+              scorePercent={null}
+            />
             <StatCard label="Median Grade" value={formatPercent(summary.median_score_percent)} scorePercent={summary.median_score_percent} />
             <StatCard label="Maximum Grade" value={formatPercent(summary.max_score_percent)} scorePercent={summary.max_score_percent} />
             <StatCard label="Minimum Grade" value={formatPercent(summary.min_score_percent)} scorePercent={summary.min_score_percent} />
@@ -595,17 +609,14 @@ export default function Analytics() {
               <thead>
                 <tr>
                   {renderSortableHeader('Assignment', 'assignment_title', assignmentQuestionSort, setAssignmentQuestionSort)}
-                  {renderSortableHeader('Mean', 'mean_score_percent', assignmentQuestionSort, setAssignmentQuestionSort)}
-                  {renderSortableHeader('Median', 'median_score_percent', assignmentQuestionSort, setAssignmentQuestionSort)}
-                  {renderSortableHeader('Min', 'min_score_percent', assignmentQuestionSort, setAssignmentQuestionSort)}
-                  {renderSortableHeader('Max', 'max_score_percent', assignmentQuestionSort, setAssignmentQuestionSort)}
+                  {renderSortableHeader('Avg Time / Question', 'average_time_per_question_seconds', assignmentQuestionSort, setAssignmentQuestionSort)}
                   {renderSortableHeader('Std Dev', 'stddev_score_percent', assignmentQuestionSort, setAssignmentQuestionSort)}
                 </tr>
               </thead>
               <tbody>
                 {sortedAssignmentQuestionRows.map((row) => {
-                  const scoreMeta = scoreColorMeta(row.mean_score_percent);
                   return (
+<<<<<<< HEAD
                     <tr key={row.assignment_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
                       <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.assignment_title}</td>
                       <td style={{ padding: '0.58rem 0.55rem' }}>
@@ -617,12 +628,22 @@ export default function Analytics() {
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
+=======
+                    <tr key={row.assignment_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.assignment_title}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatDurationSeconds(row.average_time_per_question_seconds)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
+>>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
                     </tr>
                   );
                 })}
                 {!sortedAssignmentQuestionRows.length ? (
                   <tr>
+<<<<<<< HEAD
                     <td colSpan={6} style={{ padding: '0.7rem 0.55rem', color: dashboardPalette.muted }}>No assignment question-score data available.</td>
+=======
+                    <td colSpan={3} style={{ padding: '0.7rem 0.55rem', color: '#64748b' }}>No assignment question-score data available.</td>
+>>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
                   </tr>
                 ) : null}
               </tbody>
@@ -704,17 +725,14 @@ export default function Analytics() {
                     {renderSortableHeader('Student', 'student_name', studentTrendSort, setStudentTrendSort)}
                     {renderSortableHeader('Submissions', 'submission_count', studentTrendSort, setStudentTrendSort)}
                     {renderSortableHeader('Grade', 'grade', studentTrendSort, setStudentTrendSort)}
-                    {renderSortableHeader('Avg Score', 'average_score_percent', studentTrendSort, setStudentTrendSort)}
-                    {renderSortableHeader('Median', 'median_score_percent', studentTrendSort, setStudentTrendSort)}
-                    {renderSortableHeader('Min', 'min_score_percent', studentTrendSort, setStudentTrendSort)}
-                    {renderSortableHeader('Max', 'max_score_percent', studentTrendSort, setStudentTrendSort)}
+                    {renderSortableHeader('Avg Time / Question', 'average_time_per_question_seconds', studentTrendSort, setStudentTrendSort)}
                     {renderSortableHeader('Std Dev', 'stddev_score_percent', studentTrendSort, setStudentTrendSort)}
                     {renderSortableHeader('Last Submission', 'last_submission_date', studentTrendSort, setStudentTrendSort)}
+                    <th style={tableHeaderCell}>Submission</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedPerStudentRows.map((row) => {
-                    const colorMeta = scoreColorMeta(row.average_score_percent);
                     return (
                       <tr key={row.student_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
                         <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.student_name}</td>
@@ -722,6 +740,7 @@ export default function Analytics() {
                         <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text, fontWeight: 700 }}>
                           {getLetterGrade(row.average_score_percent)}
                         </td>
+<<<<<<< HEAD
                         <td style={{ padding: '0.58rem 0.55rem' }}>
                           <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${colorMeta.border}`, background: colorMeta.background, color: colorMeta.color, fontWeight: 700 }}>
                             {formatPercent(row.average_score_percent)}
@@ -732,6 +751,34 @@ export default function Analytics() {
                         <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
                         <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
                         <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatDate(row.last_submission_date)}</td>
+=======
+                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatDurationSeconds(row.average_time_per_question_seconds)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatDate(row.last_submission_date)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem' }}>
+                          {row.latest_assignment_id ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                window.location.hash = `#course/${courseId}/assignment/${row.latest_assignment_id}/grade/${encodeURIComponent(row.student_id)}`;
+                              }}
+                              style={{
+                                border: 'none',
+                                background: '#2563eb',
+                                color: 'white',
+                                borderRadius: 8,
+                                padding: '0.28rem 0.52rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              View
+                            </button>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>—</span>
+                          )}
+                        </td>
+>>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
                       </tr>
                     );
                   })}
@@ -767,19 +814,15 @@ export default function Analytics() {
                 <tr>
                   {renderSortableHeader('Assignment', 'assignment_title', assignmentSummarySort, setAssignmentSummarySort)}
                   {renderSortableHeader('Submissions', 'submission_count', assignmentSummarySort, setAssignmentSummarySort)}
-                  {renderSortableHeader('Mean Score', 'mean_score_percent', assignmentSummarySort, setAssignmentSummarySort)}
-                  {renderSortableHeader('Median', 'median_score_percent', assignmentSummarySort, setAssignmentSummarySort)}
-                  {renderSortableHeader('Min', 'min_score_percent', assignmentSummarySort, setAssignmentSummarySort)}
-                  {renderSortableHeader('Max', 'max_score_percent', assignmentSummarySort, setAssignmentSummarySort)}
                   {renderSortableHeader('Std Dev', 'stddev_score_percent', assignmentSummarySort, setAssignmentSummarySort)}
                   {renderSortableHeader('% Below 70%', 'below_target_percent', assignmentSummarySort, setAssignmentSummarySort)}
                 </tr>
               </thead>
               <tbody>
                 {sortedPerAssignmentSummaryRows.map((row) => {
-                  const scoreMeta = scoreColorMeta(row.mean_score_percent);
                   const flaggedMeta = scoreColorMeta(100 - Number(row.below_target_percent || 0));
                   return (
+<<<<<<< HEAD
                     <tr key={row.assignment_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
                       <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.assignment_title}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{row.submission_count}</td>
@@ -792,6 +835,12 @@ export default function Analytics() {
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
+=======
+                    <tr key={row.assignment_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.assignment_title}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{row.submission_count}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
+>>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
                       <td style={{ padding: '0.58rem 0.55rem' }}>
                         <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${flaggedMeta.border}`, background: flaggedMeta.background, color: flaggedMeta.color, fontWeight: 700 }}>
                           {formatPercent(row.below_target_percent)}

@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from sqlmodel import SQLModel, create_engine, Session
 from dotenv import load_dotenv
 
@@ -39,6 +39,36 @@ def create_db_and_tables():
             AssignmentProgress.__table__,
         ],
     )
+    _ensure_assignment_progress_question_time_column()
+
+
+def _ensure_assignment_progress_question_time_column() -> None:
+    """Backfill additive assignment_progress columns for existing databases."""
+    inspector = inspect(engine)
+    if not inspector.has_table("assignment_progress"):
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("assignment_progress")}
+    if "question_time_ms" in existing_columns:
+        return
+
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            conn.execute(
+                text(
+                    "ALTER TABLE assignment_progress "
+                    "ADD COLUMN IF NOT EXISTS question_time_ms TEXT NOT NULL DEFAULT '{}'"
+                )
+            )
+            return
+
+        if engine.dialect.name == "sqlite":
+            conn.execute(
+                text(
+                    "ALTER TABLE assignment_progress "
+                    "ADD COLUMN question_time_ms TEXT NOT NULL DEFAULT '{}'"
+                )
+            )
 
 
 def _set_rls_context(
