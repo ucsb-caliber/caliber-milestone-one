@@ -1,0 +1,530 @@
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Fraunces:wght@700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#003660;--navy-mid:#00507a;--navy-light:#cce0f0;
+  --gold:#FEBC11;--gold-dark:#d9a00e;
+  --surface:#f4f7fb;--white:#fff;--border:#dde6ef;
+  --text:#0a1f35;--muted:#5a7590;
+  --r:10px;--rr:16px;
+  --ai:#5b4fcf;--ai-light:#eeedfe;--ai-border:#afa9ec;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--text)}
+.scr{display:none}.scr.on{display:block}
+
+/* TOP NAV */
+.topnav{display:flex;gap:5px;padding:0 0 16px;flex-wrap:wrap}
+.topnav button{font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;padding:6px 12px;border-radius:20px;border:1.5px solid var(--border);background:var(--white);color:var(--muted);cursor:pointer;transition:.15s}
+.topnav button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.topnav button:hover:not(.on){background:var(--navy-light);border-color:var(--navy-light);color:var(--navy)}
+
+/* SHELL */
+.shell{display:grid;grid-template-columns:210px 1fr;min-height:580px;border-radius:var(--rr);overflow:hidden;border:1px solid var(--border)}
+.sidebar{background:var(--navy);padding:22px 0;display:flex;flex-direction:column}
+.sb-logo{display:flex;align-items:center;gap:9px;padding:0 18px 20px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:6px}
+.lm{width:32px;height:32px;background:var(--gold);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:14px;font-weight:700;color:var(--navy);flex-shrink:0}
+.ln{color:#fff;font-size:14px;font-weight:600}
+.sbn a{display:flex;align-items:center;gap:9px;padding:9px 18px;font-size:12px;font-weight:500;color:rgba(255,255,255,.6);cursor:pointer;transition:.1s;border-left:3px solid transparent}
+.sbn a.on{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--gold)}
+.sbn a:hover:not(.on){color:#fff;background:rgba(255,255,255,.05)}
+.sbi{font-size:13px;width:15px;text-align:center;flex-shrink:0}
+.sbs{font-size:10px;font-weight:600;letter-spacing:1px;color:rgba(255,255,255,.3);padding:12px 18px 3px;text-transform:uppercase}
+.ai-badge{background:#5b4fcf;color:#eeedfe;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:auto}
+.sb-bot{margin-top:auto;padding:10px 18px;border-top:1px solid rgba(255,255,255,.1)}
+.sb-user{display:flex;align-items:center;gap:8px}
+.av{width:28px;height:28px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy);flex-shrink:0}
+.sui p{font-size:12px;color:#fff;font-weight:500}
+.sui span{font-size:10px;color:rgba(255,255,255,.4)}
+
+/* MAIN */
+.main{background:var(--surface);padding:24px;overflow:auto}
+.ptitle{font-family:'Fraunces',serif;font-size:19px;color:var(--navy);margin-bottom:3px}
+.psub{font-size:12px;color:var(--muted);margin-bottom:18px}
+.ai-chip{display:inline-flex;align-items:center;gap:5px;background:var(--ai-light);border:1px solid var(--ai-border);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;color:#3c3489;margin-bottom:14px}
+.pulse{width:6px;height:6px;border-radius:50%;background:#5b4fcf;animation:p 1.6s infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* CARDS / SHARED */
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:7px}
+.btn-primary{padding:10px 18px;background:var(--navy);color:#fff;border:none;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer}
+.btn-primary:hover{background:var(--navy-mid)}
+.btn-ai{padding:10px 18px;background:var(--ai);color:#fff;border:none;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer}
+.btn-ai:hover{background:#4a3fb5}
+.btn-ghost{padding:9px 16px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer}
+.btn-ghost:hover{border-color:var(--navy)}
+
+/* LOGIN */
+.login-wrap{min-height:520px;display:grid;grid-template-columns:1fr 1fr;border-radius:var(--rr);overflow:hidden;border:1px solid var(--border)}
+.ll{background:var(--navy);padding:44px 36px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.ll::before{content:'';position:absolute;width:280px;height:280px;border-radius:50%;border:55px solid rgba(254,188,17,.11);top:-70px;right:-70px}
+.ll::after{content:'';position:absolute;width:180px;height:180px;border-radius:50%;border:35px solid rgba(254,188,17,.07);bottom:-30px;left:-30px}
+.ll-logo{display:flex;align-items:center;gap:9px;z-index:1}
+.ll-logo .lm{width:34px;height:34px}
+.ll-logo .ln{font-size:16px}
+.ll-hero{z-index:1}
+.ll-hero h1{font-family:'Fraunces',serif;font-size:29px;color:#fff;line-height:1.25;margin-bottom:10px}
+.ll-hero h1 span{color:var(--gold)}
+.ll-hero p{color:rgba(255,255,255,.6);font-size:13px;line-height:1.6}
+.ll-badges{display:flex;gap:6px;flex-wrap:wrap;z-index:1}
+.bdg{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:4px 10px;font-size:11px;color:rgba(255,255,255,.8)}
+.lr{padding:44px 36px;display:flex;flex-direction:column;justify-content:center;background:var(--white)}
+.lr h2{font-family:'Fraunces',serif;font-size:20px;color:var(--navy);margin-bottom:4px}
+.lr>p{font-size:12px;color:var(--muted);margin-bottom:24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.field input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);outline:none}
+.field input:focus{border-color:var(--navy)}
+.btn-full{width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:2px}
+.btn-full:hover{background:var(--navy-mid)}
+.divider{text-align:center;font-size:11px;color:var(--muted);margin:12px 0;position:relative}
+.divider::before,.divider::after{content:'';position:absolute;top:50%;width:42%;height:1px;background:var(--border)}
+.divider::before{left:0}.divider::after{right:0}
+.btn-sso{width:100%;padding:10px;background:transparent;border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:var(--navy);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+.gdot{width:7px;height:7px;border-radius:50%;background:var(--gold)}
+
+/* DASHBOARD */
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.stat-c{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
+.stat-c .num{font-family:'Fraunces',serif;font-size:24px;color:var(--navy);font-weight:700}
+.stat-c .lbl{font-size:11px;color:var(--muted);margin-top:2px}
+.stat-c.warn .num{color:#c17c00}
+.alert-bar{background:#fff9e6;border:1px solid #f0d060;border-radius:var(--r);padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:9px;font-size:12px}
+.adot{width:7px;height:7px;border-radius:50%;background:var(--gold-dark);flex-shrink:0}
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cc{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px;cursor:pointer;transition:.15s}
+.cc:hover{border-color:var(--navy-mid)}
+.ctag{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-bottom:8px}
+.cc h3{font-size:13px;font-weight:600;color:var(--navy);margin-bottom:3px;line-height:1.3}
+.cc p{font-size:11px;color:var(--muted);margin-bottom:10px}
+.pbar{height:4px;background:var(--border);border-radius:2px;margin-bottom:4px}
+.pfill{height:100%;border-radius:2px;background:var(--navy)}
+.plab{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+.tcs{background:#e8f0fe;color:#1a4fa0}.tmath{background:#fef3e8;color:#a05a1a}
+.teng{background:#e8feee;color:#1a7a40}.tstat{background:#f3e8fe;color:#6a1ab5}
+
+/* COURSE PAGE */
+.bcrumb{font-size:11px;color:var(--muted);margin-bottom:14px}
+.bcrumb span{color:var(--navy);font-weight:500}
+.c-header{background:var(--navy);border-radius:var(--r);padding:16px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+.c-header h2{font-family:'Fraunces',serif;font-size:16px;color:#fff}
+.c-header p{font-size:11px;color:rgba(255,255,255,.6);margin-top:2px}
+.ch-badge{background:var(--gold);color:var(--navy);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700}
+.tabs{display:flex;gap:2px;background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:3px;margin-bottom:14px;width:fit-content}
+.tab{padding:6px 13px;border-radius:7px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;transition:.1s}
+.tab.on{background:var(--navy);color:#fff}
+.wk-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:7px}
+.ar{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:5px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:.15s}
+.ar:hover{border-color:var(--navy-mid)}
+.ai-ic{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.hw{background:#fff8e8}.qz{background:#f0fff4}.ai2{background:#f0f4ff}.pr{background:#f8f0ff}
+.ai-info{flex:1}
+.ai-info h4{font-size:12px;font-weight:600;color:var(--navy);margin-bottom:2px}
+.ai-info p{font-size:10px;color:var(--muted)}
+.ar-r{text-align:right;flex-shrink:0}
+.ar-r .pts{font-size:11px;font-weight:600;color:var(--navy)}
+.ar-r .due{font-size:10px;color:var(--muted)}
+.spl{font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;display:inline-block;margin-top:2px}
+.sd{background:#e8feee;color:#1a7a40}.ss{background:#fef3e8;color:#a05a1a}.sl{background:#fee8e8;color:#a01a1a}
+.wk-g{margin-bottom:14px}
+
+/* SUBMIT */
+.sub-layout{display:grid;grid-template-columns:1fr 260px;gap:14px;align-items:start}
+.sub-h{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:12px}
+.sub-h h2{font-family:'Fraunces',serif;font-size:16px;color:var(--navy);margin-bottom:3px}
+.sub-meta{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:6px}
+.sub-desc{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:12px}
+.sub-desc h3{font-size:11px;font-weight:600;color:var(--navy);margin-bottom:8px}
+.sub-desc p{font-size:12px;color:var(--muted);line-height:1.6}
+.uz{background:var(--white);border:2px dashed var(--border);border-radius:var(--r);padding:28px 20px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:12px}
+.uz:hover{border-color:var(--navy);background:#f0f6ff}
+.uz h4{font-size:13px;font-weight:600;color:var(--navy);margin-bottom:3px}
+.uz p{font-size:11px;color:var(--muted)}
+.fc{display:flex;align-items:center;gap:9px;background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;margin-bottom:7px}
+.fc .fn{flex:1;font-size:12px;font-weight:500;color:var(--navy)}
+.fc .fs{font-size:10px;color:var(--muted)}
+.ir{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
+.ir:last-child{border-bottom:none}
+.ir .k{color:var(--muted)}.ir .v{font-weight:600;color:var(--navy)}
+.rr{display:flex;gap:7px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px}
+.rr:last-child{border-bottom:none}
+.rr .rc{color:var(--muted);flex:1}.rr .rp{font-weight:600;color:var(--navy)}
+.due-warn{background:#fff9e6;border:1px solid #f0d060;border-radius:var(--r);padding:9px 12px;font-size:11px;color:#7a5800;display:flex;align-items:center;gap:7px;margin-bottom:10px}
+
+/* UPLOAD */
+.up-layout{display:grid;grid-template-columns:1fr 260px;gap:14px;align-items:start}
+.uz-big{background:var(--white);border:2px dashed var(--border);border-radius:var(--r);padding:36px 20px;text-align:center;cursor:pointer;margin-bottom:14px;transition:.15s}
+.uz-big:hover{border-color:var(--navy);background:#f0f6ff}
+.uz-icon{width:44px;height:44px;background:var(--navy-light);border-radius:11px;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-size:18px}
+.uz-big h4{font-size:14px;font-weight:600;color:var(--navy);margin-bottom:5px}
+.uz-big p{font-size:12px;color:var(--muted)}
+.type-row{display:flex;gap:5px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+.tp{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:3px 9px;font-size:10px;color:var(--muted);font-weight:500}
+.set-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.set-card h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:12px}
+.sr2{margin-bottom:12px}
+.sr2 label{display:block;font-size:11px;font-weight:600;color:var(--text);margin-bottom:5px}
+.sr2 select{width:100%;font-family:'DM Sans',sans-serif;font-size:12px;padding:7px 9px;border:1.5px solid var(--border);border-radius:8px;color:var(--text);outline:none}
+.rng-row{display:flex;align-items:center;gap:7px}
+.rng-row input{flex:1;padding:0}
+.rv{font-size:12px;font-weight:600;color:var(--navy);min-width:18px;text-align:right}
+.tc-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.tc{background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--muted);cursor:pointer;transition:.1s}
+.tc.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.sum-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.sum-card h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px}
+
+/* QUESTIONS */
+.q-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.qp-wrap{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:14px}
+.qp-lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
+.qp-track{height:5px;background:var(--border);border-radius:3px}
+.qp-fill{height:100%;border-radius:3px;background:var(--ai)}
+.q-layout{display:grid;grid-template-columns:1fr 240px;gap:14px;align-items:start}
+.qcard{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:10px}
+.qnum{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ai);margin-bottom:7px}
+.qtext{font-size:14px;font-weight:600;color:var(--navy);line-height:1.5;margin-bottom:16px}
+.qopts{display:grid;gap:7px}
+.qopt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:.15s;font-size:12px;color:var(--text)}
+.qopt:hover{border-color:var(--navy);background:#f0f6ff}
+.qopt.sel{border-color:var(--ai);background:var(--ai-light);color:#3c3489}
+.qopt.ok{border-color:#1a7a40;background:#e8feee;color:#1a7a40}
+.ol{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;color:var(--muted)}
+.qopt.sel .ol{border-color:var(--ai);background:var(--ai);color:#fff}
+.qopt.ok .ol{border-color:#1a7a40;background:#1a7a40;color:#fff}
+.fb{background:var(--ai-light);border:1px solid var(--ai-border);border-radius:var(--r);padding:12px 14px;margin-top:12px}
+.fb-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#3c3489;margin-bottom:5px}
+.fb p{font-size:12px;color:#534ab7;line-height:1.5}
+.qacts{display:flex;gap:8px;margin-top:14px}
+.ssr{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.ssr h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px}
+.sm{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
+.sm:last-child{border-bottom:none}
+.sk{color:var(--muted)}.sv{font-weight:700;color:var(--navy)}
+.sv.g{color:#1a7a40}.sv.r{color:#a01a1a}
+.srcref{display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px}
+.srcref:last-child{border-bottom:none}
+.srcdot{width:5px;height:5px;border-radius:50%;background:var(--ai);flex-shrink:0;margin-top:4px}
+.srct{color:var(--muted);line-height:1.4}
+.srct strong{color:var(--navy)}
+</style>
+
+<div class="topnav">
+  <button onclick="go(0)" class="on">① Login</button>
+  <button onclick="go(1)">② Dashboard</button>
+  <button onclick="go(2)">③ Course</button>
+  <button onclick="go(3)">④ Submit</button>
+  <button onclick="go(4)">⑤ Upload &amp; AI</button>
+  <button onclick="go(5)">⑥ Questions</button>
+</div>
+
+<!-- 1. LOGIN -->
+<div class="scr on" id="s0">
+  <div class="login-wrap">
+    <div class="ll">
+      <div class="ll-logo"><div class="lm">C</div><span class="ln">Caliber</span></div>
+      <div class="ll-hero">
+        <h1>Your academic<br><span>command center.</span></h1>
+        <p style="margin-top:8px">Manage assignments, track grades, and study smarter with AI — built for Gauchos.</p>
+      </div>
+      <div class="ll-badges">
+        <span class="bdg">🎓 UCSB CS</span>
+        <span class="bdg">📚 Courses</span>
+        <span class="bdg">✦ AI Questions</span>
+        <span class="bdg">📊 Grades</span>
+      </div>
+    </div>
+    <div class="lr">
+      <h2>Welcome back</h2>
+      <p>Sign in with your UCSB credentials</p>
+      <div class="field"><label>UCSBnetID</label><input type="text" placeholder="e.g. jgaucho"/></div>
+      <div class="field"><label>Password</label><input type="password" placeholder="••••••••"/></div>
+      <button class="btn-full" onclick="go(1)">Sign in to Caliber</button>
+      <div class="divider">or</div>
+      <button class="btn-sso"><div class="gdot"></div> Sign in with UCSB SSO</button>
+      <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:12px">Having trouble? <span style="color:var(--navy);cursor:pointer">Contact IT Help Desk</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- 2. DASHBOARD -->
+<div class="scr" id="s1">
+  <div class="shell">
+    <div class="sidebar">
+      <div class="sb-logo"><div class="lm">C</div><span class="ln">Caliber</span></div>
+      <div class="sbn">
+        <a class="on"><span class="sbi">⊞</span> Dashboard</a>
+        <a onclick="go(2)"><span class="sbi">📚</span> My Courses</a>
+        <a onclick="go(3)"><span class="sbi">📝</span> Assignments</a>
+        <a><span class="sbi">📊</span> Grades</a>
+        <span class="sbs">AI Tools</span>
+        <a onclick="go(4)"><span class="sbi">✦</span> Generate Questions <span class="ai-badge">AI</span></a>
+        <a><span class="sbi">💡</span> Flashcards</a>
+        <span class="sbs">Account</span>
+        <a><span class="sbi">⚙</span> Settings</a>
+      </div>
+      <div class="sb-bot"><div class="sb-user"><div class="av">JG</div><div class="sui"><p>Jamie Gaucho</p><span>Spring 2025</span></div></div></div>
+    </div>
+    <div class="main">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+        <div><div class="ptitle">Good morning, Jamie 👋</div><div class="psub">Spring Quarter · Week 7 of 10</div></div>
+        <button class="btn-primary" style="font-size:12px;padding:8px 13px">+ Add Course</button>
+      </div>
+      <div class="alert-bar"><div class="adot"></div><span><strong>2 assignments due this week</strong> — CS 130 Lab 7 due tomorrow, MATH 108 HW due Friday</span></div>
+      <div class="stats-row">
+        <div class="stat-c"><div class="num">4</div><div class="lbl">Active courses</div></div>
+        <div class="stat-c warn"><div class="num">2</div><div class="lbl">Due this week</div></div>
+        <div class="stat-c"><div class="num">91%</div><div class="lbl">Avg grade</div></div>
+      </div>
+      <div class="label">Your courses</div>
+      <div class="cg">
+        <div class="cc" onclick="go(2)"><span class="ctag tcs">CS 130</span><h3>Software Engineering</h3><p>Prof. Mirza · MWF 9–9:50am</p><div class="pbar"><div class="pfill" style="width:68%"></div></div><div class="plab"><span>Progress</span><span>68%</span></div></div>
+        <div class="cc"><span class="ctag tmath">MATH 108A</span><h3>Linear Algebra</h3><p>Prof. Kumari · TR 2–3:15pm</p><div class="pbar"><div class="pfill" style="width:82%"></div></div><div class="plab"><span>Progress</span><span>82%</span></div></div>
+        <div class="cc"><span class="ctag teng">ENGR 101</span><h3>Intro to Engineering Design</h3><p>Prof. Tanaka · MW 11–12:15pm</p><div class="pbar"><div class="pfill" style="width:55%"></div></div><div class="plab"><span>Progress</span><span>55%</span></div></div>
+        <div class="cc"><span class="ctag tstat">PSTAT 120A</span><h3>Probability &amp; Statistics</h3><p>Prof. Chen · TR 9:30–10:45am</p><div class="pbar"><div class="pfill" style="width:74%"></div></div><div class="plab"><span>Progress</span><span>74%</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. COURSE PAGE -->
+<div class="scr" id="s2">
+  <div class="shell">
+    <div class="sidebar">
+      <div class="sb-logo"><div class="lm">C</div><span class="ln">Caliber</span></div>
+      <div class="sbn">
+        <a onclick="go(1)"><span class="sbi">⊞</span> Dashboard</a>
+        <a class="on"><span class="sbi">📚</span> CS 130</a>
+        <a><span class="sbi">📊</span> Grades</a>
+        <span class="sbs">AI Tools</span>
+        <a onclick="go(4)"><span class="sbi">✦</span> Generate Questions <span class="ai-badge">AI</span></a>
+        <a><span class="sbi">💡</span> Flashcards</a>
+        <span class="sbs">Account</span>
+        <a><span class="sbi">⚙</span> Settings</a>
+      </div>
+      <div class="sb-bot"><div class="sb-user"><div class="av">JG</div><div class="sui"><p>Jamie Gaucho</p><span>CS 130 · Spring</span></div></div></div>
+    </div>
+    <div class="main">
+      <div class="bcrumb">Dashboard → <span>CS 130: Software Engineering</span></div>
+      <div class="c-header">
+        <div><h2>CS 130: Software Engineering</h2><p>Prof. Mirza · MWF 9–9:50am · Phelps 1448</p></div>
+        <div class="ch-badge">A− · 91.4%</div>
+      </div>
+      <div class="tabs"><div class="tab on">Assignments</div><div class="tab">Syllabus</div><div class="tab">Announcements</div><div class="tab">People</div></div>
+      <div class="wk-g">
+        <div class="wk-lbl">Week 7 — Current</div>
+        <div class="ar" onclick="go(3)"><div class="ai-ic hw">📝</div><div class="ai-info"><h4>Lab 7: REST API Integration</h4><p>Express.js · 3 files expected</p></div><div class="ar-r"><div class="pts">50 pts</div><div class="due">Apr 30, 11:59pm</div><div class="spl ss">Due soon</div></div></div>
+        <div class="ar"><div class="ai-ic qz">❓</div><div class="ai-info"><h4>Quiz 7: Design Patterns</h4><p>Online · 20 min · 10 questions</p></div><div class="ar-r"><div class="pts">20 pts</div><div class="due">May 2, 11:59pm</div><div class="spl ss">Not started</div></div></div>
+      </div>
+      <div class="wk-g">
+        <div class="wk-lbl">Week 6 — Past</div>
+        <div class="ar"><div class="ai-ic ai2">🤖</div><div class="ai-info"><h4>HW 6: Object-Oriented Design</h4><p>UML diagrams + reflection</p></div><div class="ar-r"><div class="pts">47 / 50</div><div class="due">Graded</div><div class="spl sd">Submitted</div></div></div>
+        <div class="ar"><div class="ai-ic pr">🚀</div><div class="ai-info"><h4>Project Checkpoint 2</h4><p>Team repo + progress report</p></div><div class="ar-r"><div class="pts">38 / 40</div><div class="due">Graded</div><div class="spl sd">Submitted</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. SUBMIT -->
+<div class="scr" id="s3">
+  <div class="shell">
+    <div class="sidebar">
+      <div class="sb-logo"><div class="lm">C</div><span class="ln">Caliber</span></div>
+      <div class="sbn">
+        <a onclick="go(1)"><span class="sbi">⊞</span> Dashboard</a>
+        <a class="on" onclick="go(2)"><span class="sbi">📚</span> CS 130</a>
+        <a><span class="sbi">📊</span> Grades</a>
+        <span class="sbs">AI Tools</span>
+        <a onclick="go(4)"><span class="sbi">✦</span> Generate Questions <span class="ai-badge">AI</span></a>
+        <a><span class="sbi">💡</span> Flashcards</a>
+        <span class="sbs">Account</span>
+        <a><span class="sbi">⚙</span> Settings</a>
+      </div>
+      <div class="sb-bot"><div class="sb-user"><div class="av">JG</div><div class="sui"><p>Jamie Gaucho</p><span>CS 130 · Spring</span></div></div></div>
+    </div>
+    <div class="main">
+      <div class="bcrumb">CS 130 → Assignments → <span>Lab 7</span></div>
+      <div class="sub-layout">
+        <div>
+          <div class="sub-h">
+            <h2>Lab 7: REST API Integration</h2>
+            <p style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5">Implement a REST API using Express.js with route handling, middleware, and error responses.</p>
+            <div class="sub-meta"><span>📅 Apr 30, 11:59pm</span><span>📌 50 pts</span><span>🔁 1 attempt</span></div>
+          </div>
+          <div class="sub-desc"><h3>Instructions</h3><p>Create a Node.js project with Express exposing 5+ REST endpoints. Include a README.md. Submit a .zip of the full project. Starter code on GitHub Classroom.</p></div>
+          <div class="uz"><h4>Drag files here or click to upload</h4><p>Accepts .zip, .pdf, .js — max 50 MB</p></div>
+          <div class="fc"><span style="font-size:14px">📦</span><span class="fn">lab7_jgaucho.zip</span><span class="fs">2.3 MB</span><span style="font-size:12px;color:var(--muted);cursor:pointer">✕</span></div>
+          <button class="btn-primary" style="width:100%;padding:12px;margin-top:6px">Submit assignment →</button>
+        </div>
+        <div>
+          <div class="due-warn">⏰ Due in 4 hours</div>
+          <div class="card" style="margin-bottom:10px">
+            <div class="label">Assignment info</div>
+            <div class="ir"><span class="k">Points</span><span class="v">50</span></div>
+            <div class="ir"><span class="k">Due</span><span class="v">Apr 30, 11:59pm</span></div>
+            <div class="ir"><span class="k">Attempts</span><span class="v">1 of 1</span></div>
+            <div class="ir"><span class="k">Format</span><span class="v">File upload</span></div>
+            <div class="ir"><span class="k">Group</span><span class="v">Individual</span></div>
+          </div>
+          <div class="card">
+            <div class="label">Rubric</div>
+            <div class="rr"><span class="rc">Route implementation</span><span class="rp">20 pts</span></div>
+            <div class="rr"><span class="rc">Error handling</span><span class="rp">10 pts</span></div>
+            <div class="rr"><span class="rc">Middleware usage</span><span class="rp">10 pts</span></div>
+            <div class="rr"><span class="rc">README quality</span><span class="rp">5 pts</span></div>
+            <div class="rr"><span class="rc">Code style</span><span class="rp">5 pts</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 5. UPLOAD & CONFIGURE -->
+<div class="scr" id="s4">
+  <div class="shell">
+    <div class="sidebar">
+      <div class="sb-logo"><div class="lm">C</div><span class="ln">Caliber</span></div>
+      <div class="sbn">
+        <a onclick="go(1)"><span class="sbi">⊞</span> Dashboard</a>
+        <a onclick="go(2)"><span class="sbi">📚</span> My Courses</a>
+        <a onclick="go(3)"><span class="sbi">📝</span> Assignments</a>
+        <a><span class="sbi">📊</span> Grades</a>
+        <span class="sbs">AI Tools</span>
+        <a class="on"><span class="sbi">✦</span> Generate Questions <span class="ai-badge">AI</span></a>
+        <a><span class="sbi">💡</span> Flashcards</a>
+        <a><span class="sbi">📋</span> My sessions</a>
+        <span class="sbs">Account</span>
+        <a><span class="sbi">⚙</span> Settings</a>
+      </div>
+      <div class="sb-bot"><div class="sb-user"><div class="av">JG</div><div class="sui"><p>Jamie Gaucho</p><span>Spring 2025</span></div></div></div>
+    </div>
+    <div class="main">
+      <div class="ai-chip"><span class="pulse"></span> Powered by AI</div>
+      <div class="ptitle">Generate personalized questions</div>
+      <div class="psub">Upload lecture slides, notes, or readings — Caliber AI crafts questions tailored to your material.</div>
+      <div class="up-layout">
+        <div>
+          <div class="uz-big">
+            <div class="uz-icon">📁</div>
+            <h4>Drop your files here</h4>
+            <p>or click to browse from your computer</p>
+            <div class="type-row"><span class="tp">PDF</span><span class="tp">PPTX</span><span class="tp">DOCX</span><span class="tp">TXT</span><span class="tp">MP4 transcript</span></div>
+          </div>
+          <div class="label">Uploaded files (3)</div>
+          <div class="fc"><span style="font-size:14px">📄</span><span class="fn">week7_lecture_notes.pdf</span><span class="fs">1.8 MB · 24 pp</span><span style="font-size:12px;color:var(--muted);cursor:pointer">✕</span></div>
+          <div class="fc"><span style="font-size:14px">🖥</span><span class="fn">rest_api_slides.pptx</span><span class="fs">3.2 MB · 18 slides</span><span style="font-size:12px;color:var(--muted);cursor:pointer">✕</span></div>
+          <div class="fc"><span style="font-size:14px">📝</span><span class="fn">reading_ch9_summary.txt</span><span class="fs">42 KB</span><span style="font-size:12px;color:var(--muted);cursor:pointer">✕</span></div>
+        </div>
+        <div>
+          <div class="set-card">
+            <h3>Question settings</h3>
+            <div class="sr2"><label>Question type</label><select><option>Multiple choice</option><option>Short answer</option><option>True / False</option><option>Mixed</option></select></div>
+            <div class="sr2"><label>Difficulty</label><select><option>Introductory</option><option selected>Intermediate</option><option>Advanced</option><option>Exam-level</option></select></div>
+            <div class="sr2"><label>Number of questions</label><div class="rng-row"><input type="range" min="5" max="30" value="10" step="1" id="qr" oninput="document.getElementById('qv').textContent=this.value"><span class="rv" id="qv">10</span></div></div>
+            <div class="sr2">
+              <label>Focus topics</label>
+              <div class="tc-row">
+                <span class="tc on" onclick="this.classList.toggle('on')">REST APIs</span>
+                <span class="tc on" onclick="this.classList.toggle('on')">HTTP methods</span>
+                <span class="tc" onclick="this.classList.toggle('on')">Middleware</span>
+                <span class="tc" onclick="this.classList.toggle('on')">Auth &amp; JWT</span>
+                <span class="tc" onclick="this.classList.toggle('on')">Error handling</span>
+                <span class="tc" onclick="this.classList.toggle('on')">Routing</span>
+              </div>
+            </div>
+          </div>
+          <div class="sum-card">
+            <h3>Summary</h3>
+            <div class="ir"><span class="k">Files</span><span class="v">3</span></div>
+            <div class="ir"><span class="k">Pages / slides</span><span class="v">~42</span></div>
+            <div class="ir"><span class="k">Questions</span><span class="v">10</span></div>
+            <div class="ir"><span class="k">Difficulty</span><span class="v">Intermediate</span></div>
+          </div>
+          <button class="btn-ai" style="width:100%;padding:12px" onclick="go(5)">✦ Generate questions →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 6. AI QUESTIONS -->
+<div class="scr" id="s5">
+  <div class="shell">
+    <div class="sidebar">
+      <div class="sb-logo"><div class="lm">C</div><span class="ln">Caliber</span></div>
+      <div class="sbn">
+        <a onclick="go(1)"><span class="sbi">⊞</span> Dashboard</a>
+        <a onclick="go(2)"><span class="sbi">📚</span> My Courses</a>
+        <a><span class="sbi">📊</span> Grades</a>
+        <span class="sbs">AI Tools</span>
+        <a class="on"><span class="sbi">✦</span> Generate Questions <span class="ai-badge">AI</span></a>
+        <a><span class="sbi">💡</span> Flashcards</a>
+        <a><span class="sbi">📋</span> My sessions</a>
+        <span class="sbs">Account</span>
+        <a><span class="sbi">⚙</span> Settings</a>
+      </div>
+      <div class="sb-bot"><div class="sb-user"><div class="av">JG</div><div class="sui"><p>Jamie Gaucho</p><span>Spring 2025</span></div></div></div>
+    </div>
+    <div class="main">
+      <div class="q-topbar">
+        <div>
+          <div class="ai-chip"><span class="pulse"></span> AI-generated · 3 files</div>
+          <div class="ptitle" style="margin-bottom:0">CS 130 — Study session</div>
+        </div>
+        <button class="btn-ghost" onclick="go(4)">← New session</button>
+      </div>
+      <div class="qp-wrap">
+        <div class="qp-lbl"><span>Question 3 of 10</span><span>2 correct · 0 wrong</span></div>
+        <div class="qp-track"><div class="qp-fill" style="width:30%"></div></div>
+      </div>
+      <div class="q-layout">
+        <div>
+          <div class="qcard">
+            <div class="qnum">Question 3</div>
+            <div class="qtext">In a RESTful API, which HTTP method is most appropriate for partially updating an existing resource without replacing the entire object?</div>
+            <div class="qopts">
+              <div class="qopt"><span class="ol">A</span> GET — retrieves the current state of the resource</div>
+              <div class="qopt"><span class="ol">B</span> PUT — replaces the entire resource with new data</div>
+              <div class="qopt ok"><span class="ol" style="border-color:#1a7a40;background:#1a7a40;color:#fff">C</span> PATCH — applies a partial modification to the resource</div>
+              <div class="qopt"><span class="ol">D</span> POST — creates a new resource at the endpoint</div>
+            </div>
+            <div class="fb">
+              <div class="fb-head"><span style="font-size:14px">✦</span> AI Explanation</div>
+              <p>Correct! PATCH is designed for partial updates — only the changed fields are sent. PUT replaces the entire resource. This distinction is key for resource-efficient API design, covered in Lecture 7 slide 12.</p>
+            </div>
+            <div class="qacts">
+              <button class="btn-ai" style="font-size:12px;padding:8px 14px">✦ Explain more</button>
+              <button class="btn-primary" style="margin-left:auto;font-size:12px;padding:8px 14px">Next question →</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="ssr">
+            <h3>Session stats</h3>
+            <div class="sm"><span class="sk">Answered</span><span class="sv">3 / 10</span></div>
+            <div class="sm"><span class="sk">Correct</span><span class="sv g">2</span></div>
+            <div class="sm"><span class="sk">Incorrect</span><span class="sv r">0</span></div>
+            <div class="sm"><span class="sk">Skipped</span><span class="sv">1</span></div>
+            <div class="sm"><span class="sk">Score</span><span class="sv">67%</span></div>
+          </div>
+          <div class="ssr">
+            <h3>Sources cited</h3>
+            <div class="srcref"><span class="srcdot"></span><span class="srct"><strong>week7_lecture_notes.pdf</strong> — p. 8, HTTP verb semantics</span></div>
+            <div class="srcref"><span class="srcdot"></span><span class="srct"><strong>rest_api_slides.pptx</strong> — slide 12, PATCH vs PUT</span></div>
+            <div class="srcref"><span class="srcdot"></span><span class="srct"><strong>reading_ch9_summary.txt</strong> — REST constraints</span></div>
+          </div>
+          <button class="btn-ghost" style="width:100%">End session &amp; see results</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function go(i){
+  document.querySelectorAll('.scr').forEach((s,j)=>s.classList.toggle('on',i===j));
+  document.querySelectorAll('.topnav button').forEach((b,j)=>b.classList.toggle('on',i===j));
+}
+</script>

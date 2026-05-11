@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { getMyAssignmentGrade } from '../api';
+import { CourseDashboardBackButton, CourseDashboardSpinnerState } from './CourseDashboardUI';
 
 function asDisplayAnswer(raw) {
   if (raw == null || raw === '') return 'No answer submitted';
@@ -45,11 +46,6 @@ export default function StudentGradeReport({ assignmentId, courseId, assignmentT
 
   const styles = {
     container: { maxWidth: '900px', margin: '0 auto', padding: '1.5rem' },
-    backButton: {
-      display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem',
-      background: '#f3f4f6', border: 'none', borderRadius: '8px', cursor: 'pointer',
-      fontSize: '0.875rem', color: '#374151', marginBottom: '1rem'
-    },
     header: { marginBottom: '1.5rem' },
     title: { margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: 700, color: '#111827' },
     subtitle: { margin: 0, fontSize: '0.95rem', color: '#6b7280' },
@@ -73,10 +69,19 @@ export default function StudentGradeReport({ assignmentId, courseId, assignmentT
     errorBox: { background: '#fee2e2', color: '#dc2626', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' },
   };
 
-  if (loading) return <div style={styles.container}><p style={{ color: '#6b7280' }}>Loading your grade...</p></div>;
+  if (loading) return (
+    <div style={styles.container}>
+      <CourseDashboardBackButton onClick={onBack} style={{ marginBottom: '16px' }}>
+        Back
+      </CourseDashboardBackButton>
+      <CourseDashboardSpinnerState style={{ padding: '24px 0' }} />
+    </div>
+  );
   if (error) return (
     <div style={styles.container}>
-      <button type="button" style={styles.backButton} onClick={onBack}>← Back</button>
+      <CourseDashboardBackButton onClick={onBack} style={{ marginBottom: '16px' }}>
+        Back
+      </CourseDashboardBackButton>
       <div style={styles.errorBox}>{error}</div>
     </div>
   );
@@ -88,9 +93,9 @@ export default function StudentGradeReport({ assignmentId, courseId, assignmentT
 
   return (
     <div style={styles.container}>
-      <button type="button" style={styles.backButton} onClick={onBack}>
-        ← Back to assignment
-      </button>
+      <CourseDashboardBackButton onClick={onBack} style={{ marginBottom: '16px' }}>
+        Back
+      </CourseDashboardBackButton>
       <div style={styles.header}>
         <h1 style={styles.title}>Your grade: {assignmentTitle}</h1>
         <p style={styles.subtitle}>Grades have been released. Below you can see your score, where points were earned or lost, and any comments from your teacher.</p>

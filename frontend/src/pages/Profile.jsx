@@ -1,6 +1,18 @@
 import React from 'react';
 import { useAuth } from '../AuthContext.jsx';
 import { getUserInfo, updateUserPreferences, updateUserProfile } from '../api.js';
+import {
+  CourseDashboardHeader,
+  CourseDashboardInput,
+  CourseDashboardLoadingState,
+  CourseDashboardSecondaryButton,
+  MutedText,
+  PageContainer,
+  PageStack,
+  SurfaceCard,
+  SurfaceLabel,
+  dashboardPalette,
+} from '../components/CourseDashboardUI.jsx';
 
 function getAccountStatus(user) {
   return {
@@ -8,7 +20,7 @@ function getAccountStatus(user) {
   };
 }
 
-function ProfileBadge({ prefs, size = 56 }) {
+function ProfileBadge({ prefs, size = 64 }) {
   const baseStyle = {
     width: size,
     height: size,
@@ -32,6 +44,18 @@ function ProfileBadge({ prefs, size = 56 }) {
   return <div style={{ ...baseStyle, ...shapeStyle }}>{(prefs.initials || '').toUpperCase()}</div>;
 }
 
+const profileGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: '120px minmax(0, 1fr)',
+  gap: '24px',
+  alignItems: 'flex-start',
+};
+
+const fieldsGridStyle = {
+  display: 'grid',
+  gap: '16px',
+};
+
 export default function Profile() {
   const { user } = useAuth();
   const [userInfo, setUserInfo] = React.useState(null);
@@ -45,19 +69,17 @@ export default function Profile() {
   const [savingSchool, setSavingSchool] = React.useState(false);
   const [schoolMessage, setSchoolMessage] = React.useState('');
 
-  // Fetch user info from backend
   React.useEffect(() => {
     async function fetchUserInfo() {
       if (!user) {
         setLoadingUserInfo(false);
         return;
       }
-      
+
       try {
         const info = await getUserInfo();
         setUserInfo(info);
         setSchoolName(info.school_name || '');
-        // Set prefs from backend data
         setPrefs({
           iconShape: info.icon_shape || 'circle',
           color: info.icon_color || '#4f46e5',
@@ -69,7 +91,7 @@ export default function Profile() {
         setLoadingUserInfo(false);
       }
     }
-    
+
     fetchUserInfo();
   }, [user]);
 
@@ -89,24 +111,22 @@ export default function Profile() {
   };
 
   const updatePrefs = async (next) => {
-    // If initials are cleared, reset to default
-    if (!next.initials || !next.initials.trim()) {
-      next = { ...next, initials: getDefaultInitials(userInfo) };
+    let resolvedNext = next;
+    if (!resolvedNext.initials || !resolvedNext.initials.trim()) {
+      resolvedNext = { ...resolvedNext, initials: getDefaultInitials(userInfo) };
     }
-    
-    setPrefs(next);
-    
-    // Save to backend
+
+    setPrefs(resolvedNext);
+
     try {
       await updateUserPreferences({
-        icon_shape: next.iconShape,
-        icon_color: next.color,
-        initials: next.initials
+        icon_shape: resolvedNext.iconShape,
+        icon_color: resolvedNext.color,
+        initials: resolvedNext.initials
       });
-      
-      // Trigger a custom event to notify other components
-      window.dispatchEvent(new CustomEvent('profilePreferencesUpdated', { 
-        detail: next 
+
+      window.dispatchEvent(new CustomEvent('profilePreferencesUpdated', {
+        detail: resolvedNext
       }));
     } catch (error) {
       console.error('Error updating preferences:', error);
@@ -134,232 +154,176 @@ export default function Profile() {
   };
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0.25rem 0.5rem 1.75rem' }}>
-      <div style={{ maxWidth: '820px', margin: '0 auto' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '120px 1fr',
-            gap: '1.5rem',
-            padding: '1.25rem',
-            border: '1px solid #e5e7eb',
-            borderRadius: '10px',
-            background: 'white',
-          }}
-        >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
-          <ProfileBadge prefs={prefs} />
-        </div>
+    <PageContainer maxWidth="960px">
+      <PageStack>
+        <CourseDashboardHeader
+          title="Profile"
+          subtitle="Manage your account details and icon preferences."
+        />
 
-        <div>
-          <div style={{ marginBottom: '1rem' }}>
-            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-              Signed In As
+        <SurfaceCard>
+          <div style={profileGridStyle}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <ProfileBadge prefs={prefs} />
             </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
-              {loggedInEmail}
-            </div>
-          </div>
 
-          {/* Display backend user profile info */}
-          {loadingUserInfo ? (
-            <div style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1rem' }}>
-              Loading profile information...
-            </div>
-          ) : userInfo && (userInfo.first_name || userInfo.last_name) ? (
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                Name
+            <div style={fieldsGridStyle}>
+              <div>
+                <SurfaceLabel>Signed in as</SurfaceLabel>
+                <div style={{ fontSize: '1.05rem', fontWeight: 600, color: dashboardPalette.navy }}>{loggedInEmail}</div>
               </div>
-              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827' }}>
-                {[userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ')}
-              </div>
-              {userInfo.teacher && (
-                <div style={{ 
-                  display: 'inline-block',
-                  marginTop: '0.25rem',
-                  padding: '0.25rem 0.5rem',
-                  background: '#dbeafe',
-                  color: '#1e40af',
-                  borderRadius: '4px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600
-                }}>
-                  Teacher
+
+              {loadingUserInfo ? (
+                <CourseDashboardLoadingState>Loading profile information...</CourseDashboardLoadingState>
+              ) : userInfo && (userInfo.first_name || userInfo.last_name) ? (
+                <div>
+                  <SurfaceLabel>Name</SurfaceLabel>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 600, color: dashboardPalette.navy }}>
+                    {[userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ')}
+                  </div>
+                  {userInfo.teacher ? (
+                    <div
+                      style={{
+                        display: 'inline-block',
+                        marginTop: '8px',
+                        padding: '4px 8px',
+                        background: dashboardPalette.navyLight,
+                        color: dashboardPalette.navy,
+                        borderRadius: '6px',
+                        border: `1px solid ${dashboardPalette.border}`,
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Teacher
+                    </div>
+                  ) : null}
                 </div>
-              )}
-            </div>
-          ) : null}
+              ) : null}
 
-          <div style={{ marginBottom: '1rem' }}>
-            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-              Home School
-            </div>
-            <input
-              value={schoolName}
-              onChange={(e) => setSchoolName(e.target.value)}
-              list="school-options"
-              placeholder="Enter your school"
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px'
-              }}
-            />
-            <datalist id="school-options">
-              <option value="UCSB" />
-              <option value="UCLA" />
-              <option value="UCB" />
-              <option value="UCI" />
-              <option value="UCSD" />
-              <option value="Cal Poly SLO" />
-            </datalist>
-            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <button
-                onClick={saveSchoolName}
-                disabled={savingSchool}
-                style={{
-                  padding: '0.45rem 0.75rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  background: 'white',
-                  cursor: savingSchool ? 'not-allowed' : 'pointer',
-                  color: '#111827',
-                  fontWeight: 600
-                }}
-              >
-                {savingSchool ? 'Saving...' : 'Save School'}
-              </button>
-              {schoolMessage && (
-                <span style={{ fontSize: '0.85rem', color: schoolMessage.includes('updated') ? '#065f46' : '#b91c1c' }}>
-                  {schoolMessage}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-              Initials
-            </div>
-            <input
-              value={prefs.initials}
-              onChange={(e) => updatePrefs({ ...prefs, initials: e.target.value.slice(0, 2) })}
-              placeholder={userInfo && userInfo.first_name && userInfo.last_name 
-                ? `${userInfo.first_name[0]}${userInfo.last_name[0]}`.toUpperCase() 
-                : ''}
-              maxLength={2}
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                textTransform: 'uppercase',
-              }}
-            />
-          </div>
-
-          <div style={{ marginTop: '1.25rem' }}>
-            <div style={{ fontWeight: 800, marginBottom: '0.5rem', color: '#111827' }}>Role / Status</div>
-            <div style={{ color: '#374151' }}>
-              {userInfo ? (
-                <>
-                  <div>
-                    <strong>Admin:</strong> {userInfo.admin ? 'Yes' : 'No'}
-                  </div>
-                  <div>
-                    <strong>Teacher:</strong> {userInfo.teacher ? 'Yes' : 'No'}
-                  </div>
-                  <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.35rem' }}>
-                    These flags are stored in the database and set during onboarding.
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <strong>Auth provider:</strong> {status.provider}
-                  </div>
-                  <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.35rem' }}>
-                    Role flags are loaded from the backend profile after authentication.
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: '1.5rem',
-            padding: '1.25rem',
-            border: '1px solid #e5e7eb',
-            borderRadius: '10px',
-            background: 'white',
-          }}
-        >
-        <h3 style={{ marginTop: 0, color: '#111827' }}>Profile icon</h3>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          <div>
-            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-              Shape
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {['circle', 'square', 'hex'].map((shape) => (
-                <button
-                  key={shape}
-                  onClick={() => updatePrefs({ ...prefs, iconShape: shape })}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: '8px',
-                    border: prefs.iconShape === shape ? '2px solid #111827' : '1px solid #d1d5db',
-                    background: prefs.iconShape === shape ? '#f3f4f6' : 'white',
-                    cursor: 'pointer',
-                    fontWeight: 700,
-                    textTransform: 'capitalize',
-                    color: '#111827',
-                  }}
-                >
-                  {shape}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-              Color
-            </div>
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="color"
-                value={prefs.color}
-                onChange={(e) => updatePrefs({ ...prefs, color: e.target.value })}
-                style={{ width: '44px', height: '36px', padding: 0, border: 'none', background: 'none' }}
-                aria-label="Profile color"
-              />
-              {['#4f46e5', '#16a34a', '#dc2626', '#0ea5e9', '#f59e0b', '#111827'].map((c) => (
-                <button
-                  key={c}
-                  onClick={() => updatePrefs({ ...prefs, color: c })}
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: 9999,
-                    border: prefs.color === c ? '2px solid #111827' : '1px solid #d1d5db',
-                    background: c,
-                    cursor: 'pointer',
-                  }}
-                  aria-label={`Set color ${c}`}
+              <div>
+                <SurfaceLabel>Home school</SurfaceLabel>
+                <CourseDashboardInput
+                  value={schoolName}
+                  onChange={(e) => setSchoolName(e.target.value)}
+                  list="school-options"
+                  placeholder="Enter your school"
+                  style={{ width: '100%' }}
                 />
-              ))}
+                <datalist id="school-options">
+                  <option value="UCSB" />
+                  <option value="UCLA" />
+                  <option value="UCB" />
+                  <option value="UCI" />
+                  <option value="UCSD" />
+                  <option value="Cal Poly SLO" />
+                </datalist>
+                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <CourseDashboardSecondaryButton onClick={saveSchoolName} disabled={savingSchool}>
+                    {savingSchool ? 'Saving...' : 'Save school'}
+                  </CourseDashboardSecondaryButton>
+                  {schoolMessage ? (
+                    <span style={{ fontSize: '0.85rem', color: schoolMessage.includes('updated') ? '#166534' : dashboardPalette.dangerText }}>
+                      {schoolMessage}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div>
+                <SurfaceLabel>Initials</SurfaceLabel>
+                <CourseDashboardInput
+                  value={prefs.initials}
+                  onChange={(e) => updatePrefs({ ...prefs, initials: e.target.value.slice(0, 2) })}
+                  placeholder={userInfo && userInfo.first_name && userInfo.last_name
+                    ? `${userInfo.first_name[0]}${userInfo.last_name[0]}`.toUpperCase()
+                    : ''}
+                  maxLength={2}
+                  style={{ width: '100%', textTransform: 'uppercase' }}
+                />
+              </div>
+
+              <div>
+                <div style={{ fontSize: '1rem', fontWeight: 600, color: dashboardPalette.navy, marginBottom: '8px' }}>Role / status</div>
+                {userInfo ? (
+                  <>
+                    <MutedText><strong>Admin:</strong> {userInfo.admin ? 'Yes' : 'No'}</MutedText>
+                    <MutedText><strong>Teacher:</strong> {userInfo.teacher ? 'Yes' : 'No'}</MutedText>
+                    <MutedText style={{ marginTop: '6px' }}>
+                      These flags are stored in the database and set during onboarding.
+                    </MutedText>
+                  </>
+                ) : (
+                  <>
+                    <MutedText><strong>Auth provider:</strong> {status.provider}</MutedText>
+                    <MutedText style={{ marginTop: '6px' }}>
+                      Role flags are loaded from the backend profile after authentication.
+                    </MutedText>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-        </div>
-      </div>
-    </div>
+        </SurfaceCard>
+
+        <SurfaceCard>
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: dashboardPalette.navy, marginBottom: '6px' }}>Profile icon</div>
+            <MutedText>Choose the shape and color used throughout the app.</MutedText>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div>
+              <SurfaceLabel>Shape</SurfaceLabel>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {['circle', 'square', 'hex'].map((shape) => (
+                  <CourseDashboardSecondaryButton
+                    key={shape}
+                    onClick={() => updatePrefs({ ...prefs, iconShape: shape })}
+                    style={{
+                      borderColor: prefs.iconShape === shape ? dashboardPalette.navy : dashboardPalette.border,
+                      color: dashboardPalette.text,
+                      background: prefs.iconShape === shape ? dashboardPalette.navyLight : dashboardPalette.white,
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {shape}
+                  </CourseDashboardSecondaryButton>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <SurfaceLabel>Color</SurfaceLabel>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="color"
+                  value={prefs.color}
+                  onChange={(e) => updatePrefs({ ...prefs, color: e.target.value })}
+                  style={{ width: '44px', height: '36px', padding: 0, border: 'none', background: 'none' }}
+                  aria-label="Profile color"
+                />
+                {['#4f46e5', '#16a34a', '#dc2626', '#0ea5e9', '#f59e0b', '#111827'].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => updatePrefs({ ...prefs, color })}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: 9999,
+                      border: prefs.color === color ? `2px solid ${dashboardPalette.navy}` : `1px solid ${dashboardPalette.border}`,
+                      background: color,
+                      cursor: 'pointer',
+                    }}
+                    aria-label={`Set color ${color}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </SurfaceCard>
+      </PageStack>
+    </PageContainer>
   );
 }

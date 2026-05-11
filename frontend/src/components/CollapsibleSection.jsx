@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { dashboardPalette } from './CourseDashboardUI';
 
 /**
  * CollapsibleSection - A comprehensive collapsible section component with pagination and view modes
@@ -83,46 +84,68 @@ export default function CollapsibleSection({
   };
 
   const paginationButtonStyle = (disabled) => ({
-    padding: '0.5rem 0.8rem',
-    background: disabled ? '#f8fafc' : '#ffffff',
-    color: disabled ? '#94a3b8' : '#0f172a',
-    border: `1px solid ${disabled ? '#e2e8f0' : '#cbd5e1'}`,
-    borderRadius: '9px',
+    height: '32px',
+    padding: '0 0.6rem',
+    background: disabled ? dashboardPalette.surface : dashboardPalette.white,
+    color: disabled ? dashboardPalette.muted : dashboardPalette.text,
+    border: `1px solid ${dashboardPalette.border}`,
+    borderRadius: '8px',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: '0.82rem',
-    fontWeight: 700,
-    transition: 'all 0.15s ease'
+    fontWeight: 600,
+    opacity: disabled ? 0.65 : 1
   });
 
   return (
     <div>
-      <h3 
+      <button
+        type="button"
         onClick={onToggle}
-        style={{ 
-          marginBottom: '1rem',
-          paddingBottom: '0.6rem',
-          borderBottom: `2px solid ${borderColor}`,
-          color: '#0f172a',
-          fontSize: '1.12rem',
-          letterSpacing: '-0.01em',
+        style={{
+          width: '100%',
+          marginBottom: '0.5rem',
+          padding: '0 0 0.75rem',
+          border: 'none',
+          borderBottom: `1px solid ${dashboardPalette.border}`,
+          background: 'transparent',
+          color: dashboardPalette.text,
+          fontSize: '1rem',
+          fontWeight: 700,
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.5rem',
-          userSelect: 'none'
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          textAlign: 'left'
         }}
       >
-        <span style={{ 
-          transition: 'transform 0.2s',
-          transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-          display: 'inline-block'
-        }}>
-          ▼
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <span
+            aria-hidden="true"
+            style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '2px',
+              background: borderColor,
+              flexShrink: 0
+            }}
+          />
+          <span>{title}</span>
         </span>
-        {title} ({questions.length})
-      </h3>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: dashboardPalette.muted, fontSize: '0.85rem', fontWeight: 600 }}>
+          <span>{questions.length}</span>
+          <span
+            style={{
+              transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+              display: 'inline-block'
+            }}
+          >
+            ▼
+          </span>
+        </span>
+      </button>
       {headerContent && !isCollapsed && (
-        <div style={{ margin: '-0.35rem 0 0.9rem 1.35rem' }}>
+        <div style={{ margin: '0 0 0.5rem 0' }}>
           {headerContent}
         </div>
       )}
@@ -132,11 +155,12 @@ export default function CollapsibleSection({
           {questions.length === 0 ? (
             emptyStateContent || (
               <div style={{
-                padding: '2rem',
-                background: '#f8f9fa',
-                borderRadius: '4px',
+                padding: '1.5rem',
+                background: dashboardPalette.white,
+                border: `1px solid ${dashboardPalette.border}`,
+                borderRadius: '8px',
                 textAlign: 'center',
-                color: '#666'
+                color: dashboardPalette.muted
               }}>
                 <p>No questions found.</p>
               </div>
@@ -153,22 +177,20 @@ export default function CollapsibleSection({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '0.75rem',
-                    marginBottom: '0.95rem',
+                    marginBottom: '0.75rem',
                     flexWrap: 'wrap'
                   }}
                 >
-                  <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>
+                  <div style={{ fontSize: '0.9rem', color: dashboardPalette.muted, fontWeight: 600 }}>
                     Showing {startIndex + 1}-{Math.min(endIndex, questions.length)} of {questions.length}
                   </div>
                   <div
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.55rem',
-                      padding: '0.22rem',
-                      borderRadius: '11px',
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0'
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    flexWrap: 'wrap',
+                    justifyContent: 'flex-end'
                     }}
                   >
                   <button
@@ -181,15 +203,14 @@ export default function CollapsibleSection({
                   <span
                     style={{
                       fontSize: '0.82rem',
-                      color: '#475569',
+                      color: dashboardPalette.muted,
                       fontWeight: 600,
-                      padding: '0.15rem 0.15rem 0.15rem 0.35rem',
-                      borderRadius: '8px',
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0'
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem'
                     }}
                   >
-                    Page{' '}
+                    <span>Page</span>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -204,18 +225,18 @@ export default function CollapsibleSection({
                       }}
                       style={{
                         width: '38px',
-                        margin: '0 5px',
                         textAlign: 'center',
-                        border: '1px solid #cbd5e1',
+                        border: `1px solid ${dashboardPalette.border}`,
                         borderRadius: '6px',
-                        padding: '0.2rem',
+                        height: '32px',
+                        padding: '0.14rem',
                         fontSize: '0.8rem',
                         fontWeight: 700,
-                        color: '#0f172a',
-                        background: '#ffffff'
+                        color: dashboardPalette.text,
+                        background: dashboardPalette.white
                       }}
                     />
-                    of {totalPages}{' '}
+                    <span>of {totalPages}</span>
                   </span>
                   <button
                     onClick={goToNextPage}
@@ -230,8 +251,8 @@ export default function CollapsibleSection({
                 {/* Card Grid */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                  gap: '4rem 1.5rem'
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                  gap: '16px'
                 }}>
                   {paginatedQuestions.map(question => {
                     const isOwner = user && question.user_id === user.id;

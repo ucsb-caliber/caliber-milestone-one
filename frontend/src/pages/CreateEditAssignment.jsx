@@ -6,6 +6,9 @@ import { getUserById } from '../api';
 import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
 import { filterQuestionsBySearch } from '../utils/questionSearch';
 import { parseScheduleDate } from '../utils/datetime';
+import { CourseDashboardBackButton, CourseDashboardSpinnerState, dashboardPalette } from '../components/CourseDashboardUI';
+import useBodyScrollLock from '../hooks/useBodyScrollLock';
+import { buildHashWithFrom, navigateBackWithFallback } from '../utils/navigation';
 
 function formatDateForDateTimeLocal(dateStr) {
   const date = parseScheduleDate(dateStr);
@@ -25,6 +28,8 @@ export default function CreateEditAssignment() {
   const [showQuestionPicker, setShowQuestionPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all');
+
+  useBodyScrollLock(showQuestionPicker);
 
 
 
@@ -46,20 +51,25 @@ export default function CreateEditAssignment() {
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const isNew = hash.includes('/assignment/new');
     const isEdit = hash.includes('/edit');
+    const params = new URLSearchParams(hash.split('?')[1] || '');
 
     return {
       courseId: courseMatch ? parseInt(courseMatch[1]) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null,
       isNew,
-      isEdit
+      isEdit,
+      fromHash: params.get('from') || '',
     };
   };
 
-  const { courseId, assignmentId, isNew, isEdit } = parseHash();
-  const backHref = isEditMode && assignmentId
+  const { courseId, assignmentId, isNew, isEdit, fromHash } = parseHash();
+  const currentHash = window.location.hash;
+  const fallbackBackHash = (isEdit || isEditMode) && assignmentId
     ? `#course/${courseId}/assignment/${assignmentId}/view`
     : `#course/${courseId}`;
-  const backLabel = isEditMode ? '← Back' : '← Back to Course';
+  const handleBack = () => {
+    navigateBackWithFallback(fallbackBackHash, fromHash);
+  };
 
   const fetchAllQuestionsForPicker = async () => {
     const pageSize = 200;
@@ -225,7 +235,7 @@ export default function CreateEditAssignment() {
 
       // Navigate to assignment view page
       if (savedAssignmentId) {
-        window.location.hash = `#course/${courseId}/assignment/${savedAssignmentId}/view`;
+        window.location.hash = buildHashWithFrom(`#course/${courseId}/assignment/${savedAssignmentId}/view`, currentHash);
         if (isEditMode) {
           window.location.reload();
         }
@@ -252,113 +262,126 @@ export default function CreateEditAssignment() {
 
   const styles = {
     container: {
-      maxWidth: '900px',
+      maxWidth: '960px',
       margin: '0 auto',
-      padding: '2rem'
+      padding: '24px'
     },
     backLink: {
       display: 'inline-flex',
       alignItems: 'center',
-      gap: '0.5rem',
-      color: '#4f46e5',
+      gap: '8px',
+      color: dashboardPalette.navy,
       textDecoration: 'none',
       fontSize: '0.875rem',
-      fontWeight: '500',
-      marginBottom: '1.5rem',
+      fontWeight: '600',
+      marginBottom: '16px',
       cursor: 'pointer'
     },
     title: {
-      margin: '0 0 2rem 0',
-      fontSize: '2rem',
+      margin: '0 0 24px 0',
+      fontSize: '1.75rem',
       fontWeight: '700',
-      color: '#111827'
+      color: dashboardPalette.navy
     },
     form: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '2rem',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-      border: '1px solid #e5e7eb'
+      background: dashboardPalette.white,
+      borderRadius: '8px',
+      padding: '24px',
+      border: `1px solid ${dashboardPalette.border}`
     },
     formGroup: {
-      marginBottom: '1.5rem'
+      marginBottom: '16px'
     },
     label: {
       display: 'block',
-      marginBottom: '0.5rem',
+      marginBottom: '8px',
       fontWeight: '600',
-      color: '#374151',
+      color: dashboardPalette.text,
       fontSize: '0.875rem'
     },
     input: {
       width: '100%',
-      padding: '0.75rem',
-      border: '1px solid #d1d5db',
+      padding: '0 12px',
+      height: '40px',
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
-      fontSize: '1rem',
+      fontSize: '0.95rem',
+      color: dashboardPalette.text,
+      background: dashboardPalette.white,
       boxSizing: 'border-box'
     },
     textarea: {
       width: '100%',
-      padding: '0.75rem',
-      border: '1px solid #d1d5db',
+      padding: '12px',
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
-      fontSize: '1rem',
+      fontSize: '0.95rem',
       minHeight: '100px',
       boxSizing: 'border-box',
-      fontFamily: 'inherit'
+      fontFamily: 'inherit',
+      color: dashboardPalette.text,
+      background: dashboardPalette.white
     },
     select: {
       width: '100%',
-      padding: '0.75rem',
-      border: '1px solid #d1d5db',
+      padding: '0 12px',
+      height: '40px',
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
-      fontSize: '1rem',
+      fontSize: '0.95rem',
+      color: dashboardPalette.text,
+      background: dashboardPalette.white,
       boxSizing: 'border-box'
     },
     buttonGroup: {
       display: 'flex',
-      gap: '0.75rem',
-      marginTop: '2rem'
+      gap: '12px',
+      marginTop: '24px'
     },
     submitBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#4f46e5',
-      color: 'white',
-      border: 'none',
+      height: '40px',
+      padding: '0 14px',
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.navy}`,
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
       fontWeight: '600'
     },
     cancelBtn: {
-      padding: '0.75rem 1.5rem',
-      background: '#f3f4f6',
-      color: '#374151',
-      border: 'none',
+      height: '40px',
+      padding: '0 14px',
+      background: dashboardPalette.white,
+      color: dashboardPalette.text,
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
       fontWeight: '600'
     },
     error: {
-      background: '#fef2f2',
-      color: '#dc2626',
-      padding: '0.75rem 1rem',
+      background: dashboardPalette.dangerBg,
+      color: dashboardPalette.dangerText,
+      padding: '12px 14px',
       borderRadius: '8px',
-      marginBottom: '1rem'
+      marginBottom: '16px',
+      border: `1px solid ${dashboardPalette.dangerBorder}`
     },
     helpText: {
       fontSize: '0.75rem',
-      color: '#6b7280',
-      marginTop: '0.25rem'
+      color: dashboardPalette.muted,
+      marginTop: '6px'
     }
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <p style={{ textAlign: 'center', color: '#6b7280' }}>Loading...</p>
+        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
+        <CourseDashboardSpinnerState style={{ padding: '24px 0' }} />
       </div>
     );
   }
@@ -366,7 +389,9 @@ export default function CreateEditAssignment() {
   if (!courseId) {
     return (
       <div style={styles.container}>
-        <a href="#courses" style={styles.backLink}>← Back to Courses</a>
+        <CourseDashboardBackButton onClick={() => navigateBackWithFallback('#courses', fromHash)} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
         <div style={styles.error}>No course ID specified</div>
       </div>
     );
@@ -374,7 +399,9 @@ export default function CreateEditAssignment() {
 
   return (
     <div style={styles.container}>
-      <a href={backHref} style={styles.backLink}>{backLabel}</a>
+      <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+        Back
+      </CourseDashboardBackButton>
 
       <h1 style={styles.title}>{isEditMode ? 'Edit Assignment' : 'Create Assignment'}</h1>
 
@@ -384,7 +411,7 @@ export default function CreateEditAssignment() {
         {/* Title */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Title <span style={{ color: '#dc2626' }}>*</span>
+            Title <span style={{ color: dashboardPalette.dangerText }}>*</span>
           </label>
           <input
             type="text"
@@ -427,7 +454,7 @@ export default function CreateEditAssignment() {
         {/* Release Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Release Date <span style={{ color: '#dc2626' }}>*</span>
+            Release Date <span style={{ color: dashboardPalette.dangerText }}>*</span>
           </label>
           <input
             type="datetime-local"
@@ -442,7 +469,7 @@ export default function CreateEditAssignment() {
         {/* Due Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Due Date <span style={{ color: '#dc2626' }}>*</span>
+            Due Date <span style={{ color: dashboardPalette.dangerText }}>*</span>
           </label>
           <input
             type="datetime-local"
@@ -457,7 +484,7 @@ export default function CreateEditAssignment() {
         {/* Late Due Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Late Due Date <span style={{ color: '#dc2626' }}>*</span>
+            Late Due Date <span style={{ color: dashboardPalette.dangerText }}>*</span>
           </label>
           <input
             type="datetime-local"
@@ -472,7 +499,7 @@ export default function CreateEditAssignment() {
         {/* Late Policy */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Late Policy (%) <span style={{ color: '#dc2626' }}>*</span>
+            Late Policy (%) <span style={{ color: dashboardPalette.dangerText }}>*</span>
           </label>
           <select
             value={formData.late_policy_id}
@@ -509,13 +536,15 @@ export default function CreateEditAssignment() {
               type="button"
               onClick={() => setShowQuestionPicker(true)}
               style={{
-                padding: '0.5rem 1rem',
-                background: '#4f46e5',
-                color: 'white',
-                border: 'none',
+                height: '40px',
+                padding: '0 14px',
+                background: dashboardPalette.navy,
+                color: dashboardPalette.white,
+                border: `1px solid ${dashboardPalette.navy}`,
                 borderRadius: '8px',
                 cursor: 'pointer',
-                fontWeight: '600'
+                fontWeight: '600',
+                fontSize: '0.875rem'
               }}
             >
               Add / Edit Questions
@@ -536,7 +565,7 @@ export default function CreateEditAssignment() {
           <button
             type="button"
             style={styles.cancelBtn}
-            onClick={() => window.location.hash = `#course/${courseId}`}
+            onClick={handleBack}
             disabled={saving}
           >
             Cancel
@@ -548,15 +577,17 @@ export default function CreateEditAssignment() {
         <div
           style={{
             position: 'fixed',
-            inset: '64px 0 0 0',
-            background: 'rgba(0,0,0,0.4)',
+            inset: 0,
+            background: 'rgba(10, 31, 53, 0.2)',
             zIndex: 1000,
-            display: 'flex'
+            display: 'flex',
+            overflow: 'hidden',
+            overscrollBehavior: 'contain'
           }}
         >
           <div
             style={{
-              background: 'white',
+              background: dashboardPalette.surface,
               width: '100%',
               height: '100%',
               display: 'flex',
@@ -568,17 +599,17 @@ export default function CreateEditAssignment() {
             {/* Header */}
             <div
               style={{
-                padding: '1rem 1.5rem',
+                padding: '20px 24px',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 position: 'fixed',
-                top: '64px',
+                top: 0,
                 left: 0,
                 right: 0,
                 zIndex: 1001,
-                background: 'white',
-                borderBottom: '1px solid #e5e7eb'
+                background: dashboardPalette.white,
+                borderBottom: `1px solid ${dashboardPalette.border}`
               }}
             >
               
@@ -597,7 +628,7 @@ export default function CreateEditAssignment() {
                     style={{
                       fontSize: '0.9rem',
                       fontWeight: 500,
-                      color: '#6b7280',
+                      color: dashboardPalette.muted,
                     }}
                   >
                     ({formData.assignment_questions.length} selected)
@@ -608,11 +639,12 @@ export default function CreateEditAssignment() {
               <button
                 onClick={() => setShowQuestionPicker(false)}
                 style={{
-                  padding: '0.5rem 1rem',
-                  background: '#4f46e5',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
+                  height: '40px',
+                  padding: '0 14px',
+                  background: dashboardPalette.navy,
+                  color: dashboardPalette.white,
+                  border: `1px solid ${dashboardPalette.navy}`,
+                  borderRadius: '8px',
                   cursor: 'pointer',
                   fontWeight: 600,
                 }}
@@ -626,28 +658,34 @@ export default function CreateEditAssignment() {
               style={{
                 flex: 1,
                 overflow: 'auto',
-                padding: '6rem 1rem 1rem'
+                overscrollBehavior: 'contain',
+                WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y',
+                padding: '88px 24px 32px'
               }}
             >
-              <QuestionSearchBar
-                searchQuery={searchQuery}
-                searchFilter={searchFilter}
-                onSearchQueryChange={setSearchQuery}
-                onSearchFilterChange={setSearchFilter}
-                onClearSearch={() => setSearchQuery('')}
-                compact
-              />
+              <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gap: '20px' }}>
+                <QuestionSearchBar
+                  searchQuery={searchQuery}
+                  searchFilter={searchFilter}
+                  onSearchQueryChange={setSearchQuery}
+                  onSearchFilterChange={setSearchFilter}
+                  onClearSearch={() => setSearchQuery('')}
+                  compact
+                />
 
-              <QuestionTable
-                questions={filteredQuestions}
-                userInfoCache={userInfoCache}
-                user={user}
-
-                selectable
-                selectedQuestionIds={formData.assignment_questions}
-                onToggleQuestion={toggleQuestion}
-                showActions={false}
-              />
+                <QuestionTable
+                  questions={filteredQuestions}
+                  userInfoCache={userInfoCache}
+                  user={user}
+                  selectable
+                  selectedQuestionIds={formData.assignment_questions}
+                  onToggleQuestion={toggleQuestion}
+                  showBloomsTaxonomy={false}
+                  showTags={false}
+                  showActions={false}
+                />
+              </div>
             </div>
           </div>
         </div>

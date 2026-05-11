@@ -1,4 +1,10 @@
 import React from 'react';
+import {
+  CourseDashboardInput,
+  CourseDashboardSecondaryButton,
+  CourseDashboardSelect,
+  dashboardPalette,
+} from './CourseDashboardUI';
 
 export default function QuestionSearchBar({
   searchQuery,
@@ -11,31 +17,29 @@ export default function QuestionSearchBar({
   compact = false,
   containerStyle = {}
 }) {
-  const padding = compact ? '0.85rem 1rem' : '0.95rem 1.1rem';
-  const inputPadding = compact ? '0.72rem 0.95rem 0.72rem 2.35rem' : '0.8rem 1rem 0.8rem 2.75rem';
-  const borderWidth = '1px';
+  const padding = compact ? '0' : '0.95rem 1.1rem';
+  const inputPadding = compact ? '0 0.85rem 0 2.2rem' : '0 1rem 0 2.75rem';
 
   return (
     <div style={{
-      background: compact ? '#ffffff' : 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
-      borderRadius: '14px',
+      background: compact ? 'transparent' : dashboardPalette.white,
+      borderRadius: compact ? 0 : '8px',
       padding,
-      marginBottom: '1rem',
-      boxShadow: compact ? 'none' : '0 10px 25px rgba(15, 23, 42, 0.06)',
-      border: '1px solid #dbe3f0',
+      marginBottom: 0,
+      border: compact ? 'none' : `1px solid ${dashboardPalette.border}`,
       display: 'flex',
-      gap: '0.8rem',
+      gap: compact ? '0.75rem' : '0.75rem',
       alignItems: 'center',
       flexWrap: 'wrap',
       ...containerStyle
     }}>
-      <div style={{ flex: 1, minWidth: '250px', position: 'relative' }}>
+      <div style={{ flex: 1, minWidth: compact ? '260px' : '250px', position: 'relative' }}>
         <div style={{
           position: 'absolute',
           left: compact ? '0.75rem' : '1rem',
           top: '50%',
           transform: 'translateY(-50%)',
-          color: '#94a3b8',
+          color: dashboardPalette.muted,
           pointerEvents: 'none'
         }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -43,51 +47,38 @@ export default function QuestionSearchBar({
             <path d="m21 21-4.35-4.35"></path>
           </svg>
         </div>
-        <input
+        <CourseDashboardInput
           type="text"
           placeholder="Search questions by keyword, tag, course, or text..."
           value={searchQuery}
           onChange={(e) => onSearchQueryChange(e.target.value)}
           style={{
             width: '100%',
+            height: compact ? '40px' : '40px',
             padding: inputPadding,
-            border: `${borderWidth} solid #d5deec`,
-            borderRadius: '10px',
-            fontSize: compact ? '0.95rem' : '1rem',
-            background: '#ffffff',
-            color: '#0f172a',
-            boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8)',
-            transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+            fontSize: compact ? '0.88rem' : '1rem',
             boxSizing: 'border-box',
-            outline: 'none'
+            outline: 'none',
+            minWidth: 0
           }}
         />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <label style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: '600' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: compact ? '0.45rem' : '0.5rem', flexShrink: 0 }}>
+        <label style={{ fontSize: compact ? '0.82rem' : '0.82rem', color: dashboardPalette.muted, fontWeight: '600', whiteSpace: 'nowrap' }}>
           Search in:
         </label>
-        <select
+        <CourseDashboardSelect
           value={searchFilter}
           onChange={(e) => onSearchFilterChange(e.target.value)}
           style={{
-            padding: compact ? '0.58rem 0.72rem' : '0.72rem 2rem 0.72rem 0.9rem',
-            border: `${borderWidth} solid #d5deec`,
-            borderRadius: '10px',
-            fontSize: '0.875rem',
-            background: '#ffffff',
-            color: '#1e293b',
+            height: compact ? '40px' : '40px',
+            padding: compact ? '0 0.7rem' : '0 0.9rem',
+            fontSize: compact ? '0.82rem' : '0.875rem',
             fontWeight: 600,
             cursor: 'pointer',
             outline: 'none',
-            appearance: compact ? 'auto' : 'none',
-            backgroundImage: compact
-              ? 'none'
-              : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 0.75rem center',
-            minWidth: '140px'
+            minWidth: compact ? '144px' : '140px'
           }}
         >
           <option value="all">All Fields</option>
@@ -95,45 +86,37 @@ export default function QuestionSearchBar({
           <option value="keywords">Keywords</option>
           <option value="tags">Tags</option>
           <option value="course">Course/School</option>
-        </select>
+        </CourseDashboardSelect>
       </div>
 
       {searchQuery && (
-        <button
+        <CourseDashboardSecondaryButton
           type="button"
           onClick={onClearSearch}
           style={{
-            padding: compact ? '0.58rem 0.8rem' : '0.62rem 0.9rem',
-            background: '#eef2ff',
-            color: '#334155',
-            border: '1px solid #c7d2fe',
-            borderRadius: '9px',
+            height: compact ? '40px' : '40px',
+            padding: compact ? '0 0.65rem' : '0 0.9rem',
             minWidth: 'auto',
-            minHeight: 'auto',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
             fontWeight: 600,
-            lineHeight: 1
+            fontSize: compact ? '0.8rem' : '0.9rem'
           }}
           title="Clear search"
         >
           Clear
-        </button>
+        </CourseDashboardSecondaryButton>
       )}
 
       {showResultCount && searchQuery && typeof resultCount === 'number' && (
         <div style={{
-          fontSize: '0.82rem',
-          color: '#475569',
-          padding: '0.5rem 0.82rem',
-          background: '#f8fafc',
-          border: '1px solid #e2e8f0',
-          borderRadius: '10px',
+          fontSize: compact ? '0.78rem' : '0.82rem',
+          color: dashboardPalette.muted,
+          padding: compact ? '0.35rem 0.5rem' : '0.5rem 0.82rem',
+          background: dashboardPalette.surface,
+          border: `1px solid ${dashboardPalette.border}`,
+          borderRadius: '8px',
           whiteSpace: 'nowrap'
         }}>
-          Found <strong style={{ color: '#111827' }}>{resultCount}</strong> questions
+          Found <strong style={{ color: dashboardPalette.text }}>{resultCount}</strong> questions
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getAllUsers, updateUserRoles } from "../api";
+import { CourseDashboardSpinnerState } from "../components/CourseDashboardUI";
 
 export default function Users({ currentUser }) {
     // Use 'admin' as per your backend main.py
@@ -151,7 +152,7 @@ export default function Users({ currentUser }) {
       <div style={{ padding: "2rem", background: "white", minHeight: "100vh" }}>
         <h1 style={{ fontSize: "2.5rem", marginBottom: "1.5rem" }}>User Management</h1>
         
-        {loading && <p>Searching database...</p>}
+        {loading && <CourseDashboardSpinnerState style={{ padding: '12px 0 20px' }} />}
         {error && <p style={{ color: "red" }}>{error}</p>}
 
         <div style={{ marginBottom: "2rem" }}>
