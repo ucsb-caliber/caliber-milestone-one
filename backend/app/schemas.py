@@ -409,6 +409,7 @@ class AssignmentProgressResponse(BaseModel):
     assignment_id: int
     student_id: str
     answers: dict = Field(default_factory=dict)
+    question_time_ms: Dict[str, int] = Field(default_factory=dict)
     current_question_index: int = 0
     submitted: bool = False
     submitted_at: Optional[datetime] = None
@@ -422,6 +423,7 @@ class AssignmentProgressResponse(BaseModel):
 class AssignmentProgressUpdate(BaseModel):
     """Schema for updating student assignment progress."""
     answers: Optional[dict] = None
+    question_time_ms: Optional[Dict[str, int]] = None
     current_question_index: Optional[int] = None
     submitted: Optional[bool] = None
 
@@ -546,6 +548,7 @@ class CodingRunResponse(BaseModel):
 class AnalyticsSummaryStats(BaseModel):
     average_assignment_score_percent: Optional[float] = None
     average_question_score_percent: Optional[float] = None
+    average_time_per_question_seconds: Optional[float] = None
     average_overall_grade_percent: Optional[float] = None
     median_score_percent: Optional[float] = None
     min_score_percent: Optional[float] = None
@@ -568,13 +571,16 @@ class AnalyticsSubmissionRecord(BaseModel):
     submitted_at: Optional[datetime] = None
     score_percent: float
     question_scores: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    question_time_ms: Dict[str, int] = Field(default_factory=dict)
 
 
 class PerStudentTrendItem(BaseModel):
     student_id: str
     student_name: str
     submission_count: int = 0
+    latest_assignment_id: Optional[int] = None
     average_score_percent: Optional[float] = None
+    average_time_per_question_seconds: Optional[float] = None
     median_score_percent: Optional[float] = None
     min_score_percent: Optional[float] = None
     max_score_percent: Optional[float] = None
@@ -608,6 +614,7 @@ class AssignmentQuestionScoreSummaryItem(BaseModel):
     assignment_id: int
     assignment_title: str
     submission_count: int = 0
+    average_time_per_question_seconds: Optional[float] = None
     mean_score_percent: Optional[float] = None
     median_score_percent: Optional[float] = None
     min_score_percent: Optional[float] = None
