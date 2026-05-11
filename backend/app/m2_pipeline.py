@@ -47,10 +47,43 @@ def _keywords_from_text(text: str, max_keywords: int = 8) -> str:
     return ",".join(uniq) if uniq else "pdf,upload"
 
 
+# Lines that are pure question-number markers and should NOT become the
+# stored title. The ODL pipeline can emit these as standalone lines when
+# opendataloader-pdf inlines the numeral into the list item's `content`.
+_PURE_MARKER_LINE_RE = re.compile(
+    r"^\s*(?:"
+    r"\d+\.?"
+    r"|Problem\s+\d+"
+    r"|Question\s+\d+"
+    r"|Q\s*\d+"
+    r")\s*[:.\-]?\s*$",
+    re.IGNORECASE,
+)
+
+
 def _stable_title(text: str, fallback: str = "Extracted Question") -> str:
-    first_line = (text or "").strip().splitlines()[0] if (text or "").strip() else ""
-    # Guard against markdown heading prefixes leaking into stored title.
-    candidate = first_line.strip()
+    raw = (text or "").strip()
+    if not raw:
+        return fallback
+
+    candidate = ""
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Skip leading markdown headings, bullets, and bare-numeral markers
+        # so the displayed title is the question's actual first content line.
+        stripped_for_check = re.sub(r"^[#>\-*]+\s*", "", stripped).strip()
+        if _PURE_MARKER_LINE_RE.match(stripped_for_check):
+            continue
+        candidate = stripped
+        break
+
+    if not candidate:
+        # Every line was a marker (or the text was effectively empty);
+        # fall back to the first line so we degrade gracefully.
+        candidate = raw.splitlines()[0].strip()
+
     candidate = re.sub(r"^#{1,6}\s*", "", candidate).strip()
     candidate = candidate[:80]
     return candidate or fallback

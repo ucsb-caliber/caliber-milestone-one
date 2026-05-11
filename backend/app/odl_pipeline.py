@@ -31,14 +31,25 @@ from .m2_pipeline import _keywords_from_text, _stable_title
 
 
 # ===================== QUESTION DETECTION =====================
-# Mirrors m2/layout_ingest.QUESTION_START_PATTERNS so behavior matches the
-# legacy pipeline exactly.
-QUESTION_START_PATTERNS = [
+# Strong patterns reliably mark explicit question boundaries. These are the
+# only patterns considered in Pass 1 of the two-pass segmenter.
+QUESTION_START_PATTERNS_STRONG = [
     r"^\s*Problem\s+\d+\b",
     r"^\s*Question\s+\d+\b",
     r"^\s*Q\s*\d+\b",
-    r"^\s*\d+\.\s+.+[. ?:].*",
 ]
+# The bare-numeric pattern is much noisier: a body of >=12 non-whitespace
+# chars after the numeral and a capital-letter start guard prevent it from
+# matching synthetic numerals or a stray "2." line. The `(?-i:[A-Z])`
+# disables case-insensitivity locally so the capital-letter guard still
+# rejects "2. the airport..." even though the combined regex is compiled
+# with `re.IGNORECASE` for the Problem/Question/Q strong patterns.
+QUESTION_START_PATTERN_NUMERIC = r"^\s*\d+\.\s+(?-i:[A-Z])[^\n]{11,}"
+QUESTION_START_PATTERNS = QUESTION_START_PATTERNS_STRONG + [QUESTION_START_PATTERN_NUMERIC]
+
+QUESTION_START_STRONG_RE = re.compile(
+    "|".join(QUESTION_START_PATTERNS_STRONG), re.IGNORECASE
+)
 QUESTION_START_RE = re.compile("|".join(QUESTION_START_PATTERNS), re.IGNORECASE)
 
 
@@ -79,6 +90,10 @@ def _truthy(value: Optional[str]) -> bool:
 
 def _odl_hybrid_enabled() -> bool:
     return _truthy(os.getenv("ODL_HYBRID_ENABLED", "false"))
+
+
+def _odl_debug_enabled() -> bool:
+    return _truthy(os.getenv("ODL_DEBUG", "false"))
 
 
 def _odl_timeout_sec() -> int:
@@ -140,7 +155,22 @@ def _render_caption(node: Dict[str, Any]) -> str:
     return f"_{content}_"
 
 
-def _render_list_item(node: Dict[str, Any], marker: str) -> str:
+def _render_list_item(
+    node: Dict[str, Any],
+    marker: str,
+    *,
+    for_segmentation: bool = False,
+) -> str:
+    """
+    Render a list item into markdown.
+
+    When ``for_segmentation`` is True, do NOT emit the ordered numeral
+    prefix. The numeral exists for human-readable markdown only. Emitting
+    it for the segmentation pass causes a leading "2.\\n..." chunk that
+    misfires ``QUESTION_START_RE`` (matching every sub-bullet as its own
+    question) and steals ``_stable_title`` (giving titles like just "2.").
+    See docs/ODL_QUESTION_SEGMENTATION_FIX.md, Step 2.
+    """
     content = _safe_str(node.get("content")).strip()
     nested_lines: List[str] = []
     for child in node.get("kids") or []:
@@ -150,20 +180,27 @@ def _render_list_item(node: Dict[str, Any], marker: str) -> str:
                 "    " + ln if ln else "" for ln in rendered.splitlines()
             )
 
-    # opendataloader-pdf often inlines the numeral into the item's `content`
-    # (e.g. content="1. (15 points) Write..."). Prepending an ordered marker
-    # blindly produces "1. 1. (15 points) ..." which breaks downstream title
-    # extraction and question-start regexes.
-    is_ordered_marker = bool(re.fullmatch(r"\d+\.", marker.strip()))
-    if is_ordered_marker and content and _NUMERIC_LIST_PREFIX_RE.match(content):
-        head = content
-    elif content:
-        head = f"{marker} {content}".rstrip()
+    if for_segmentation:
+        # Strip any numeral that opendataloader-pdf inlined into `content`
+        # (e.g. "2. The airport accommodates..." -> "The airport ...") so
+        # the rendered chunk truly starts with the item's body.
+        head = _NUMERIC_LIST_PREFIX_RE.sub("", content) if content else ""
     else:
-        head = marker
+        # opendataloader-pdf sometimes inlines the numeral into the item's
+        # `content` (e.g. content="1. (15 points) Write..."). Blindly
+        # prepending an ordered marker would yield "1. 1. (15 points) ...".
+        is_ordered_marker = bool(re.fullmatch(r"\d+\.", marker.strip()))
+        if is_ordered_marker and content and _NUMERIC_LIST_PREFIX_RE.match(content):
+            head = content
+        elif content:
+            head = f"{marker} {content}".rstrip()
+        else:
+            head = marker
 
     if nested_lines:
-        return "\n".join([head, *nested_lines])
+        if head:
+            return "\n".join([head, *nested_lines])
+        return "\n".join(nested_lines)
     return head
 
 
@@ -273,20 +310,30 @@ def _coerce_page_num(value: Any, fallback: int) -> int:
 
 def _flatten_top_level_elements(
     root: Dict[str, Any],
-) -> Iterable[Tuple[Dict[str, Any], int]]:
+) -> Iterable[Tuple[Dict[str, Any], int, str]]:
     """
-    Yield (element_node, page_number) pairs in reading order.
+    Yield (element_node, page_number, parent_type) triples in reading order.
+
+    ``parent_type`` is the type of the immediate JSON ancestor that this
+    element appeared inside ("root", "page", "text block", ...). It is the
+    key signal used by the segmenter to decide whether an ordered list is
+    a top-level "list of questions" (parent is root/page -> safe to unroll)
+    or content nested inside a question (parent is a text block / list
+    item -> must be rendered whole). See Step 3 of the segmentation fix.
 
     Handles two JSON shapes that opendataloader-pdf has emitted across
     versions:
       1. flat   - root.kids = [paragraph, heading, list, ...]   (current)
       2. paged  - root.kids = [page, page, ...]; page.kids = [...]
     We transparently descend through container elements (`page`, `text
-    block`, `header`, `footer`) and yield one event per block-level element
-    (paragraph, heading, list, table, caption, image, ...).
+    block`, `header`, `footer`).
     """
 
-    def _walk(container: Dict[str, Any], inherited_page: int) -> Iterable[Tuple[Dict[str, Any], int]]:
+    def _walk(
+        container: Dict[str, Any],
+        inherited_page: int,
+        container_type: str,
+    ) -> Iterable[Tuple[Dict[str, Any], int, str]]:
         page_num = _coerce_page_num(container.get("page number"), inherited_page)
         for child in container.get("kids") or []:
             if not isinstance(child, dict):
@@ -294,11 +341,11 @@ def _flatten_top_level_elements(
             child_type = (_safe_str(child.get("type")) or "").lower()
             child_page = _coerce_page_num(child.get("page number"), page_num)
             if child_type in _DESCEND_TYPES:
-                yield from _walk(child, child_page)
+                yield from _walk(child, child_page, child_type)
             else:
-                yield child, child_page
+                yield child, child_page, container_type
 
-    yield from _walk(root, 0)
+    yield from _walk(root, 0, "root")
 
 
 def _is_ordered_numbered_list(node: Dict[str, Any]) -> bool:
@@ -310,29 +357,48 @@ def _is_ordered_numbered_list(node: Dict[str, Any]) -> bool:
     return any(hint in style for hint in _ORDERED_LIST_HINTS)
 
 
+_UNROLL_PARENT_TYPES = {"root", "page"}
+
+
 def _iter_question_candidates(
     root: Dict[str, Any],
-) -> Iterable[Tuple[Dict[str, Any], int, str]]:
+) -> Iterable[Tuple[Dict[str, Any], int, str, bool]]:
     """
-    Yield (element, page_number, rendered_markdown) tuples in reading order.
+    Yield (element, page_number, rendered_markdown, force_start) tuples in
+    reading order.
 
-    Special-cases ordered/numbered top-level lists so each list item is
-    emitted as its own candidate; without this, opendataloader-pdf's habit of
-    grouping every numbered question into one `list` element would collapse
-    all questions into a single chunk and our segmenter would only see one
-    question-start line.
+    Special-cases ordered/numbered TOP-LEVEL lists so each list item is
+    emitted as its own candidate; without this, opendataloader-pdf's habit
+    of grouping every numbered question into one `list` element would
+    collapse all questions into a single chunk and our segmenter would
+    only see one question-start line.
+
+    When a top-level ordered list is unrolled, every item carries
+    ``force_start=True``. The unrolling itself is the segmentation cue
+    (each item _is_ a question in this position), so we don't depend on
+    the bare-numeric regex re-matching a synthesized "{idx}." prefix.
+    That separation lets us strip the synthesized numeral from the
+    rendered text (Step 2) without losing the boundary signal.
+
+    Lists nested inside another container (e.g. a `text block` belonging
+    to a single question, or a parent `list item`) are NOT unrolled -
+    they are content of the surrounding question and are rendered whole
+    as a normal bulleted block. See Step 3.
     """
-    for element, page_num in _flatten_top_level_elements(root):
-        if _is_ordered_numbered_list(element):
+    for element, page_num, parent_type in _flatten_top_level_elements(root):
+        if (
+            _is_ordered_numbered_list(element)
+            and parent_type in _UNROLL_PARENT_TYPES
+        ):
             items = element.get("list items") or []
             for idx, item in enumerate(items, start=1):
                 if not isinstance(item, dict):
                     continue
-                rendered = _render_list_item(item, f"{idx}.")
+                rendered = _render_list_item(item, f"{idx}.", for_segmentation=True)
                 item_page = _coerce_page_num(item.get("page number"), page_num)
-                yield item, item_page, rendered
+                yield item, item_page, rendered, True
         else:
-            yield element, page_num, _render_node(element)
+            yield element, page_num, _render_node(element), False
 
 
 # ===================== ODL EXECUTION =====================
@@ -506,27 +572,49 @@ def _find_output_files(output_dir: Path, pdf_stem: str) -> Tuple[Optional[Path],
 
 # ===================== QUESTION SEGMENTATION =====================
 
-def _is_question_start(rendered_md: str) -> bool:
+def _is_question_start(rendered_md: str, *, strong_only: bool = False) -> bool:
     if not rendered_md:
         return False
     first_line = rendered_md.lstrip().splitlines()[0] if rendered_md.strip() else ""
     # Strip leading markdown heading markers before matching the regex.
     first_line = re.sub(r"^#{1,6}\s+", "", first_line).strip()
-    return bool(QUESTION_START_RE.match(first_line))
+    pattern = QUESTION_START_STRONG_RE if strong_only else QUESTION_START_RE
+    return bool(pattern.match(first_line))
 
 
 def _segment_questions(
     root: Dict[str, Any],
+    *,
+    strong_only: bool = False,
+    debug: bool = False,
 ) -> List[Dict[str, Any]]:
     """Walk JSON in reading order, group elements into question buckets."""
     questions: List[Dict[str, Any]] = []
     current: Optional[Dict[str, Any]] = None
 
-    for _element, page_num, rendered in _iter_question_candidates(root):
+    for element, page_num, rendered, force_start in _iter_question_candidates(root):
         if not rendered or not rendered.strip():
             continue
 
-        if _is_question_start(rendered):
+        # In strong-only mode (Pass 1) we ignore the unroll signal: the
+        # whole point of Pass 1 is to trust ONLY the explicit textual
+        # markers. Forcing starts from numeric-list unrolling would defeat
+        # that and cause every sub-bullet to look like a question even
+        # when "Problem N" markers are present.
+        regex_start = _is_question_start(rendered, strong_only=strong_only)
+        is_start = regex_start or (force_start and not strong_only)
+        if debug:
+            etype = (_safe_str(element.get("type")) or "?").lower()
+            first_40 = rendered.strip().splitlines()[0][:40] if rendered.strip() else ""
+            print(
+                f"[odl-debug] page={page_num} type={etype:14s} "
+                f"start={'Y' if is_start else 'n'} "
+                f"force={'1' if force_start else '0'} "
+                f"strong_only={'1' if strong_only else '0'} "
+                f"first={first_40!r}"
+            )
+
+        if is_start:
             if current is not None:
                 questions.append(current)
             current = {
@@ -547,6 +635,30 @@ def _segment_questions(
     if current is not None:
         questions.append(current)
     return questions
+
+
+def _segment_questions_two_pass(
+    root: Dict[str, Any],
+    *,
+    debug: bool = False,
+) -> Tuple[List[Dict[str, Any]], str]:
+    """
+    Two-pass segmentation (see Step 4 of ODL_QUESTION_SEGMENTATION_FIX).
+
+    Pass 1 uses only the strong patterns (`Problem N` / `Question N` / `Q N`).
+    Almost every exam labels its questions with one of those, and trusting
+    them exclusively eliminates an entire class of false positives from
+    the bare-numeric pattern. If Pass 1 finds >= 2 questions, we use it.
+    Otherwise we fall back to a Pass 2 that also accepts the (tightened)
+    bare-numeric pattern.
+
+    Returns (questions, mode) where mode is "strong" or "fallback".
+    """
+    strong = _segment_questions(root, strong_only=True, debug=debug)
+    if len(strong) >= 2:
+        return strong, "strong"
+    fallback = _segment_questions(root, strong_only=False, debug=debug)
+    return fallback, "fallback"
 
 
 def _summarize_top_level_shape(root: Dict[str, Any]) -> str:
@@ -644,16 +756,30 @@ def extract_questions_with_odl(
         if progress_callback:
             progress_callback(0, 1, "Segmenting questions")
 
-        raw_questions = _segment_questions(root)
+        debug = _odl_debug_enabled()
+        raw_questions, segmentation_mode = _segment_questions_two_pass(
+            root, debug=debug
+        )
         print(
             f"[odl] segmented {len(raw_questions)} raw questions "
-            f"({_summarize_top_level_shape(root)})"
+            f"(mode={segmentation_mode}; {_summarize_top_level_shape(root)})"
         )
         if not raw_questions:
             print(
                 "[odl] no question markers found - falling back to legacy extractor; "
                 f"json_path={json_path}"
             )
+
+        if debug:
+            print(f"[odl-debug] raw_json={json_path}")
+            print(f"[odl-debug] segmentation_mode={segmentation_mode}")
+            for idx, q in enumerate(raw_questions, start=1):
+                joined = _join_chunks(q.get("chunks") or [])
+                first_line = joined.splitlines()[0] if joined else ""
+                print(
+                    f"[odl-debug] q={idx:>2} page={q.get('start_page')} "
+                    f"len={len(joined)} first60={first_line[:60]!r}"
+                )
 
         formatting_total = max(1, len(raw_questions))
         if progress_callback:
