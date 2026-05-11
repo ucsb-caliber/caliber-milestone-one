@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { formatPacificDateTime } from '../utils/datetime';
+import { dashboardPalette } from './CourseDashboardUI';
 
 const SettingsIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -28,6 +30,31 @@ const BookIcon = () => (
   </svg>
 );
 
+function formatDueDate(date) {
+  return formatPacificDateTime(date, {
+    kind: 'schedule',
+    month: 'short',
+    day: 'numeric',
+    year: undefined,
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: undefined,
+  }) || 'No due date';
+}
+
+const flatActionButtonStyle = {
+  width: '32px',
+  height: '32px',
+  borderRadius: '8px',
+  border: `1px solid ${dashboardPalette.border}`,
+  background: dashboardPalette.white,
+  color: dashboardPalette.muted,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
 export default function CourseCard({
   course,
   isPinned = false,
@@ -40,15 +67,19 @@ export default function CourseCard({
   assignmentCountOverride,
   showStudentsList = false,
   allUsers = [],
-  studentNameById = {}
+  studentNameById = {},
+  variant = 'default',
+  nextDue = null,
 }) {
-  if (!course) return null;
   const [showStudents, setShowStudents] = useState(false);
+
+  if (!course) return null;
 
   const studentCount = course.student_ids?.length || 0;
   const assignmentCount = assignmentCountOverride ?? (course.assignments?.length || 0);
   const canPin = typeof onPin === 'function';
   const handleOpen = onOpen || (onViewDetails ? () => onViewDetails(course) : null);
+  const showDueSection = variant === 'dashboard' || Boolean(nextDue);
 
   const getStudentInfo = (studentId) => {
     if (studentNameById && studentNameById[studentId]) return studentNameById[studentId];
@@ -58,90 +89,88 @@ export default function CourseCard({
     return user.email || studentId;
   };
 
-  const getHashColor = (str) => {
-    const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
-    if (!str) return colors[0];
-    
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const index = Math.abs(hash) % colors.length;
-    return colors[index];
-  };
-
-  const themeColor = getHashColor(course.course_name);
-
-  const actionButtonStyle = {
-    padding: '10px',
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1rem'
-  };
-
   return (
-    <div 
+    <div
       style={{
-        background: 'white',
-        borderRadius: '20px',
-        border: '1px solid #e2e8f0',
-        padding: '24px',
-        transition: 'all 0.3s ease',
+        background: dashboardPalette.white,
+        borderRadius: '8px',
+        border: `1px solid ${dashboardPalette.border}`,
+        padding: '16px',
         cursor: handleOpen ? 'pointer' : 'default',
-        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
+        gap: '16px',
+        minHeight: variant === 'dashboard' ? '196px' : 'auto',
       }}
       onClick={handleOpen || undefined}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateY(-5px)';
-        e.currentTarget.style.borderColor = themeColor;
+        e.currentTarget.style.borderColor = dashboardPalette.navyMid;
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.borderColor = '#e2e8f0';
+        e.currentTarget.style.borderColor = dashboardPalette.border;
       }}
     >
-      {canPin && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
         <div
-          style={{ position: 'absolute', top: '20px', right: '20px', cursor: 'pointer', color: isPinned ? '#f59e0b' : '#cbd5e1', fontSize: '1.2rem' }}
-          onClick={(e) => { e.stopPropagation(); onPin(); }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            minHeight: '28px',
+            padding: '0 10px',
+            borderRadius: '6px',
+            background: dashboardPalette.navyLight,
+            border: `1px solid ${dashboardPalette.border}`,
+            color: dashboardPalette.navy,
+            fontSize: '0.8rem',
+            fontWeight: 600,
+          }}
         >
-          {isPinned ? '★' : '☆'}
+          {course.course_code || 'Course'}
         </div>
-      )}
 
-      <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: `${themeColor}15`, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px' }}>
-        {(course.course_name || '?').charAt(0)}
-      </div>
-
-      <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', fontWeight: '800', color: '#0f172a' }}>
-        {course.course_name || 'Untitled Course'}
-      </h3>
-      
-      <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '500', display: 'block', marginBottom: '20px' }}>
-        {course.school_name || 'General Course'}
-      </span>
-
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-        <div style={{ background: '#f1f5f9', padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <UserIcon/> {studentCount} {studentCount === 1 ? 'Student' : "Students"}
-        </div>
-        <div style={{ background: '#f1f5f9', padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <BookIcon/> {assignmentCount} {assignmentCount === 1 ? 'Assignment' : 'Assignments'}
-        </div>
-      </div>
-
-      {showStudentsList && studentCount > 0 && (
-        <div style={{ marginBottom: '16px' }}>
+        {canPin ? (
           <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPin();
+            }}
+            aria-label={isPinned ? 'Unpin course' : 'Pin course'}
+            title={isPinned ? 'Unpin course' : 'Pin course'}
+            style={{
+              ...flatActionButtonStyle,
+              color: isPinned ? dashboardPalette.gold : dashboardPalette.muted,
+            }}
+          >
+            {isPinned ? '★' : '☆'}
+          </button>
+        ) : null}
+      </div>
+
+      <div>
+        <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', fontWeight: 600, color: dashboardPalette.navy, lineHeight: 1.35 }}>
+          {course.course_name || 'Untitled course'}
+        </h3>
+        <p style={{ margin: 0, fontSize: '0.92rem', color: dashboardPalette.muted, lineHeight: 1.5 }}>
+          {course.school_name || 'No school specified'}
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', color: dashboardPalette.muted, fontSize: '0.88rem' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <UserIcon />
+          {studentCount} {studentCount === 1 ? 'student' : 'students'}
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <BookIcon />
+          {assignmentCount} {assignmentCount === 1 ? 'assignment' : 'assignments'}
+        </span>
+      </div>
+
+      {showStudentsList && studentCount > 0 ? (
+        <div style={{ borderTop: `1px solid ${dashboardPalette.border}`, paddingTop: '12px' }}>
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setShowStudents(!showStudents);
@@ -149,56 +178,73 @@ export default function CourseCard({
             style={{
               background: 'none',
               border: 'none',
-              color: '#4f46e5',
+              color: dashboardPalette.navy,
               cursor: 'pointer',
-              fontSize: '0.875rem',
-              padding: 0
+              fontSize: '0.88rem',
+              fontWeight: 500,
+              padding: 0,
             }}
           >
-            {showStudents ? 'Hide Students' : 'Show Students'}
+            {showStudents ? 'Hide students' : 'Show students'}
           </button>
-          {showStudents && (
-            <div style={{ marginTop: '8px', padding: '8px', borderRadius: '8px', background: '#f8fafc', maxHeight: '120px', overflowY: 'auto' }}>
+          {showStudents ? (
+            <div
+              style={{
+                marginTop: '8px',
+                padding: '8px 0 0',
+                display: 'grid',
+                gap: '4px',
+                maxHeight: '140px',
+                overflowY: 'auto',
+              }}
+            >
               {course.student_ids.map((studentId) => (
-                <div key={studentId} style={{ fontSize: '0.875rem', color: '#374151', padding: '2px 0' }}>
+                <div key={studentId} style={{ fontSize: '0.88rem', color: dashboardPalette.text }}>
                   {getStudentInfo(studentId)}
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
 
-      <div style={{ marginTop: 'auto', display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
-        {isInstructor && (
-          <>
-            <button 
-              title="Course Settings"
-              onClick={(e) => { e.stopPropagation(); onSettings(); }}
-              style={actionButtonStyle}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
-            >
-              <SettingsIcon/>
-            </button>
-            <button 
-              title="Delete Course"
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              style={actionButtonStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#fef2f2';
-                e.currentTarget.style.borderColor = '#fecaca';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'white';
-                e.currentTarget.style.borderColor = '#e2e8f0';
-              }}
-            >
-              <TrashIcon/>
-            </button>
-          </>
-        )}
-      </div>
+      {showDueSection ? (
+        <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: `1px solid ${dashboardPalette.border}` }}>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: dashboardPalette.muted }}>Next due</p>
+          <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: dashboardPalette.text, lineHeight: 1.4 }}>
+            {nextDue
+              ? `${nextDue.assignment.title || 'Assignment'} ${formatDueDate(nextDue.dueDate)}`
+              : 'No upcoming deadlines'}
+          </p>
+        </div>
+      ) : null}
+
+      {isInstructor ? (
+        <div style={{ marginTop: 'auto', display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: `1px solid ${dashboardPalette.border}`, paddingTop: '12px' }}>
+          <button
+            type="button"
+            title="Course settings"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSettings?.();
+            }}
+            style={flatActionButtonStyle}
+          >
+            <SettingsIcon />
+          </button>
+          <button
+            type="button"
+            title="Delete course"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete?.();
+            }}
+            style={flatActionButtonStyle}
+          >
+            <TrashIcon />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

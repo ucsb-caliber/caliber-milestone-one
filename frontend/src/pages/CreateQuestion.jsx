@@ -9,9 +9,12 @@ import { useAuth } from '../AuthContext';
 import StudentPreview from '../components/StudentPreview';
 import CodingQuestionBuilder from '../components/CodingQuestionBuilder';
 import { createDefaultCodingConfig, normalizeEditableCodingConfig, sanitizeCodingConfigForSave, isCodingQuestion, getCodingAuthoringError } from '../utils/coding';
+import { CourseDashboardBackButton, dashboardPalette } from '../components/CourseDashboardUI';
+import { getFromHash, navigateBackWithFallback } from '../utils/navigation';
 
 export default function CreateQuestion() {
   const { user } = useAuth();
+  const fromHash = getFromHash();
   const [formData, setFormData] = useState({
     title: '',
     text: '',
@@ -83,6 +86,9 @@ export default function CreateQuestion() {
   }, [user]);
 
   const resolvedUserSchool = (profileSchool || user?.user_metadata?.school_name || '').trim();
+  const handleBack = () => {
+    navigateBackWithFallback('#questions', fromHash);
+  };
 
   useEffect(() => {
     if (!resolvedUserSchool) return;
@@ -94,86 +100,89 @@ export default function CreateQuestion() {
 
   const styles = {
     container: {
-      backgroundColor: '#f4f7f9',
-      minHeight: '75vh',
-      borderRadius: '1rem',
-      padding: '40px 20px',
+      backgroundColor: dashboardPalette.surface,
+      minHeight: '100vh',
+      padding: '24px',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
     },
     wrapper: { maxWidth: '1200px', margin: '0 auto' },
-    header: { marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' },
+    header: { marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' },
     grid: { display: 'grid', gridTemplateColumns: '1fr 350px', gap: '24px', alignItems: 'start' },
     card: {
-      background: 'white',
-      borderRadius: '12px',
+      background: dashboardPalette.white,
+      borderRadius: '8px',
       padding: '24px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      marginBottom: '16px',
-      border: '1px solid #e1e4e8'
+      marginBottom: '24px',
+      border: `1px solid ${dashboardPalette.border}`
     },
-    label: { display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' },
+    label: { display: 'block', fontSize: '14px', fontWeight: '600', color: dashboardPalette.text, marginBottom: '8px' },
     input: {
       width: '100%',
-      padding: '12px',
+      padding: '10px 12px',
       borderRadius: '8px',
-      border: '1px solid #cbd5e0',
-      fontSize: '16px',
+      border: `1px solid ${dashboardPalette.border}`,
+      fontSize: '15px',
+      color: dashboardPalette.text,
+      background: dashboardPalette.white,
       boxSizing: 'border-box',
       outline: 'none',
       transition: 'border-color 0.2s'
     },
     errorBanner: {
       padding: '16px',
-      backgroundColor: '#fff5f5',
-      border: '1px solid #feb2b2',
+      backgroundColor: dashboardPalette.dangerBg,
+      border: `1px solid ${dashboardPalette.dangerBorder}`,
       borderRadius: '8px',
-      color: '#c53030',
+      color: dashboardPalette.dangerText,
       marginBottom: '24px',
       fontSize: '14px',
       fontWeight: '500'
     },
     successBanner: {
       padding: '16px',
-      backgroundColor: '#f0fff4',
-      border: '1px solid #9ae6b4',
+      backgroundColor: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
-      color: '#276749',
+      color: dashboardPalette.navy,
       marginBottom: '24px',
       fontSize: '14px',
       fontWeight: '500'
     },
-    sidebarSection: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #edf2f7' },
+    sidebarSection: { marginBottom: '20px', paddingBottom: '20px', borderBottom: `1px solid ${dashboardPalette.border}` },
     primaryBtn: {
-      backgroundColor: '#0066ff',
-      color: 'white',
-      padding: '12px 24px',
+      backgroundColor: dashboardPalette.navy,
+      color: dashboardPalette.white,
+      padding: '0 14px',
+      height: '40px',
       borderRadius: '8px',
-      border: 'none',
+      border: `1px solid ${dashboardPalette.navy}`,
       fontWeight: 'bold',
       cursor: 'pointer',
       transition: 'background 0.2s'
     },
     secondaryBtn: {
-      backgroundColor: 'white',
-      color: '#4a5568',
-      padding: '12px 24px',
+      backgroundColor: dashboardPalette.white,
+      color: dashboardPalette.text,
+      padding: '0 14px',
+      height: '40px',
       borderRadius: '8px',
-      border: '1px solid #cbd5e0',
+      border: `1px solid ${dashboardPalette.border}`,
       fontWeight: 'bold',
       cursor: 'pointer'
     },
-    choiceRow: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' },
+    choiceRow: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' },
     radio: { width: '20px', height: '20px', cursor: 'pointer' },
     badge: {
       fontSize: '11px',
       textTransform: 'uppercase',
       letterSpacing: '0.05em',
-      backgroundColor: '#ebf4ff',
-      color: '#0066ff',
+      backgroundColor: dashboardPalette.surface,
+      color: dashboardPalette.navy,
       padding: '4px 8px',
-      borderRadius: '4px',
+      borderRadius: '6px',
       marginBottom: '8px',
-      display: 'inline-block'
+      display: 'inline-block',
+      border: `1px solid ${dashboardPalette.border}`
     }
   };
 
@@ -591,20 +600,21 @@ export default function CreateQuestion() {
       <div>
         <label style={styles.label}>Image (optional)</label>
         <div style={{
-          border: '2px dashed #cbd5e0',
+          border: `1px dashed ${dashboardPalette.border}`,
           borderRadius: '8px',
-          padding: '20px',
+          padding: '24px',
           textAlign: 'center',
-          cursor: 'pointer'
+          cursor: 'pointer',
+          background: dashboardPalette.surface
         }}>
           <input type="file" accept="image/*" onChange={handleImageChange} ref={setImageInputRef} />
           {imagePreview && (
             <div style={{
-              marginTop: '1rem',
+              marginTop: '16px',
               position: 'relative'
             }}>
               <img src={imagePreview} alt="Preview" style={{ maxWidth: '100%', borderRadius: '4px' }} />
-              <button type="button" onClick={removeImage} style={{ position: 'absolute', top: '5px', right: '5px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✕</button>
+              <button type="button" onClick={removeImage} style={{ position: 'absolute', top: '5px', right: '5px', background: dashboardPalette.white, color: dashboardPalette.dangerText, border: `1px solid ${dashboardPalette.dangerBorder}`, borderRadius: '6px', cursor: 'pointer' }}>✕</button>
             </div>
           )}
         </div>
@@ -615,22 +625,28 @@ export default function CreateQuestion() {
   return (
     <div style={styles.container}>
       <div style={styles.wrapper}>
+        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
 
         {/* Header */}
         <header style={styles.header}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '28px', color: '#1a202c' }}>Create New Question</h1>
+            <h1 style={{ margin: 0, fontSize: '28px', color: dashboardPalette.navy }}>Create New Question</h1>
+            <p style={{ margin: '8px 0 0', color: dashboardPalette.muted, fontSize: '15px' }}>
+              Build the question content first, then refine metadata and preview it in student view.
+            </p>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button type="button" style={styles.secondaryBtn} onClick={() => window.location.hash = 'questions'}>Cancel</button>
+            <button type="button" style={styles.secondaryBtn} onClick={handleBack}>Cancel</button>
             <button
               type="button"
               onClick={() => setIsSplitView((current) => !current)}
               style={{
                 ...styles.secondaryBtn,
-                backgroundColor: isSplitView ? '#eef2ff' : 'white',
-                borderColor: isSplitView ? '#4f46e5' : '#cbd5e0',
-                color: isSplitView ? '#3730a3' : '#4a5568'
+                backgroundColor: isSplitView ? dashboardPalette.surface : dashboardPalette.white,
+                borderColor: isSplitView ? dashboardPalette.navy : dashboardPalette.border,
+                color: isSplitView ? dashboardPalette.navy : dashboardPalette.text
               }}
             >
               Split View
@@ -665,7 +681,7 @@ export default function CreateQuestion() {
                 type="text"
                 name="title"
                 placeholder="e.g., Analysis of Merge Sort"
-                style={{ ...styles.input, fontSize: '20px', fontWeight: '500', border: 'none', borderBottom: '2px solid #edf2f7', borderRadius: 0, padding: '8px 0' }}
+                style={{ ...styles.input, fontSize: '20px', fontWeight: '500', border: 'none', borderBottom: `1px solid ${dashboardPalette.border}`, borderRadius: 0, padding: '8px 0', background: 'transparent' }}
                 value={formData.title}
                 onChange={handleInputChange}
               />
@@ -676,7 +692,7 @@ export default function CreateQuestion() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <label style={styles.label}>Question Body</label>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '76px 76px', background: '#f7fafc', padding: '2px', borderRadius: '6px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '76px 76px', background: dashboardPalette.surface, padding: '4px', borderRadius: '8px' }}>
                     <button
                       type="button"
                       onClick={() => setViewMode('edit')}
@@ -687,8 +703,7 @@ export default function CreateQuestion() {
                         width: '76px',
                         minWidth: '76px',
                         textAlign: 'center',
-                        background: viewMode === 'edit' ? 'white' : 'transparent', 
-                        boxShadow: viewMode === 'edit' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                        background: viewMode === 'edit' ? dashboardPalette.white : 'transparent'
                        }}>
                       Edit
                     </button>
@@ -702,8 +717,7 @@ export default function CreateQuestion() {
                         width: '76px',
                         minWidth: '76px',
                         textAlign: 'center',
-                        background: viewMode === 'preview' ? 'white' : 'transparent', 
-                        boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                        background: viewMode === 'preview' ? dashboardPalette.white : 'transparent'
                         }}>
                       Preview
                     </button>
@@ -713,11 +727,11 @@ export default function CreateQuestion() {
 
               {viewMode === 'preview' ? (
                 <div style={{ ...
-                styles.input, 
-                minHeight: '300px', 
-                padding: '12px', 
-                border: '1px solid #edf2f7', 
-                borderRadius: '8px', 
+                styles.input,
+                minHeight: '300px',
+                padding: '12px',
+                border: `1px solid ${dashboardPalette.border}`,
+                borderRadius: '8px',
                 overflow: 'auto' }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -726,11 +740,11 @@ export default function CreateQuestion() {
                       code({ node, inline, className, children, ...props }) {
                         return inline ? (
                           <code style={{ 
-                            background: '#e9ecef', 
-                            padding: '0.2rem 0.4rem', 
-                            borderRadius: '3px', 
-                            fontSize: '0.9em', 
-                            fontFamily: 'monospace' 
+                            background: dashboardPalette.surface,
+                            padding: '0.2rem 0.4rem',
+                            borderRadius: '3px',
+                            fontSize: '0.9em',
+                            fontFamily: 'monospace'
                           }} 
                             {...props}>{children}</code>
                         ) : (
@@ -765,12 +779,12 @@ export default function CreateQuestion() {
                   onChange={handleInputChange}
                   onKeyDown={handleTextareaKeyDown}
                   placeholder="Supports Markdown & LaTeX: $E=mc^2$"
-                  style={{ ...
-                    styles.input, 
-                    minHeight: '300px', 
-                    padding: '12px', 
-                    fontFamily: 'monospace', 
-                    lineHeight: '1.5' 
+                      style={{ ...
+                    styles.input,
+                    minHeight: '300px',
+                    padding: '12px',
+                    fontFamily: 'monospace',
+                    lineHeight: '1.5'
                   }}
                 />
               )}
@@ -832,25 +846,25 @@ export default function CreateQuestion() {
               <div style={styles.card}>
                 {isFreeResponse() && (
                   <div style={{
-                    padding: '12px 16px', 
-                    background: '#eff6ff',
-                     border: '1px solid #bfdbfe', 
-                     borderRadius: '8px', 
-                     marginBottom: '20px' 
+                    padding: '12px 16px',
+                    background: dashboardPalette.surface,
+                     border: `1px solid ${dashboardPalette.border}`,
+                     borderRadius: '8px',
+                     marginBottom: '20px'
                      }}>
                     <div style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '600', 
-                      color: '#1e40af', 
-                      marginBottom: '6px' 
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: dashboardPalette.navy,
+                      marginBottom: '6px'
                       }}>
                         📋 Parts vs Rubric</div>
                     <ul style={{ 
-                      margin: 0, 
-                      paddingLeft: '20px', 
-                      fontSize: '13px', 
-                      color: '#1e3a8a', 
-                      lineHeight: 1.6 
+                      margin: 0,
+                      paddingLeft: '20px',
+                      fontSize: '13px',
+                      color: dashboardPalette.text,
+                      lineHeight: 1.6
                       }}>
                       <li><strong>Parts</strong> = Sub-questions.</li>
                       <li><strong>Rubric</strong> = Grading criteria per part.</li>
@@ -866,18 +880,18 @@ export default function CreateQuestion() {
                   }}>
                   <label style={styles.label}>{isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}</label>
                   <span style={{ 
-                    fontSize: '14px', 
-                    color: '#6b7280' 
+                    fontSize: '14px',
+                    color: dashboardPalette.muted
                     }}>Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points</span>
                 </div>
 
                 {formData.rubric_parts.map((part, partIndex) => (
                   <div key={partIndex} style={{ 
-                    background: '#f8fafc', 
-                    border: '1px solid #e2e8f0', 
-                    borderRadius: '8px', 
-                    padding: '16px', 
-                    marginBottom: '16px' 
+                    background: dashboardPalette.surface,
+                    border: `1px solid ${dashboardPalette.border}`,
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '16px'
                     }}>
                     <div style={{ 
                       display: 'flex', 
@@ -886,38 +900,38 @@ export default function CreateQuestion() {
                       marginBottom: '12px' 
                       }}>
                       {isFreeResponse() ? (
-                        <input type="text" value={part.part_label} onChange={(e) => updatePartLabel(partIndex, e.target.value)} style={{ ...styles.input, width: '140px', fontWeight: '600', background: 'white' }} placeholder="Part A" />
+                        <input type="text" value={part.part_label} onChange={(e) => updatePartLabel(partIndex, e.target.value)} style={{ ...styles.input, width: '140px', fontWeight: '600', background: dashboardPalette.white }} placeholder="Part A" />
                       ) : (
-                        <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
+                        <span style={{ fontWeight: '600', color: dashboardPalette.text }}>Grading levels</span>
                       )}
                       {isFreeResponse() && formData.rubric_parts.length > 1 && (
                         <button type="button" style={{ 
-                          border: 'none', 
-                          background: '#fee2e2', 
-                          color: '#dc2626', 
-                          cursor: 'pointer', 
-                          padding: '6px 12px', 
-                          borderRadius: '6px', 
+                          border: `1px solid ${dashboardPalette.dangerBorder}`,
+                          background: dashboardPalette.white,
+                          color: dashboardPalette.dangerText,
+                          cursor: 'pointer',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
                           fontSize: '13px' 
                         }} onClick={() => removePart(partIndex)}>Remove Part</button>
                       )}
                     </div>
 
                     <div style={{ 
-                      marginTop: '12px', 
-                      paddingTop: '12px', 
-                      borderTop: '1px solid #e2e8f0' 
+                      marginTop: '12px',
+                      paddingTop: '12px',
+                      borderTop: `1px solid ${dashboardPalette.border}`
                       }}>
                       {part.rubric_levels.map((level, levelIndex) => (
                         <div key={levelIndex} style={{ 
-                          display: 'flex', 
-                          alignItems: 'flex-start', 
-                          gap: '12px', 
-                          marginBottom: '10px', 
-                          background: 'white', 
-                          padding: '10px 12px', 
-                          borderRadius: '6px', 
-                          border: '1px solid #e2e8f0' 
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '12px',
+                          marginBottom: '10px',
+                          background: dashboardPalette.white,
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          border: `1px solid ${dashboardPalette.border}`
                           }}>
                           <div style={{ 
                             display: 'flex', 
@@ -932,9 +946,9 @@ export default function CreateQuestion() {
                           <input type="text" value={level.criteria} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)} placeholder="Criteria..." style={{ ...styles.input, flex: 1 }} />
                           {part.rubric_levels.length > 1 && (
                             <button type="button" style={{ 
-                              border: 'none', 
-                              background: 'none', 
-                              color: '#94a3b8', 
+                              border: 'none',
+                              background: 'none',
+                              color: dashboardPalette.muted,
                               cursor: 'pointer'
                             }} onClick={() => removeRubricLevel(partIndex, levelIndex)}>✕</button>
                           )}
@@ -970,7 +984,7 @@ export default function CreateQuestion() {
               <div style={styles.card}>
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={styles.label}>Coding Setup</label>
-                  <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+                  <div style={{ fontSize: '0.9rem', color: dashboardPalette.muted }}>
                     Students submit C++ code in a LeetCode-style editor. Each test body should return a boolean.
                   </div>
                 </div>
@@ -988,7 +1002,7 @@ export default function CreateQuestion() {
           {/* Sidebar / Split View (Right Column) */}
           <aside style={{ 
             position: 'sticky',
-            top: '20px' }}>
+            top: '24px' }}>
             {isSplitView ? (
               /* --- SPLIT VIEW PREVIEW --- */
               <div style={styles.card}>
@@ -999,17 +1013,17 @@ export default function CreateQuestion() {
                   marginBottom: '16px' 
                   }}>
                   <h3 style={{ 
-                    margin: 0, 
-                    fontSize: '14px', 
-                    color: '#64748b', 
+                    margin: 0,
+                    fontSize: '14px',
+                    color: dashboardPalette.muted,
                     textTransform: 'uppercase' 
                     }}>Student View</h3>
-                    <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>Live Preview</span>
+                    <span style={{ fontSize: '11px', color: dashboardPalette.muted, fontStyle: 'italic' }}>Live Preview</span>
                 </div>
                 <div style={{ 
-                  border: '1px solid #edf2f7', 
-                  borderRadius: '8px', 
-                  background: '#f8fafc', 
+                  border: `1px solid ${dashboardPalette.border}`,
+                  borderRadius: '8px',
+                  background: dashboardPalette.surface,
                   overflow: 'hidden' 
                   }}>
                   <StudentPreview

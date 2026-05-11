@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { dashboardPalette } from './CourseDashboardUI';
 
 /**
  * Stats computed only from students who submitted on time or late (excludes not_submitted).
@@ -72,21 +73,21 @@ export default function AssignmentGradingStats({ submissionStatusRows, assignmen
   );
 
   const cardStyle = {
-    padding: '0.6rem 0.85rem',
+    padding: '0.75rem 0.85rem',
     borderRadius: '8px',
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
+    background: dashboardPalette.white,
+    border: `1px solid ${dashboardPalette.border}`,
     minWidth: '0',
   };
-  const labelStyle = { fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.2rem' };
-  const valueStyle = { fontSize: '1rem', fontWeight: 700, color: '#0f172a' };
+  const labelStyle = { fontSize: '0.74rem', fontWeight: 700, color: dashboardPalette.muted, marginBottom: '0.2rem' };
+  const valueStyle = { fontSize: '1rem', fontWeight: 700, color: dashboardPalette.navy };
 
   return (
     <div style={{ marginBottom: '1rem' }}>
       <h2 style={{ margin: '0 0 0.75rem 0', fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>
         Grading statistics
       </h2>
-      <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
+      <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: dashboardPalette.muted }}>
         Based only on submissions that were <strong>on time</strong> or <strong>late</strong> (not submitted excluded).
       </p>
       <div style={{

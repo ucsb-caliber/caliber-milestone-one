@@ -4,6 +4,32 @@ import StudentPreview from '../components/StudentPreview';
 import StudentGradeReport from '../components/StudentGradeReport';
 import { useAuth } from '../AuthContext';
 import { parseScheduleDate } from '../utils/datetime';
+import {
+  CourseDashboardBackButton,
+  CourseDashboardPrimaryButton,
+  CourseDashboardSecondaryButton,
+  CourseDashboardSpinnerState,
+  dashboardPalette
+} from '../components/CourseDashboardUI';
+
+function buildStudentAssignmentHash({
+  courseId,
+  assignmentId,
+  resubmitRequested = false,
+  readOnlyRequested = false,
+  viewGradeRequested = false,
+  fromHash = ''
+}) {
+  const params = new URLSearchParams();
+  if (resubmitRequested) params.set('resubmit', '1');
+  if (readOnlyRequested) params.set('readonly', '1');
+  if (viewGradeRequested) params.set('view', 'grade');
+  if (fromHash) params.set('from', fromHash);
+  const query = params.toString();
+  return query
+    ? `#student-course/${courseId}/assignment/${assignmentId}?${query}`
+    : `#student-course/${courseId}/assignment/${assignmentId}`;
+}
 
 export default function StudentAssignmentPage() {
   const { user } = useAuth();
@@ -29,9 +55,12 @@ export default function StudentAssignmentPage() {
   const parseHash = (hash) => {
     const courseMatch = hash.match(/#student-course\/(\d+)/);
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
-    const resubmitRequested = hash.includes("resubmit=1");
-    const readOnlyRequested = hash.includes("readonly=1");
-    const viewGradeRequested = hash.includes("view=grade");
+    const queryIndex = hash.indexOf('?');
+    const params = new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : '');
+    const resubmitRequested = params.get('resubmit') === '1';
+    const readOnlyRequested = params.get('readonly') === '1';
+    const viewGradeRequested = params.get('view') === 'grade';
+    const fromHash = params.get('from') || '';
 
     return {
       courseId: courseMatch ? parseInt(courseMatch[1], 10) : null,
@@ -39,6 +68,7 @@ export default function StudentAssignmentPage() {
       resubmitRequested,
       readOnlyRequested,
       viewGradeRequested,
+      fromHash,
     };
   };
 
@@ -51,7 +81,7 @@ export default function StudentAssignmentPage() {
   }, []);
 
   const currentHash = React.useMemo(() => window.location.hash, [hashVersion]);
-  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash(currentHash);
+  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested, fromHash } = parseHash(currentHash);
   const hardDueDate = parseScheduleDate(assignment?.due_date_hard);
   const isSubmissionClosed = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
 
@@ -209,6 +239,19 @@ export default function StudentAssignmentPage() {
     }
   }, [courseId]);
 
+  const fallbackBackHash = courseId ? `#student-course/${courseId}` : '#student-courses';
+  const gradeViewFallbackHash = assignmentId && courseId
+    ? buildStudentAssignmentHash({ courseId, assignmentId, readOnlyRequested, fromHash: fallbackBackHash })
+    : fallbackBackHash;
+
+  const navigateBack = useCallback(async ({ saveDraft = false, fallbackHash = fallbackBackHash } = {}) => {
+    skipUnmountSubmitRef.current = true;
+    if (saveDraft) {
+      await saveDraftOnExit();
+    }
+    window.location.hash = fromHash || fallbackHash;
+  }, [fallbackBackHash, fromHash, saveDraftOnExit]);
+
   useEffect(() => () => {
     if (
       skipUnmountSubmitRef.current ||
@@ -235,41 +278,37 @@ export default function StudentAssignmentPage() {
     container: {
       maxWidth: '1000px',
       margin: '0 auto',
-      padding: '2rem'
+      padding: '24px'
     },
-    backButton: {
-      display: 'inline-flex',
+    topBarActions: {
+      display: 'flex',
       alignItems: 'center',
-      gap: '0.5rem',
-      padding: '0.5rem 1rem',
-      background: '#f3f4f6',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '0.875rem',
-      color: '#374151',
-      marginBottom: '1.5rem',
-      transition: 'background 0.15s'
+      gap: '8px',
+      flexWrap: 'wrap'
     },
     errorBox: {
-      background: '#fee2e2',
-      color: '#dc2626',
-      padding: '1rem',
+      background: dashboardPalette.dangerBg,
+      color: dashboardPalette.dangerText,
+      padding: '12px 14px',
       borderRadius: '8px',
-      marginBottom: '1rem'
+      marginBottom: '16px',
+      border: `1px solid ${dashboardPalette.dangerBorder}`
     },
     loadingState: {
       textAlign: 'center',
-      padding: '4rem',
-      color: '#6b7280'
+      padding: '32px 0',
+      color: dashboardPalette.muted
     }
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
+        <CourseDashboardBackButton onClick={() => { void navigateBack(); }} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
         <div style={styles.loadingState}>
-          <p>Loading assignment...</p>
+          <CourseDashboardSpinnerState style={{ padding: '8px 0' }} />
         </div>
       </div>
     );
@@ -278,20 +317,9 @@ export default function StudentAssignmentPage() {
   if (error) {
     return (
       <div style={styles.container}>
-        <button
-          style={styles.backButton}
-          onClick={() => {
-            window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#e5e7eb';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#f3f4f6';
-          }}
-        >
-          ← Back to Course
-        </button>
+        <CourseDashboardBackButton onClick={() => { void navigateBack(); }} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
         <div style={styles.errorBox}>{error}</div>
       </div>
     );
@@ -300,14 +328,9 @@ export default function StudentAssignmentPage() {
   if (!assignment) {
     return (
       <div style={styles.container}>
-        <button
-          style={styles.backButton}
-          onClick={() => {
-            window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
-          }}
-        >
-          ← Back to Course
-        </button>
+        <CourseDashboardBackButton onClick={() => { void navigateBack(); }} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
         <div style={styles.errorBox}>Assignment not found</div>
       </div>
     );
@@ -323,10 +346,7 @@ export default function StudentAssignmentPage() {
         courseId={courseId}
         assignmentTitle={assignment.title}
         onBack={() => {
-          const base = `#student-course/${courseId}/assignment/${assignmentId}`;
-          const params = new URLSearchParams();
-          if (readOnlyRequested) params.set('readonly', '1');
-          window.location.hash = params.toString() ? `${base}?${params}` : base;
+          void navigateBack({ fallbackHash: gradeViewFallbackHash });
         }}
       />
     );
@@ -336,32 +356,37 @@ export default function StudentAssignmentPage() {
     <>
       {gradeReleased && !isInstructorPreview && (
         <div style={{
-          maxWidth: '1000px', margin: '0 auto 1rem auto', padding: '0.75rem 1.25rem',
-          background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
-          border: '1px solid #6ee7b7',
-          borderRadius: '12px',
+          maxWidth: '1000px', margin: '0 auto 16px auto', padding: '12px 16px',
+          background: dashboardPalette.white,
+          border: `1px solid ${dashboardPalette.border}`,
+          borderRadius: '8px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '0.75rem',
+          gap: '12px',
         }}>
-          <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.95rem' }}>
+          <span style={{ fontWeight: 600, color: dashboardPalette.text, fontSize: '0.95rem' }}>
             Grades have been released for this assignment.
           </span>
           <button
             type="button"
             onClick={() => {
-              const base = `#student-course/${courseId}/assignment/${assignmentId}`;
-              const sep = window.location.hash.includes('?') ? '&' : '?';
-              window.location.hash = `${base}${sep}view=grade`;
+              window.location.hash = buildStudentAssignmentHash({
+                courseId,
+                assignmentId,
+                readOnlyRequested,
+                viewGradeRequested: true,
+                fromHash: currentHash
+              });
             }}
             style={{
-              border: 'none',
+              border: `1px solid ${dashboardPalette.navy}`,
               borderRadius: '8px',
-              background: '#059669',
-              color: 'white',
-              padding: '0.45rem 0.9rem',
+              background: dashboardPalette.navy,
+              color: dashboardPalette.white,
+              padding: '0 14px',
+              height: '38px',
               cursor: 'pointer',
               fontWeight: 600,
               fontSize: '0.875rem',
@@ -378,21 +403,34 @@ export default function StudentAssignmentPage() {
         assignmentType={assignment.type}
       isPreviewMode={false}
       showCorrectAnswers={false}
-      closeButtonText={isReadOnlyView ? 'Back to Course' : (resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment')}
-      secondaryActionText={!isReadOnlyView && resubmitRequested ? 'Cancel' : ''}
-      onSecondaryAction={!isReadOnlyView && resubmitRequested ? cancelResubmission : null}
+      closeButtonText="Back"
+      assignmentBannerLeading={
+        <CourseDashboardBackButton
+          onClick={() => {
+            void navigateBack({ saveDraft: !isReadOnlyView });
+          }}
+        >
+          Back
+        </CourseDashboardBackButton>
+      }
+      assignmentBannerActions={
+        !isReadOnlyView ? (
+          <div style={styles.topBarActions}>
+            {resubmitRequested ? (
+              <CourseDashboardSecondaryButton onClick={cancelResubmission}>
+                Cancel
+              </CourseDashboardSecondaryButton>
+            ) : null}
+            <CourseDashboardPrimaryButton onClick={submitAssignment} disabled={submitting}>
+              {submitting
+                ? (resubmitRequested ? 'Resubmitting...' : 'Submitting...')
+                : (resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment')}
+            </CourseDashboardPrimaryButton>
+          </div>
+        ) : null
+      }
       onClose={async () => {
-        skipUnmountSubmitRef.current = true;
-        if (isReadOnlyView) {
-          window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
-          return;
-        }
-        await saveDraftOnExit();
-        if (courseId) {
-          window.location.hash = `#student-course/${courseId}`;
-        } else {
-          window.location.hash = '#student-courses';
-        }
+        await navigateBack({ saveDraft: !isReadOnlyView });
       }}
       initialAnswers={initialAnswers}
       initialQuestionIndex={initialQuestionIndex}

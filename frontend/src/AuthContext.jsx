@@ -21,6 +21,7 @@ const OIDC_LOGIN_STARTED_AT_STORAGE_KEY = 'caliber-oidc-login-started-at';
 const OIDC_LOGIN_ERROR_STORAGE_KEY = 'caliber-oidc-login-error';
 const OIDC_FORCE_LOGIN_STORAGE_KEY = 'caliber-oidc-force-login';
 const OIDC_LOGIN_RETRY_WINDOW_MS = 15 * 1000;
+const DEFAULT_POST_LOGIN_HASH = '#post-login-default';
 
 let oidcCallbackExchangePromise = null;
 
@@ -29,7 +30,7 @@ function portalUrl(path) {
 }
 
 function getPortalLoginPath() {
-  return '/login?next=%2Fcaliber%2F%23student-courses';
+  return '/login?next=%2Fcaliber%2F%23post-login-default';
 }
 
 function getPortalLogoutPath() {
@@ -399,7 +400,7 @@ export const AuthProvider = ({ children }) => {
     if (isDirectOidcEnabled()) {
       sessionStorage.setItem(
         OIDC_POST_LOGIN_HASH_STORAGE_KEY,
-        window.location.hash || '#student-courses',
+        window.location.hash || DEFAULT_POST_LOGIN_HASH,
       );
       await startDirectOidcLogin();
       return;

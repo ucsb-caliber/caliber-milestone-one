@@ -2,17 +2,56 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getCourses, getPinnedCourseIds, setCoursePinned } from '../api';
 import CourseCard from '../components/CourseCard';
 import { useAuth } from '../AuthContext';
+import { formatPacificDateTime, parseScheduleDate } from '../utils/datetime';
+import {
+  CourseDashboardEmptyState,
+  CourseDashboardErrorBanner,
+  CourseDashboardGrid,
+  CourseDashboardHeader,
+  CourseDashboardIconButton,
+  CourseDashboardInput,
+  CourseDashboardSpinnerState,
+  CourseDashboardNotice,
+  CourseDashboardPrimaryButton,
+  CourseDashboardSection,
+  CourseDashboardSelect,
+  CourseDashboardStatCard,
+  CourseDashboardStatGrid,
+  CourseDashboardToolbar,
+  PageContainer,
+  RefreshIcon,
+  dashboardPalette,
+} from '../components/CourseDashboardUI';
 
-const RefreshIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 2v6h-6"></path>
-    <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-    <path d="M3 22v-6h6"></path>
-    <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-  </svg>
-);
+function getNextDueAssignment(course) {
+  const now = Date.now();
+  return (course.assignments || [])
+    .map((assignment) => {
+      const dueDate = parseScheduleDate(assignment.due_date_soft) || parseScheduleDate(assignment.due_date_hard);
+      return dueDate ? { assignment, dueDate } : null;
+    })
+    .filter(Boolean)
+    .filter((item) => item.dueDate.getTime() >= now)
+    .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())[0] || null;
+}
 
-export default function StudentCoursesPage() {
+function formatDueDate(value) {
+  return formatPacificDateTime(value, {
+    kind: 'schedule',
+    month: 'short',
+    day: 'numeric',
+    year: undefined,
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: undefined,
+  }) || 'No due date';
+}
+
+function itemTime(date) {
+  return date instanceof Date ? date.getTime() : Number.POSITIVE_INFINITY;
+}
+
+export default function StudentCoursesPage({ isInstructorView = false }) {
   const { user } = useAuth();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,24 +113,60 @@ export default function StudentCoursesPage() {
 
   const processedCourses = useMemo(() => {
     if (!Array.isArray(courses)) return [];
+
     const search = searchQuery.trim().toLowerCase();
     const filtered = courses.filter((course) => {
       if (!search) return true;
       const name = (course.course_name || '').toLowerCase();
       const school = (course.school_name || '').toLowerCase();
-      return name.includes(search) || school.includes(search);
+      const code = (course.course_code || '').toLowerCase();
+      return name.includes(search) || school.includes(search) || code.includes(search);
     });
 
     if (sortBy === 'students') {
       filtered.sort((a, b) => (b.student_ids?.length || 0) - (a.student_ids?.length || 0));
+    } else if (sortBy === 'assignments') {
+      filtered.sort((a, b) => (b.assignments?.length || 0) - (a.assignments?.length || 0));
     } else {
       filtered.sort((a, b) => (a.course_name || '').localeCompare(b.course_name || ''));
     }
+
     return filtered;
   }, [courses, searchQuery, sortBy]);
 
   const pinnedCourses = processedCourses.filter((course) => pinnedIds.includes(course.id));
   const otherCourses = processedCourses.filter((course) => !pinnedIds.includes(course.id));
+
+  const dashboardSummary = useMemo(() => {
+    const now = Date.now();
+    const weekFromNow = now + (7 * 24 * 60 * 60 * 1000);
+    const flattenedAssignments = courses.flatMap((course) =>
+      (course.assignments || []).map((assignment) => {
+        const dueDate = parseScheduleDate(assignment.due_date_soft) || parseScheduleDate(assignment.due_date_hard);
+        return {
+          course,
+          assignment,
+          dueDate,
+        };
+      })
+    );
+
+    const scheduledAssignments = flattenedAssignments
+      .filter((item) => item.dueDate)
+      .sort((a, b) => itemTime(a.dueDate) - itemTime(b.dueDate));
+
+    const dueThisWeek = scheduledAssignments.filter((item) => {
+      const dueMs = itemTime(item.dueDate);
+      return dueMs >= now && dueMs <= weekFromNow;
+    });
+
+    return {
+      totalCourses: courses.length,
+      totalAssignments: flattenedAssignments.length,
+      dueThisWeek,
+      nextDue: scheduledAssignments.find((item) => itemTime(item.dueDate) >= now) || null,
+    };
+  }, [courses]);
 
   useEffect(() => {
     if (user?.id) {
@@ -99,150 +174,69 @@ export default function StudentCoursesPage() {
     }
   }, [user?.id]);
 
-  const styles = {
-    container: {
-      maxWidth: '1400px',
-      margin: '0 auto',
-      padding: '0.25rem 0.5rem 40px',
-      minHeight: '100vh',
-      fontFamily: 'Inter, system-ui, sans-serif',
-    },
-    header: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-end',
-      marginBottom: '20px',
-      gap: '20px',
-      flexWrap: 'wrap',
-    },
-    title: {
-      fontSize: '2.3rem',
-      fontWeight: '800',
-      margin: 0,
-      color: '#0f172a',
-      letterSpacing: '-0.025em',
-      lineHeight: 1.08,
-    },
-    helperText: {
-      margin: '0.45rem 0 0 0',
-      color: '#475569',
-      fontSize: '0.95rem',
-    },
-    controls: {
-      display: 'flex',
-      gap: '12px',
-      alignItems: 'center',
-      marginBottom: '28px',
-    },
-    searchBar: {
-      flexGrow: 1,
-      maxWidth: '420px',
-      padding: '12px 16px',
-      borderRadius: '12px',
-      border: '2px solid #e2e8f0',
-      fontSize: '1rem',
-      outline: 'none',
-    },
-    select: {
-      padding: '12px 40px 12px 16px',
-      borderRadius: '12px',
-      border: '2px solid #e2e8f0',
-      background: 'white',
-      fontWeight: '600',
-      color: '#475569',
-      cursor: 'pointer',
-      appearance: 'none',
-      backgroundImage:
-        "url(\"data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e\")",
-      backgroundRepeat: 'no-repeat',
-      backgroundPosition: 'right 12px center',
-      backgroundSize: '16px',
-      outline: 'none',
-    },
-    iconButton: {
-      padding: '12px',
-      borderRadius: '12px',
-      border: '2px solid #e2e8f0',
-      background: 'white',
-      color: '#475569',
-      cursor: 'pointer',
-    },
-    grid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-      gap: '1.5rem',
-    },
-    emptyState: {
-      padding: '4rem',
-      background: '#f9fafb',
-      borderRadius: '12px',
-      textAlign: 'center',
-      color: '#6b7280',
-    },
-    errorBanner: {
-      padding: '1rem',
-      background: '#fef2f2',
-      border: '1px solid #fecaca',
-      borderRadius: '8px',
-      color: '#dc2626',
-      marginBottom: '1rem',
-      fontSize: '0.875rem',
-    },
-  };
-
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>Courses</h1>
-          <p style={styles.helperText}>Join and manage course enrollment from the Platform home page.</p>
-        </div>
-      </div>
+    <PageContainer maxWidth="1200px">
+      <CourseDashboardHeader
+        title="Dashboard"
+        subtitle="View your courses and upcoming deadlines."
+        action={
+          <CourseDashboardPrimaryButton onClick={loadCourses}>
+            <RefreshIcon />
+            Refresh
+          </CourseDashboardPrimaryButton>
+        }
+      />
 
-      <div style={styles.controls}>
-        <input
-          style={styles.searchBar}
-          placeholder="Search courses..."
+      {error ? <CourseDashboardErrorBanner>{error}</CourseDashboardErrorBanner> : null}
+
+      {!loading && dashboardSummary.dueThisWeek.length > 0 ? (
+        <CourseDashboardNotice>
+          <strong>
+            {dashboardSummary.dueThisWeek.length} assignment{dashboardSummary.dueThisWeek.length === 1 ? '' : 's'} due this week.
+          </strong>{' '}
+          {dashboardSummary.nextDue ? (
+            <span>
+              Next up: {(dashboardSummary.nextDue.course.course_code || dashboardSummary.nextDue.course.course_name || 'Course')} {dashboardSummary.nextDue.assignment.title || 'Assignment'} due {formatDueDate(dashboardSummary.nextDue.dueDate)}.
+            </span>
+          ) : null}
+        </CourseDashboardNotice>
+      ) : null}
+
+      <CourseDashboardStatGrid>
+        <CourseDashboardStatCard value={dashboardSummary.totalCourses} label="Active courses" />
+        <CourseDashboardStatCard value={dashboardSummary.dueThisWeek.length} label="Due this week" valueColor={dashboardPalette.goldDark} />
+        <CourseDashboardStatCard value={dashboardSummary.totalAssignments} label="Assignments" />
+      </CourseDashboardStatGrid>
+
+      <CourseDashboardToolbar>
+        <CourseDashboardInput
+          placeholder="Search courses"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
-        <select style={styles.select} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-          <option value="name">Sort by Name</option>
-          <option value="students">Sort by Size</option>
-        </select>
-        <button onClick={loadCourses} style={styles.iconButton} title="Refresh dashboard" aria-label="Refresh dashboard">
+        <CourseDashboardSelect value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+          <option value="name">Sort by name</option>
+          <option value="students">Sort by students</option>
+          <option value="assignments">Sort by assignments</option>
+        </CourseDashboardSelect>
+        <CourseDashboardIconButton onClick={loadCourses} title="Refresh courses" aria-label="Refresh courses">
           <RefreshIcon />
-        </button>
-      </div>
-
-      {error && <div style={styles.errorBanner}>{error}</div>}
+        </CourseDashboardIconButton>
+      </CourseDashboardToolbar>
 
       {loading ? (
-        <p>Loading courses...</p>
+        <CourseDashboardSpinnerState style={{ padding: '12px 0' }} />
       ) : processedCourses.length === 0 ? (
-        <div style={styles.emptyState}>
-          <h3 style={{ margin: '0 0 0.5rem 0', color: '#374151' }}>No Courses Found</h3>
-          <p style={{ margin: 0 }}>
-            {searchQuery ? 'No courses match your current search.' : 'You are not enrolled in any courses yet.'}
-          </p>
-        </div>
+        <CourseDashboardEmptyState title="No courses found">
+          {searchQuery ? 'No courses match the current search.' : 'You are not enrolled in any courses yet.'}
+        </CourseDashboardEmptyState>
       ) : (
         <>
-          {pinnedCourses.length > 0 && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: '800',
-                  color: '#94a3b8',
-                  textTransform: 'uppercase',
-                  marginBottom: '14px',
-                  display: 'block',
-                }}
+          {pinnedCourses.length > 0 ? (
+            <CourseDashboardSection title="Pinned courses">
+              <CourseDashboardGrid
+                style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
               >
-                Pinned Courses
-              </span>
-              <div style={styles.grid}>
                 {pinnedCourses.map((course) => (
                   <CourseCard
                     key={course.id}
@@ -251,44 +245,40 @@ export default function StudentCoursesPage() {
                     onPin={() => togglePin(course.id)}
                     isInstructor={false}
                     allUsers={[]}
+                    variant="dashboard"
+                    nextDue={getNextDueAssignment(course)}
                     onOpen={() => {
                       window.location.hash = `student-course/${course.id}`;
                     }}
                   />
                 ))}
-              </div>
-            </div>
-          )}
+              </CourseDashboardGrid>
+            </CourseDashboardSection>
+          ) : null}
 
-          <span
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: '800',
-              color: '#94a3b8',
-              textTransform: 'uppercase',
-              marginBottom: '14px',
-              display: 'block',
-            }}
-          >
-            Your Courses
-          </span>
-          <div style={styles.grid}>
-            {otherCourses.map((course) => (
-              <CourseCard
-                key={course.id}
-                course={course}
-                isPinned={false}
-                onPin={() => togglePin(course.id)}
-                isInstructor={false}
-                allUsers={[]}
-                onOpen={() => {
-                  window.location.hash = `student-course/${course.id}`;
-                }}
-              />
-            ))}
-          </div>
+          <CourseDashboardSection title={pinnedCourses.length > 0 ? 'All courses' : 'Your courses'}>
+            <CourseDashboardGrid
+              style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+            >
+              {otherCourses.map((course) => (
+                <CourseCard
+                  key={course.id}
+                  course={course}
+                  isPinned={false}
+                  onPin={() => togglePin(course.id)}
+                  isInstructor={false}
+                  allUsers={[]}
+                  variant="dashboard"
+                  nextDue={getNextDueAssignment(course)}
+                  onOpen={() => {
+                    window.location.hash = `student-course/${course.id}`;
+                  }}
+                />
+              ))}
+            </CourseDashboardGrid>
+          </CourseDashboardSection>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

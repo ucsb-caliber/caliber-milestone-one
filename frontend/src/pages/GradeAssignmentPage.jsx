@@ -4,15 +4,19 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { getAssignmentGradingState, saveAssignmentGradingState, getAssignmentSubmissionStatus, getCourse, getUserById } from '../api';
+import { CourseDashboardBackButton, CourseDashboardSpinnerState, dashboardPalette } from '../components/CourseDashboardUI';
+import { buildHashWithFrom, getFromHash, navigateBackWithFallback, readHashParams } from '../utils/navigation';
 
 function parseHash() {
   const hash = window.location.hash;
   const courseMatch = hash.match(/#course\/(\d+)/);
   const assignmentMatch = hash.match(/\/assignment\/(\d+)\/grade\/([^/?]+)/);
+  const params = readHashParams(hash);
   return {
     courseId: courseMatch ? parseInt(courseMatch[1], 10) : null,
     assignmentId: assignmentMatch ? parseInt(assignmentMatch[1], 10) : null,
     studentId: assignmentMatch ? decodeURIComponent(assignmentMatch[2]) : null,
+    fromHash: params.get('from') || '',
   };
 }
 
@@ -129,7 +133,8 @@ function commentFieldKey(questionId, partIndex) {
 }
 
 export default function GradeAssignmentPage() {
-  const { courseId, assignmentId, studentId } = parseHash();
+  const currentHash = window.location.hash;
+  const { courseId, assignmentId, studentId, fromHash } = parseHash();
   const [initialLoading, setInitialLoading] = useState(true);
   const [studentLoading, setStudentLoading] = useState(true);
   const [error, setError] = useState('');
@@ -410,32 +415,32 @@ export default function GradeAssignmentPage() {
     }
     setStudentMenuOpen(false);
     setSelectedStudentId(nextStudentId);
-    window.history.replaceState(null, '', `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(nextStudentId)}`);
+    window.history.replaceState(null, '', buildHashWithFrom(`#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(nextStudentId)}`, fromHash));
   };
 
   const styles = {
-    container: { maxWidth: '1400px', margin: '0 auto', padding: '1.5rem' },
+    container: { maxWidth: '1360px', margin: '0 auto', padding: '24px' },
     topBar: {
       display: 'grid',
       gridTemplateColumns: 'auto minmax(280px, 1.2fr) minmax(200px, 1fr) auto',
       alignItems: 'center',
-      gap: '1rem',
-      marginBottom: '1rem',
-      background: 'white',
-      padding: '0.9rem 1rem',
-      borderRadius: '10px',
-      border: '1px solid #e5e7eb'
+      gap: '16px',
+      marginBottom: '16px',
+      background: dashboardPalette.white,
+      padding: '16px',
+      borderRadius: '8px',
+      border: `1px solid ${dashboardPalette.border}`
     },
     headerInline: { display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, position: 'relative' },
-    headerLabel: { fontSize: '0.92rem', color: '#6b7280', fontWeight: 700, whiteSpace: 'nowrap' },
+    headerLabel: { fontSize: '0.92rem', color: dashboardPalette.muted, fontWeight: 700, whiteSpace: 'nowrap' },
     headerCenter: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.65rem', minWidth: 0 },
     headerRight: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' },
     studentMenuButton: {
       minWidth: '220px',
-      border: '1px solid #d1d5db',
-      borderRadius: '10px',
-      background: '#f9fafb',
-      padding: '0.5rem 0.75rem',
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: '8px',
+      background: dashboardPalette.white,
+      padding: '10px 12px',
       textAlign: 'left',
       cursor: 'pointer'
     },
@@ -445,50 +450,49 @@ export default function GradeAssignmentPage() {
       left: '0',
       zIndex: 20,
       width: 'min(460px, calc(100vw - 5rem))',
-      marginTop: '0.5rem',
-      background: 'white',
-      border: '1px solid #d1d5db',
-      borderRadius: '12px',
-      boxShadow: '0 14px 30px rgba(15,23,42,0.14)',
+      marginTop: '8px',
+      background: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: '8px',
       overflow: 'hidden'
     },
     studentMenuTable: { width: '100%', borderCollapse: 'collapse' },
-    studentMenuCell: { padding: '0.7rem 0.85rem', fontSize: '0.88rem', borderBottom: '1px solid #e5e7eb' },
-    body: { display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(320px, 0.95fr)', gap: '1rem' },
-    panel: { background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1rem' },
-    h: { margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#111827' },
+    studentMenuCell: { padding: '12px 14px', fontSize: '0.88rem', borderBottom: `1px solid ${dashboardPalette.border}` },
+    body: { display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(320px, 0.95fr)', gap: '16px' },
+    panel: { background: dashboardPalette.white, border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '16px' },
+    h: { margin: 0, fontSize: '1.1rem', fontWeight: 700, color: dashboardPalette.navy },
     questionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' },
     questionNav: { display: 'flex', alignItems: 'center', gap: '0.65rem' },
-    navButton: { border: 'none', borderRadius: '8px', padding: '0.45rem 0.8rem', cursor: 'pointer', fontWeight: 600 },
+    navButton: { borderRadius: '8px', padding: '0.45rem 0.8rem', cursor: 'pointer', fontWeight: 600, border: `1px solid ${dashboardPalette.border}` },
     gradeButton: {
-      background: '#2563eb',
-      color: 'white',
-      border: 'none',
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.navy}`,
       borderRadius: '8px',
       padding: '0.55rem 0.9rem',
       cursor: 'pointer',
       fontWeight: 700,
       minWidth: '88px'
     },
-    scoreChip: { display: 'inline-block', padding: '0.2rem 0.45rem', borderRadius: '6px', fontSize: '0.76rem', fontWeight: 700 },
+    scoreChip: { display: 'inline-block', padding: '0.2rem 0.45rem', borderRadius: '6px', fontSize: '0.76rem', fontWeight: 700, border: `1px solid ${dashboardPalette.border}` },
     questionList: { marginTop: '0.7rem', display: 'flex', flexDirection: 'column', gap: '0.55rem' },
-    saveText: { color: '#2563eb', fontWeight: 700, minWidth: '74px', textAlign: 'right' },
-    loadingPanel: { background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1rem', color: '#6b7280' },
+    saveText: { color: dashboardPalette.muted, fontWeight: 700, minWidth: '74px', textAlign: 'right' },
+    loadingPanel: { background: dashboardPalette.white, border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '16px', color: dashboardPalette.muted },
   };
 
-  if (initialLoading) return <div style={styles.container}>Loading grading view...</div>;
-  if (!data && error) return <div style={styles.container}>{error}</div>;
+  const handleBack = () => {
+    navigateBackWithFallback(`#course/${courseId}/assignment/${assignmentId}/view`, fromHash || getFromHash(currentHash));
+  };
+
+  if (initialLoading) return <div style={styles.container}><CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>Back</CourseDashboardBackButton><CourseDashboardSpinnerState style={{ padding: '24px 0' }} /></div>;
+  if (!data && error) return <div style={styles.container}><CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>Back</CourseDashboardBackButton>{error}</div>;
 
   return (
     <div style={styles.container}>
       <div style={styles.topBar}>
-        <button
-          type="button"
-          onClick={() => { window.location.hash = `#course/${courseId}/assignment/${assignmentId}/view`; }}
-          style={{ border: 'none', background: '#f3f4f6', borderRadius: '8px', padding: '0.45rem 0.75rem', cursor: 'pointer' }}
-        >
-          ← Back
-        </button>
+        <CourseDashboardBackButton onClick={handleBack}>
+          Back
+        </CourseDashboardBackButton>
 
         <div style={styles.headerInline}>
           <span style={styles.headerLabel}>Student:</span>
@@ -499,19 +503,19 @@ export default function GradeAssignmentPage() {
               style={styles.studentMenuButton}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-                <span style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '1rem', fontWeight: 700, color: dashboardPalette.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {studentDisplayName}
                 </span>
-                <span style={{ color: '#6b7280', fontWeight: 700 }}>{studentMenuOpen ? '▲' : '▼'}</span>
+                <span style={{ color: dashboardPalette.muted, fontWeight: 700 }}>{studentMenuOpen ? '▲' : '▼'}</span>
               </div>
             </button>
             {studentMenuOpen && (
               <div style={styles.studentMenuPanel}>
                 <table style={styles.studentMenuTable}>
                   <thead>
-                    <tr style={{ background: '#f8fafc' }}>
-                      <th style={{ ...styles.studentMenuCell, textAlign: 'left', color: '#6b7280', fontSize: '0.78rem', fontWeight: 800 }}>Student</th>
-                      <th style={{ ...styles.studentMenuCell, textAlign: 'left', color: '#6b7280', fontSize: '0.78rem', fontWeight: 800 }}>Grade</th>
+                    <tr style={{ background: dashboardPalette.surface }}>
+                      <th style={{ ...styles.studentMenuCell, textAlign: 'left', color: dashboardPalette.muted, fontSize: '0.78rem', fontWeight: 800 }}>Student</th>
+                      <th style={{ ...styles.studentMenuCell, textAlign: 'left', color: dashboardPalette.muted, fontSize: '0.78rem', fontWeight: 800 }}>Grade</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -550,14 +554,14 @@ export default function GradeAssignmentPage() {
 
         <div style={styles.headerCenter}>
           <span style={styles.headerLabel}>Assignment:</span>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assignmentTitle}</div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: dashboardPalette.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assignmentTitle}</div>
         </div>
 
         <div style={styles.headerRight}>
           <strong>Total grade:</strong>
           {data ? `${Math.round(data.score_earned * 100) / 100}/${Math.round(data.score_total * 100) / 100}` : '...'}
           {statusData?.grade_released && (
-            <span style={{ color: '#065f46', fontWeight: 700 }}>Released</span>
+            <span style={{ color: dashboardPalette.navy, fontWeight: 700 }}>Released</span>
           )}
           {showSaveButton && (
             <span style={styles.saveText}>{saveState === 'updating' ? 'Updating' : 'Updated'}</span>
@@ -566,7 +570,7 @@ export default function GradeAssignmentPage() {
       </div>
 
       {data?.late_penalty_applied && (
-        <div style={{ ...styles.loadingPanel, marginBottom: '1rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d' }}>
+        <div style={{ ...styles.loadingPanel, marginBottom: '16px', color: dashboardPalette.text }}>
           Late policy applied: raw score {Math.round(Number(data.raw_score_earned || 0) * 100) / 100}/{Math.round(Number(data.score_total || 0) * 100) / 100},
           penalty {Math.round(Number(data.late_penalty_points || 0) * 100) / 100} points
           ({Math.round(Number(data.late_penalty_fraction || 0) * 10000) / 100}%),
@@ -575,13 +579,13 @@ export default function GradeAssignmentPage() {
       )}
 
       {error && (
-        <div style={{ ...styles.loadingPanel, marginBottom: '1rem', color: '#dc2626', background: '#fee2e2' }}>
+        <div style={{ ...styles.loadingPanel, marginBottom: '16px', color: dashboardPalette.dangerText, border: `1px solid ${dashboardPalette.dangerBorder}`, background: dashboardPalette.dangerBg }}>
           {error}
         </div>
       )}
 
       {studentLoading || !data || !currentQuestion ? (
-        <div style={styles.loadingPanel}>Loading...</div>
+        <CourseDashboardSpinnerState style={{ padding: '20px 0' }} spinnerStyle={{ width: '20px', height: '20px' }} />
       ) : (
       <div style={styles.body}>
         <div style={styles.panel}>
@@ -594,8 +598,8 @@ export default function GradeAssignmentPage() {
                 disabled={questionIndex === 0}
                 style={{
                   ...styles.navButton,
-                  background: '#f3f4f6',
-                  color: '#111827',
+                  background: dashboardPalette.white,
+                  color: dashboardPalette.text,
                   cursor: questionIndex === 0 ? 'not-allowed' : 'pointer',
                   opacity: questionIndex === 0 ? 0.6 : 1,
                 }}
@@ -608,8 +612,9 @@ export default function GradeAssignmentPage() {
                   onClick={() => setQuestionIndex((idx) => Math.min(questions.length - 1, idx + 1))}
                   style={{
                     ...styles.navButton,
-                    background: '#86efac',
-                    color: '#14532d',
+                    background: dashboardPalette.navy,
+                    color: dashboardPalette.white,
+                    border: `1px solid ${dashboardPalette.navy}`,
                   }}
                 >
                   Next →
@@ -619,9 +624,9 @@ export default function GradeAssignmentPage() {
           </div>
 
           {currentQuestion.question_text ? (
-            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.4rem' }}>Question</div>
-              <div style={{ color: '#374151', fontSize: '0.95rem', lineHeight: 1.5 }}>
+            <div style={{ marginBottom: '16px', padding: '12px', background: dashboardPalette.surface, borderRadius: '8px', border: `1px solid ${dashboardPalette.border}` }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: dashboardPalette.muted, marginBottom: '0.4rem' }}>Question</div>
+              <div style={{ color: dashboardPalette.text, fontSize: '0.95rem', lineHeight: 1.5 }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {currentQuestion.question_text}
                 </ReactMarkdown>
@@ -629,7 +634,7 @@ export default function GradeAssignmentPage() {
             </div>
           ) : null}
 
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}>Student answer</div>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: dashboardPalette.muted, marginBottom: '0.35rem' }}>Student answer</div>
           {currentQuestion.question_type === 'coding' ? (
             <pre style={{ whiteSpace: 'pre-wrap', color: '#e5e7eb', background: '#0f172a', padding: '0.9rem', borderRadius: '8px', overflowX: 'auto' }}>
               {(() => {
@@ -642,27 +647,27 @@ export default function GradeAssignmentPage() {
               })()}
             </pre>
           ) : (
-            <p style={{ whiteSpace: 'pre-wrap', color: '#374151' }}>{asDisplayAnswer(currentQuestion.student_answer)}</p>
+            <p style={{ whiteSpace: 'pre-wrap', color: dashboardPalette.text }}>{asDisplayAnswer(currentQuestion.student_answer)}</p>
           )}
 
           {currentQuestion.coding_result && (
-            <div style={{ marginTop: '1rem', border: '1px solid #dbeafe', borderRadius: '10px', padding: '0.9rem', background: '#f8fbff' }}>
-              <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: '0.6rem' }}>
+            <div style={{ marginTop: '16px', border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '14px', background: dashboardPalette.surface }}>
+              <div style={{ fontWeight: 700, color: dashboardPalette.navy, marginBottom: '0.6rem' }}>
                 {`Autograder: ${String(currentQuestion.coding_result.verdict || '').replaceAll('_', ' ')}`}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
                 {(currentQuestion.coding_result.tests || []).map((test, idx) => (
-                  <div key={`${test.name}-${idx}`} style={{ border: '1px solid #dbeafe', borderRadius: '8px', padding: '0.7rem', background: 'white' }}>
+                  <div key={`${test.name}-${idx}`} style={{ border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '0.7rem', background: dashboardPalette.white }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
                       <strong>{test.name || `Test ${idx + 1}`}</strong>
                       <span style={{ color: test.status === 'passed' ? '#166534' : '#991b1b', fontWeight: 700 }}>
                         {test.status === 'passed' ? 'Passed' : 'Failed'}
                       </span>
                     </div>
-                    {test.description && <div style={{ color: '#475569', fontSize: '0.84rem', marginTop: '0.2rem' }}>{test.description}</div>}
-                    {test.message && <div style={{ color: '#334155', fontSize: '0.84rem', marginTop: '0.2rem' }}>{test.message}</div>}
+                    {test.description && <div style={{ color: dashboardPalette.muted, fontSize: '0.84rem', marginTop: '0.2rem' }}>{test.description}</div>}
+                    {test.message && <div style={{ color: dashboardPalette.text, fontSize: '0.84rem', marginTop: '0.2rem' }}>{test.message}</div>}
                     {(test.expected_output || test.received_output) && (
-                      <div style={{ marginTop: '0.3rem', display: 'grid', gap: '0.25rem', fontSize: '0.82rem', color: '#475569' }}>
+                      <div style={{ marginTop: '0.3rem', display: 'grid', gap: '0.25rem', fontSize: '0.82rem', color: dashboardPalette.muted }}>
                         {test.expected_output && <div><strong>Expected:</strong> {test.expected_output}</div>}
                         {test.received_output && <div><strong>Received:</strong> {test.received_output}</div>}
                       </div>
@@ -688,15 +693,15 @@ export default function GradeAssignmentPage() {
               <h3 style={{ ...styles.h, marginBottom: '0.75rem' }}>Rubric</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
                 {(currentQuestion.rubric_parts || []).map((part) => (
-                  <div key={part.part_index} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div key={part.part_index} style={{ border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '12px', background: dashboardPalette.surface }}>
                     <div style={{ marginBottom: '0.5rem' }}>
                       <strong>{part.label}</strong>
                     </div>
                     {(part.level_criteria && part.level_criteria.length > 0) ? (
-                      <div style={{ marginBottom: '0.6rem', fontSize: '0.875rem', color: '#374151', lineHeight: 1.5 }}>
+                      <div style={{ marginBottom: '0.6rem', fontSize: '0.875rem', color: dashboardPalette.text, lineHeight: 1.5 }}>
                         {part.level_criteria.map((level) => (
                           <div key={level.points} style={{ marginBottom: '0.25rem' }}>
-                            <span style={{ fontWeight: 700, color: '#111827' }}>+{level.points}:</span>
+                            <span style={{ fontWeight: 700, color: dashboardPalette.navy }}>+{level.points}:</span>
                             {' '}{level.criteria || '-'}
                           </div>
                         ))}
@@ -709,12 +714,12 @@ export default function GradeAssignmentPage() {
                           type="button"
                           onClick={() => updatePartScore(part.part_index, opt)}
                           style={{
-                            border: 'none',
+                            border: `1px solid ${Number(part.selected_score) === Number(opt) ? dashboardPalette.navy : dashboardPalette.border}`,
                             borderRadius: '6px',
                             padding: '0.3rem 0.55rem',
                             cursor: 'pointer',
-                            background: Number(part.selected_score) === Number(opt) ? '#2563eb' : '#f3f4f6',
-                            color: Number(part.selected_score) === Number(opt) ? 'white' : '#111827',
+                            background: Number(part.selected_score) === Number(opt) ? dashboardPalette.navy : dashboardPalette.white,
+                            color: Number(part.selected_score) === Number(opt) ? dashboardPalette.white : dashboardPalette.text,
                             fontWeight: 700,
                           }}
                         >
@@ -722,12 +727,12 @@ export default function GradeAssignmentPage() {
                         </button>
                       ))}
                     </div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem' }}>Comment (optional)</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: dashboardPalette.muted, marginBottom: '0.25rem' }}>Comment (optional)</label>
                     <textarea
                       value={part.comment || ''}
                       placeholder="Enter comment..."
                       onChange={(e) => updatePartComment(part.part_index, e.target.value)}
-                      style={{ width: '100%', minHeight: '56px', border: '1px solid #d1d5db', borderRadius: '6px', padding: '0.5rem', boxSizing: 'border-box' }}
+                      style={{ width: '100%', minHeight: '56px', border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '0.5rem', boxSizing: 'border-box', color: dashboardPalette.text, background: dashboardPalette.white }}
                     />
                   </div>
                 ))}
@@ -753,25 +758,24 @@ export default function GradeAssignmentPage() {
                   onClick={() => setQuestionIndex(idx)}
                   style={{
                     width: '100%',
-                    border: isSelected ? '2px solid #2563eb' : `1px solid ${complete ? '#86efac' : '#fca5a5'}`,
-                    background: complete ? '#f0fdf4' : '#fef2f2',
-                    borderRadius: '10px',
+                    border: `1px solid ${isSelected ? dashboardPalette.navy : dashboardPalette.border}`,
+                    background: isSelected ? dashboardPalette.surface : dashboardPalette.white,
+                    borderRadius: '8px',
                     padding: '0.7rem 0.75rem',
                     textAlign: 'left',
                     cursor: 'pointer',
-                    boxShadow: isSelected ? '0 0 0 2px rgba(37,99,235,0.14)' : 'none',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.6rem' }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.83rem', fontWeight: 800, color: complete ? '#166534' : '#991b1b' }}>
+                      <div style={{ fontSize: '0.83rem', fontWeight: 800, color: isSelected ? dashboardPalette.navy : dashboardPalette.muted }}>
                         {`Q${idx + 1}`}
                       </div>
-                      <div style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600, lineHeight: 1.35 }}>
+                      <div style={{ fontSize: '0.82rem', color: dashboardPalette.text, fontWeight: 600, lineHeight: 1.35 }}>
                         {question.question_title}
                       </div>
                     </div>
-                    <span style={{ ...styles.scoreChip, background: complete ? '#dcfce7' : '#fee2e2', color: complete ? '#166534' : '#991b1b', flexShrink: 0 }}>
+                    <span style={{ ...styles.scoreChip, background: complete ? dashboardPalette.surface : dashboardPalette.white, color: complete ? dashboardPalette.navy : dashboardPalette.muted, flexShrink: 0 }}>
                       {displayScore}
                     </span>
                   </div>
