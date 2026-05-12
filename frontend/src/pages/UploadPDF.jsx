@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { uploadPDF, getUploadStatus, cancelUploadJob } from '../api';
+import { CourseDashboardBackButton } from '../components/CourseDashboardUI';
+import { buildHashWithFrom, getFromHash, navigateBackWithFallback } from '../utils/navigation';
 
 const UploadFlowIcon = () => (
   <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -59,6 +61,8 @@ const PdfSelectedIcon = () => (
 );
 
 export default function UploadPDF() {
+  const currentHash = window.location.hash;
+  const fromHash = getFromHash(currentHash);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
@@ -185,13 +189,13 @@ export default function UploadPDF() {
         if (finalStatus.status === 'canceled') {
           if (savedCount > 0) {
             setMessage(`Canceled. Saved ${savedCount} unverified questions.`);
-            window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
+            window.location.hash = buildHashWithFrom(`verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`, currentHash);
           } else {
             setMessage('Canceled before any questions were saved.');
           }
         } else {
           setMessage(`Success! Created ${finalStatus.created_questions || 0} questions.`);
-          window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
+          window.location.hash = buildHashWithFrom(`verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`, currentHash);
         }
       } else if (result.status === "queued") {
         const sourcePath = result.storage_path;
@@ -199,7 +203,7 @@ export default function UploadPDF() {
           throw new Error('Backend did not return a storage path');
         }
         const fileName = result.filename || file.name;
-        window.location.hash = `verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`;
+        window.location.hash = buildHashWithFrom(`verify?source=${encodeURIComponent(sourcePath)}&file=${encodeURIComponent(fileName)}`, currentHash);
       }
       setFile(null);
       if (fileInputRef.current) {
@@ -234,27 +238,15 @@ export default function UploadPDF() {
     await runUpload();
   };
 
+  const handleBack = () => {
+    navigateBackWithFallback('#questions', fromHash);
+  };
+
   return (
     <div style={{ maxWidth: '980px', margin: '0 auto', paddingTop: '1.5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
-      <button
-        type="button"
-        onClick={() => {
-          window.location.hash = 'questions';
-        }}
-        style={{
-          background: '#f1f5f9',
-          color: '#334155',
-          border: '1px solid #cbd5e1',
-          borderRadius: '8px',
-          padding: '0.45rem 0.75rem',
-          fontSize: '0.85rem',
-          fontWeight: 600,
-          cursor: 'pointer',
-          marginBottom: '1rem'
-        }}
-      >
-        Back to Question Bank
-      </button>
+      <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+        Back
+      </CourseDashboardBackButton>
       <h1 style={{ fontSize: '1.25rem', fontWeight: 500, marginBottom: '0.5rem' }}>Upload PDF for Processing</h1>
       <p style={{ color: '#666' }}>
         Upload a PDF file to extract questions. The file will be processed in the background

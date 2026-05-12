@@ -20,33 +20,18 @@ import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 import Analytics from './pages/Analytics.jsx'
+import { AppChrome, AppMain, AppNavbar, CourseDashboardLoadingState } from './components/CourseDashboardUI.jsx';
 import "./index.css";
 
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
-
-// Nav link that reserves space for bold text so active state doesn't shift layout
-function NavLink({ href, active, children, style = {}, ...props }) {
-  return (
-    <a href={href} style={{ color: active ? '#fff' : '#aaa', textDecoration: 'none', fontWeight: active ? 'bold' : 'normal', ...style }} {...props}>
-      <span style={{ position: 'relative', display: 'inline-block' }}>
-        <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{children}</span>
-        <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: active ? 'bold' : 'normal' }}>{children}</span>
-      </span>
-    </a>
-  );
-}
 
 // Protected component that requires authentication
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   
   if (loading) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <p>Loading...</p>
-      </div>
-    );
+    return <CourseDashboardLoadingState>Loading...</CourseDashboardLoadingState>;
   }
   
   if (!user) {
@@ -80,7 +65,7 @@ function App() {
   const [checkingProfile, setCheckingProfile] = React.useState(true);
   const [profilePrefs, setProfilePrefs] = React.useState({
     iconShape: 'circle',
-    color: '#4f46e5',
+    color: 'transparent',
     initials: ''
   });
 
@@ -98,7 +83,7 @@ function App() {
           // Set profile preferences from backend
           setProfilePrefs({
             iconShape: info.icon_shape || 'circle',
-            color: info.icon_color || '#4f46e5',
+            color: info.icon_color || '#111827',
             initials: info.initials || getDefaultInitials(info)
           });
         } catch (error) {
@@ -143,17 +128,17 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    if (!user || page !== 'logged-out') return;
+    if (!user || loading || checkingProfile || !userInfo || page !== 'logged-out') return;
     const url = new URL(window.location.href);
     url.searchParams.delete('logged_out');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-    window.location.hash = 'student-courses';
-  }, [user, page]);
+    window.location.hash = isInstructorOrAdmin ? 'courses' : 'student-courses';
+  }, [user, loading, checkingProfile, userInfo, page, isInstructorOrAdmin]);
 
-  const handleLogoClick = () => {
+  const handleLogoClick = (event) => {
+    if (event) event.preventDefault();
     // Students land on courses; instructors/admins land on course dashboard
     window.location.hash = isInstructorOrAdmin ? 'courses' : 'student-courses';
-    window.location.reload();
   };
 
   const handleOnboardingComplete = async () => {
@@ -167,9 +152,16 @@ function App() {
   };
 
   const needsOnboarding = user && userInfo && !userInfo.profile_complete;
+  const showAppSidebar = Boolean(user && !needsOnboarding);
 
   React.useEffect(() => {
     if (!user || loading || checkingProfile || !userInfo || needsOnboarding) return;
+
+    if (page === 'post-login-default') {
+      window.location.hash = isInstructorOrAdmin ? 'courses' : 'student-courses';
+      return;
+    }
+
     if (isInstructorOrAdmin) return;
 
     const isAllowedStudentPage =
@@ -184,132 +176,27 @@ function App() {
 
   // Show loading state while checking profile
   if (user && checkingProfile) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <p>Loading...</p>
-      </div>
-    );
+    return <CourseDashboardLoadingState>Loading...</CourseDashboardLoadingState>;
+  }
+
+  if (user && page === 'post-login-default') {
+    return <CourseDashboardLoadingState>Loading...</CourseDashboardLoadingState>;
   }
 
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', margin: 0, padding: 0 }}>
-      <nav style={{
-        background: '#333',
-        color: 'white',
-        padding: '1rem',
-        display: 'flex',
-        gap: '1rem',
-        alignItems: 'center',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10000,
-        isolation: 'isolate'
-        
-      }}>
-        <h1 style={{ margin: 0 }}>
-          <a
-            href="#courses"
-            onClick={handleLogoClick}
-            style={{ fontSize: '1.5rem', cursor: 'pointer', color: 'inherit', textDecoration: 'none' }}
-          >
-            Caliber
-          </a>
-        </h1>
-
-        {/* Temporary API docs link immediately to the right of the title */}
-        <a
-          href={`${API_BASE}/docs`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: '#fff',
-            marginLeft: '0.5rem',
-            textDecoration: 'none',
-            fontSize: '0.9rem',
-            opacity: 0.95
-          }}
-        >
-          API Docs
-        </a>
-
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 1 }}>
-          {user && (
-            <>
-              {isInstructorOrAdmin && (
-                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
-              )}
-              {isInstructorOrAdmin && (
-                <NavLink href="#questions" active={page === 'questions'}>Question Bank</NavLink>
-              )}
-              {isInstructorOrAdmin && (
-                <NavLink
-                  href="#instructor/analytics"
-                  active={page === 'instructor/analytics' || page === 'analytics'}
-                >
-                  Analytics
-                </NavLink>
-              )}
-              <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
-                {isInstructorOrAdmin ? 'Student View' : 'Courses'}
-              </NavLink>
-              <a
-                href="#profile"
-                style={{
-                  color: page === 'profile' ? '#fff' : '#aaa',
-                  textDecoration: 'none',
-                  fontSize: '0.9rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}
-                title="View your profile"
-              >
-                <span
-                  style={{
-                    width: 28,
-                    height: 28,
-                    background: profilePrefs.color,
-                    color: 'white',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: '0.8rem',
-                    borderRadius: profilePrefs.iconShape === 'square' ? 6 : 9999,
-                    ...(profilePrefs.iconShape === 'hex'
-                      ? { clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)' }
-                      : {}),
-                    flexShrink: 0
-                  }}
-                >
-                  {(profilePrefs.initials || '').toUpperCase()}
-                </span>
-                <span style={{ position: 'relative', display: 'inline-block' }}>
-                  <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{user.email}</span>
-                  <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page === 'profile' ? 'bold' : 'normal' }}>{user.email}</span>
-                </span>
-              </a>
-              <button
-                type="button"
-                onClick={signOut}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid rgba(255,255,255,0.35)',
-                  borderRadius: 6,
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
-                  padding: '0.4rem 0.65rem'
-                }}
-              >
-                Log out
-              </button>
-            </>
-          )}
-        </div>
-      </nav>
-      <main style={{ padding: '2rem' }}>
+    <AppChrome>
+      {showAppSidebar ? (
+        <AppNavbar
+          apiBase={API_BASE}
+          onLogoClick={handleLogoClick}
+          user={user}
+          isInstructorOrAdmin={isInstructorOrAdmin}
+          page={page}
+          profilePrefs={profilePrefs}
+          signOut={signOut}
+        />
+      ) : null}
+      <AppMain>
         {!user && !loading ? (
           page === 'logged-out' ? <LoggedOut /> : <Auth />
         ) : needsOnboarding ? (
@@ -358,7 +245,7 @@ function App() {
             )}
             {page === 'student-courses' && (
               <ProtectedRoute>
-                <StudentCoursesPage />
+                <StudentCoursesPage isInstructorView={isInstructorOrAdmin} />
               </ProtectedRoute>
             )}
             {isInstructorOrAdmin && page.startsWith('course/') && !page.includes('/assignment/') && (
@@ -393,8 +280,8 @@ function App() {
             )}
           </>
         )}
-      </main>
-    </div>
+      </AppMain>
+    </AppChrome>
   );
 }
 

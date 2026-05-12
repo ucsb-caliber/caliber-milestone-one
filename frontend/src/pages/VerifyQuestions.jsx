@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useRef } from "react";
 import * as api from "../api";
 import QuestionCard from "../components/QuestionCard";
+import { CourseDashboardBackButton, CourseDashboardSpinnerState } from "../components/CourseDashboardUI";
+import { getFromHash, navigateBackWithFallback } from "../utils/navigation";
 
 const VerifyQuestions = () => {
   const [questions, setQuestions] = useState([]);
@@ -21,6 +23,7 @@ const VerifyQuestions = () => {
   const sourcePath = params.get("source") || params.get("file");
   const sourceFileName = params.get("file") || sourcePath;
   const orderParam = params.get("order") || "";
+  const fromHash = getFromHash(hash);
   const orderedIdsFromHash = orderParam
     .split(",")
     .map((id) => parseInt(id, 10))
@@ -187,13 +190,14 @@ const VerifyQuestions = () => {
   };
 
   const handleEditQuestion = (question) => {
-    const orderedIds = questions.map((q) => q.id).join(",");
-    const returnTo = encodeURIComponent(
-      `verify?source=${encodeURIComponent(sourcePath || "")}&file=${encodeURIComponent(sourceFileName || "")}&order=${encodeURIComponent(orderedIds)}`
-    );
+    const returnTo = encodeURIComponent(window.location.hash.replace(/^#/, '') || 'verify');
     skipCleanupRef.current = true;
     cleanupStartedRef.current = true;
     window.location.hash = `edit-question?id=${question.id}&returnTo=${returnTo}`;
+  };
+
+  const handleBack = () => {
+    navigateBackWithFallback('#questions', fromHash);
   };
 
   useEffect(() => {
@@ -234,10 +238,15 @@ const VerifyQuestions = () => {
   if (error) {
     return (
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
+        <div style={{ textAlign: 'left', marginBottom: '16px' }}>
+          <CourseDashboardBackButton onClick={handleBack}>
+            Back
+          </CourseDashboardBackButton>
+        </div>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#dc3545', marginBottom: '1rem' }}>Error</h1>
         <p style={{ color: '#666', marginBottom: '1.5rem' }}>{error}</p>
         <button
-          onClick={() => window.location.hash = "home"}
+          onClick={handleBack}
           style={{
             background: '#007bff',
             color: 'white',
@@ -248,7 +257,7 @@ const VerifyQuestions = () => {
             fontWeight: 'bold'
           }}
         >
-          Go to Home
+          Back
         </button>
       </div>
     );
@@ -257,9 +266,7 @@ const VerifyQuestions = () => {
   // Handle loading state
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem' }}>
-        Waiting for AI to generate questions from <strong>{sourceFileName}</strong>...
-      </div>
+      <CourseDashboardSpinnerState style={{ padding: '32px 0' }} />
     );
   }
 
@@ -267,6 +274,11 @@ const VerifyQuestions = () => {
   if (questions.length === 0) {
     return (
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
+        <div style={{ textAlign: 'left', marginBottom: '16px' }}>
+          <CourseDashboardBackButton onClick={handleBack}>
+            Back
+          </CourseDashboardBackButton>
+        </div>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>No Pending Questions Found</h1>
         <p style={{ color: '#666', marginBottom: '1.5rem' }}>
           There are no pending questions for <strong>{sourceFileName}</strong> at the moment. If you just uploaded this file,
@@ -288,7 +300,7 @@ const VerifyQuestions = () => {
           Retry
         </button>
         <button
-          onClick={() => window.location.hash = "questions"}
+          onClick={handleBack}
           style={{
             background: '#6c757d',
             color: 'white',
@@ -299,7 +311,7 @@ const VerifyQuestions = () => {
             fontWeight: 'bold'
           }}
         >
-          Go to Question Bank
+          Back
         </button>
       </div>
     );
@@ -307,6 +319,9 @@ const VerifyQuestions = () => {
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1rem 1rem 2rem' }}>
+      <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+        Back
+      </CourseDashboardBackButton>
       <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Review Questions</h1>
       <p style={{ color: '#666', marginBottom: '1.5rem' }}>Review these drafts before approving them.</p>
       <p style={{ color: '#4b5563', marginBottom: '1rem', fontSize: '0.9rem' }}>
@@ -425,7 +440,7 @@ const VerifyQuestions = () => {
               await cleanupUnverifiedQuestions(questions);
               skipCleanupRef.current = true;
               cleanupStartedRef.current = true;
-              window.location.hash = "questions";
+              handleBack();
             }}
             style={{
               background: '#6b7280',

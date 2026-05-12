@@ -1,5 +1,15 @@
 import React from 'react';
 import { getCourses, getInstructorAnalytics } from '../api';
+import {
+  CourseDashboardErrorBanner,
+  CourseDashboardHeader,
+  CourseDashboardSpinnerState,
+  CourseDashboardSelect,
+  PageContainer,
+  SurfaceCard,
+  SurfaceLabel,
+  dashboardPalette,
+} from '../components/CourseDashboardUI';
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -41,39 +51,39 @@ function getGradeRank(scorePercent) {
 
 function MetricsBarGraph({ rows, getLabel, maxRows = 12 }) {
   const metrics = [
-    { key: 'mean_score_percent', label: 'Mean', color: '#2563eb' },
-    { key: 'median_score_percent', label: 'Median', color: '#7c3aed' },
-    { key: 'min_score_percent', label: 'Min', color: '#dc2626' },
-    { key: 'max_score_percent', label: 'Max', color: '#16a34a' },
+    { key: 'mean_score_percent', label: 'Mean', color: dashboardPalette.navy },
+    { key: 'median_score_percent', label: 'Median', color: dashboardPalette.goldDark },
+    { key: 'min_score_percent', label: 'Min', color: dashboardPalette.dangerText },
+    { key: 'max_score_percent', label: 'Max', color: dashboardPalette.navyMid },
   ];
   const displayRows = (rows || []).slice(0, maxRows);
   if (!displayRows.length) {
-    return <div style={{ color: '#64748b', fontSize: '0.9rem' }}>No data available for bar graph.</div>;
+    return <div style={{ color: dashboardPalette.muted, fontSize: '0.9rem' }}>No data available for bar graph.</div>;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
       <div style={{ display: 'flex', gap: '0.9rem', flexWrap: 'wrap' }}>
         {metrics.map((metric) => (
-          <div key={metric.key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: '#475569', fontWeight: 700 }}>
+          <div key={metric.key} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: dashboardPalette.muted, fontWeight: 700 }}>
             <span style={{ width: 12, height: 12, borderRadius: 2, background: metric.color, display: 'inline-block' }} />
             {metric.label}
           </div>
         ))}
       </div>
       {displayRows.map((row, idx) => (
-        <div key={`${getLabel(row)}-${idx}`} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.45rem 0.55rem' }}>
-          <div style={{ marginBottom: '0.32rem', fontWeight: 700, color: '#0f172a', fontSize: '0.85rem' }}>{getLabel(row)}</div>
+        <div key={`${getLabel(row)}-${idx}`} style={{ border: `1px solid ${dashboardPalette.border}`, borderRadius: 8, padding: '0.45rem 0.55rem' }}>
+          <div style={{ marginBottom: '0.32rem', fontWeight: 700, color: dashboardPalette.navy, fontSize: '0.85rem' }}>{getLabel(row)}</div>
           <div style={{ display: 'grid', gap: '0.26rem' }}>
             {metrics.map((metric) => {
               const val = row[metric.key] == null || !Number.isFinite(Number(row[metric.key])) ? 0 : Number(row[metric.key]);
               return (
                 <div key={metric.key} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 56px', alignItems: 'center', gap: '0.45rem' }}>
-                  <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>{metric.label}</span>
-                  <div style={{ height: 10, borderRadius: 999, background: '#eef2ff', overflow: 'hidden' }}>
+                  <span style={{ fontSize: '0.74rem', color: dashboardPalette.muted, fontWeight: 700 }}>{metric.label}</span>
+                  <div style={{ height: 10, borderRadius: 999, background: dashboardPalette.border, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${clamp(val, 0, 100)}%`, background: metric.color }} />
                   </div>
-                  <span style={{ fontSize: '0.74rem', color: '#334155', fontWeight: 700, textAlign: 'right' }}>{formatPercent(val)}</span>
+                  <span style={{ fontSize: '0.74rem', color: dashboardPalette.text, fontWeight: 700, textAlign: 'right' }}>{formatPercent(val)}</span>
                 </div>
               );
             })}
@@ -86,7 +96,7 @@ function MetricsBarGraph({ rows, getLabel, maxRows = 12 }) {
 
 function scoreColorMeta(scorePercent) {
   if (scorePercent == null || !Number.isFinite(Number(scorePercent))) {
-    return { background: '#f8fafc', color: '#334155', border: '#e2e8f0' };
+    return { background: dashboardPalette.surface, color: dashboardPalette.text, border: dashboardPalette.border };
   }
   const normalized = clamp(Number(scorePercent) / 100, 0, 1);
   if (normalized >= 0.5) {
@@ -159,14 +169,13 @@ function StatCard({ label, value, scorePercent = null }) {
     <div
       style={{
         padding: '0.8rem 0.95rem',
-        borderRadius: 12,
+        borderRadius: 8,
         border: `1px solid ${colorMeta.border}`,
         background: colorMeta.background,
         minHeight: 84,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.55)',
       }}
     >
-      <div style={{ fontSize: '0.75rem', color: colorMeta.labelColor, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>
+      <div style={{ fontSize: '0.8rem', color: colorMeta.labelColor, fontWeight: 600 }}>
         {label}
       </div>
       <div style={{ marginTop: '0.35rem', fontSize: '1.35rem', fontWeight: 800, color: colorMeta.color }}>
@@ -199,10 +208,10 @@ function ScoreBandBarChart({ data }) {
         return (
           <g key={bar.label}>
             <rect x={x} y={y} width={barWidth} height={height} fill={fill} rx="8" />
-            <text x={x + barWidth / 2} y={y - 8} textAnchor="middle" style={{ fill: '#0f172a', fontSize: 12, fontWeight: 700 }}>
+            <text x={x + barWidth / 2} y={y - 8} textAnchor="middle" style={{ fill: dashboardPalette.navy, fontSize: 12, fontWeight: 700 }}>
               {bar.count}
             </text>
-            <text x={x + barWidth / 2} y={198} textAnchor="middle" style={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}>
+            <text x={x + barWidth / 2} y={198} textAnchor="middle" style={{ fill: dashboardPalette.muted, fontSize: 12, fontWeight: 600 }}>
               {bar.label}
             </text>
           </g>
@@ -215,7 +224,7 @@ function ScoreBandBarChart({ data }) {
 function TrendSeriesChart({ rows }) {
   const series = (rows || []).filter((row) => row.average_score_percent != null);
   if (!series.length) {
-    return <div style={{ color: '#64748b', fontSize: '0.9rem' }}>No trend data available for this filter.</div>;
+    return <div style={{ color: dashboardPalette.muted, fontSize: '0.9rem' }}>No trend data available for this filter.</div>;
   }
   const width = 560;
   const height = 240;
@@ -240,7 +249,7 @@ function TrendSeriesChart({ rows }) {
     <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 250 }}>
       <line x1={left} y1={height - bottom} x2={width - right} y2={height - bottom} stroke="#94a3b8" strokeWidth="1" />
       <line x1={left} y1={top} x2={left} y2={height - bottom} stroke="#94a3b8" strokeWidth="1" />
-      <polyline points={polyline} fill="none" stroke="#2563eb" strokeWidth="3" />
+      <polyline points={polyline} fill="none" stroke={dashboardPalette.navy} strokeWidth="3" />
       {series.map((point, index) => {
         const { x, y } = toPoint(point.average_score_percent || 0, index);
         const colorMeta = scoreColorMeta(point.average_score_percent || 0);
@@ -250,7 +259,7 @@ function TrendSeriesChart({ rows }) {
           <g key={`${label}-${index}`}>
             <circle cx={x} cy={y} r="4.5" fill={colorMeta.background} stroke="#1e3a8a" />
             <title>{`${label}: ${formatPercent(point.average_score_percent)}`}</title>
-            <text x={x} y={height - 14} textAnchor="middle" style={{ fill: '#475569', fontSize: 10 }}>
+            <text x={x} y={height - 14} textAnchor="middle" style={{ fill: dashboardPalette.muted, fontSize: 10 }}>
               {shortLabel}
             </text>
           </g>
@@ -338,12 +347,10 @@ export default function Analytics() {
   const tableHeaderCell = {
     textAlign: 'left',
     fontSize: '0.75rem',
-    fontWeight: 800,
-    color: '#64748b',
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
+    fontWeight: 700,
+    color: dashboardPalette.muted,
     padding: '0.6rem 0.55rem',
-    borderBottom: '1px solid #e2e8f0',
+    borderBottom: `1px solid ${dashboardPalette.border}`,
     whiteSpace: 'nowrap',
   };
 
@@ -399,11 +406,9 @@ export default function Analytics() {
             background: 'transparent',
             padding: 0,
             margin: 0,
-            color: '#64748b',
+            color: dashboardPalette.muted,
             fontSize: '0.75rem',
-            fontWeight: 800,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
+            fontWeight: 700,
             cursor: 'pointer',
             whiteSpace: 'nowrap',
           }}
@@ -463,26 +468,23 @@ export default function Analytics() {
   const headerCourseName = analytics?.course_name || courses.find((course) => String(course.id) === String(courseId))?.course_name || 'Analytics';
 
   return (
-    <div style={{ maxWidth: 1480, margin: '0 auto', padding: '0.2rem 0.4rem 2rem' }}>
-      <h1 style={{ margin: 0, fontSize: '2.2rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.025em', lineHeight: 1.08 }}>
-        Instructor Analytics
-      </h1>
-      <p style={{ margin: '0.45rem 0 0.95rem 0', color: '#475569', fontSize: '0.95rem' }}>
-        Course-level performance insights with score trends, at-risk detection, and assignment analytics.
-      </p>
+    <PageContainer maxWidth="1480px">
+      <CourseDashboardHeader
+        title="Instructor Analytics"
+        subtitle="Course-level performance insights with score trends, at-risk detection, and assignment analytics."
+      />
 
-      <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.85rem', background: '#f8fafc', marginBottom: '1rem' }}>
+      <SurfaceCard style={{ marginBottom: '1rem', padding: '0.85rem' }}>
         <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: '#334155', fontWeight: 700 }}>
-            Course
-            <select
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: dashboardPalette.text, fontWeight: 700 }}>
+            <SurfaceLabel style={{ marginBottom: 0 }}>Course</SurfaceLabel>
+            <CourseDashboardSelect
               value={courseId}
               onChange={(e) => {
                 setCourseId(e.target.value);
                 setAssignmentId('all');
               }}
               disabled={loadingCourses}
-              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '0.45rem 0.55rem', background: 'white' }}
             >
               {!courses.length ? <option value="">No courses</option> : null}
               {courses.map((course) => (
@@ -490,55 +492,49 @@ export default function Analytics() {
                   {course.course_name} ({course.course_code})
                 </option>
               ))}
-            </select>
+            </CourseDashboardSelect>
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: '#334155', fontWeight: 700 }}>
-            Assignment
-            <select
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: dashboardPalette.text, fontWeight: 700 }}>
+            <SurfaceLabel style={{ marginBottom: 0 }}>Assignment</SurfaceLabel>
+            <CourseDashboardSelect
               value={assignmentId}
               onChange={(e) => setAssignmentId(e.target.value)}
               disabled={!analytics && loadingAnalytics}
-              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '0.45rem 0.55rem', background: 'white' }}
             >
               <option value="all">All assignments</option>
               {(analytics?.assignment_options || []).map((option) => (
                 <option key={option.id} value={option.id}>{option.title}</option>
               ))}
-            </select>
+            </CourseDashboardSelect>
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: '#334155', fontWeight: 700 }}>
-            Date Range
-            <select
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: dashboardPalette.text, fontWeight: 700 }}>
+            <SurfaceLabel style={{ marginBottom: 0 }}>Date Range</SurfaceLabel>
+            <CourseDashboardSelect
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
-              style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '0.45rem 0.55rem', background: 'white' }}
             >
               <option value="7d">Last 7 days</option>
               <option value="30d">Last 30 days</option>
               <option value="all">All time</option>
-            </select>
+            </CourseDashboardSelect>
           </label>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <div style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 8, padding: '0.45rem 0.55rem', background: 'white' }}>
-              <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, letterSpacing: '0.05em' }}>
-                Current Scope
-              </div>
-              <div style={{ marginTop: '0.3rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ width: '100%', border: `1px solid ${dashboardPalette.border}`, borderRadius: 8, padding: '0.45rem 0.55rem', background: dashboardPalette.white }}>
+              <SurfaceLabel style={{ marginBottom: 0 }}>Current scope</SurfaceLabel>
+              <div style={{ marginTop: '0.3rem', fontWeight: 700, color: dashboardPalette.navy, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {headerCourseName}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </SurfaceCard>
 
       {error ? (
-        <div style={{ marginBottom: '1rem', borderRadius: 10, border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b', padding: '0.65rem 0.75rem', fontWeight: 600 }}>
-          {error}
-        </div>
+        <CourseDashboardErrorBanner>{error}</CourseDashboardErrorBanner>
       ) : null}
 
       {loadingAnalytics || loadingCourses ? (
-        <div style={{ color: '#475569', fontWeight: 600 }}>Loading analytics...</div>
+        <CourseDashboardSpinnerState style={{ padding: '16px 0' }} />
       ) : null}
 
       {!loadingAnalytics && analytics ? (
@@ -551,18 +547,18 @@ export default function Analytics() {
             <StatCard label="Grade Std Dev" value={formatPercent(summary.stddev_score_percent)} scorePercent={summary.stddev_score_percent == null ? null : (100 - Number(summary.stddev_score_percent))} />
           </div>
 
-          <section style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.75rem', background: 'white', overflowX: 'auto', marginBottom: '1rem' }}>
+          <SurfaceCard style={{ overflowX: 'auto', marginBottom: '1rem', padding: '0.75rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Average question score by assignment</h2>
-              <label style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 700 }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', color: dashboardPalette.navy }}>Average question score by assignment</h2>
+              <label style={{ fontSize: '0.78rem', color: dashboardPalette.muted, fontWeight: 700 }}>
                 View{' '}
-                <select value={assignmentQuestionView} onChange={(e) => setAssignmentQuestionView(e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '0.25rem 0.4rem', background: 'white', marginLeft: '0.2rem' }}>
+                <CourseDashboardSelect value={assignmentQuestionView} onChange={(e) => setAssignmentQuestionView(e.target.value)} style={{ minWidth: '120px', height: '32px', marginLeft: '0.2rem', padding: '0 8px' }}>
                   <option value="table">Table</option>
                   <option value="bar">Bar graph</option>
-                </select>
+                </CourseDashboardSelect>
               </label>
             </div>
-            <p style={{ margin: '0.35rem 0 0.55rem 0', color: '#64748b', fontSize: '0.86rem' }}>
+            <p style={{ margin: '0.35rem 0 0.55rem 0', color: dashboardPalette.muted, fontSize: '0.86rem' }}>
               Weighted average question score for each assignment in the current filter scope.
             </p>
             {assignmentQuestionView === 'table' ? (
@@ -581,23 +577,23 @@ export default function Analytics() {
                 {sortedAssignmentQuestionRows.map((row) => {
                   const scoreMeta = scoreColorMeta(row.mean_score_percent);
                   return (
-                    <tr key={row.assignment_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.assignment_title}</td>
+                    <tr key={row.assignment_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
+                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.assignment_title}</td>
                       <td style={{ padding: '0.58rem 0.55rem' }}>
                         <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${scoreMeta.border}`, background: scoreMeta.background, color: scoreMeta.color, fontWeight: 700 }}>
                           {formatPercent(row.mean_score_percent)}
                         </span>
                       </td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.median_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.min_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.max_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.median_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
                     </tr>
                   );
                 })}
                 {!sortedAssignmentQuestionRows.length ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: '0.7rem 0.55rem', color: '#64748b' }}>No assignment question-score data available.</td>
+                    <td colSpan={6} style={{ padding: '0.7rem 0.55rem', color: dashboardPalette.muted }}>No assignment question-score data available.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -609,29 +605,29 @@ export default function Analytics() {
                 maxRows={12}
               />
             )}
-          </section>
+          </SurfaceCard>
 
           <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', marginBottom: '1rem' }}>
-            <section style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.75rem', background: 'white' }}>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Class-level score distribution</h2>
-              <p style={{ margin: '0.35rem 0 0.4rem 0', color: '#64748b', fontSize: '0.86rem' }}>
+            <SurfaceCard style={{ padding: '0.75rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', color: dashboardPalette.navy }}>Class-level score distribution</h2>
+              <p style={{ margin: '0.35rem 0 0.4rem 0', color: dashboardPalette.muted, fontSize: '0.86rem' }}>
                 Score bands for filtered submissions.
               </p>
               <ScoreBandBarChart data={analytics.score_distribution} />
-            </section>
-            <section style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.75rem', background: 'white' }}>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Grade trend over time</h2>
-              <p style={{ margin: '0.35rem 0 0.4rem 0', color: '#64748b', fontSize: '0.86rem' }}>
+            </SurfaceCard>
+            <SurfaceCard style={{ padding: '0.75rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', color: dashboardPalette.navy }}>Grade trend over time</h2>
+              <p style={{ margin: '0.35rem 0 0.4rem 0', color: dashboardPalette.muted, fontSize: '0.86rem' }}>
                 Trend line of average grade percentages over time.
               </p>
               <TrendSeriesChart rows={trendSeries} />
-            </section>
+            </SurfaceCard>
           </div>
 
           <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'minmax(280px, 0.85fr) minmax(0, 2fr)', marginBottom: '1rem' }}>
-            <section style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.75rem', background: 'white' }}>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Students at risk</h2>
-              <p style={{ margin: '0.35rem 0 0.55rem 0', color: '#64748b', fontSize: '0.86rem' }}>
+            <SurfaceCard style={{ padding: '0.75rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', color: dashboardPalette.navy }}>Students at risk</h2>
+              <p style={{ margin: '0.35rem 0 0.55rem 0', color: dashboardPalette.muted, fontSize: '0.86rem' }}>
                 Students with 2+ consecutive submissions below 70%.
               </p>
               {!riskRows.length ? (
@@ -656,20 +652,20 @@ export default function Analytics() {
                   })}
                 </div>
               )}
-            </section>
+            </SurfaceCard>
 
-            <section style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.75rem', background: 'white', overflowX: 'auto' }}>
+            <SurfaceCard style={{ padding: '0.75rem', overflowX: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Per-student trend table</h2>
-                <label style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 700 }}>
+                <h2 style={{ margin: 0, fontSize: '1.05rem', color: dashboardPalette.navy }}>Per-student trend table</h2>
+                <label style={{ fontSize: '0.78rem', color: dashboardPalette.muted, fontWeight: 700 }}>
                   View{' '}
-                  <select value={studentTrendView} onChange={(e) => setStudentTrendView(e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '0.25rem 0.4rem', background: 'white', marginLeft: '0.2rem' }}>
+                  <CourseDashboardSelect value={studentTrendView} onChange={(e) => setStudentTrendView(e.target.value)} style={{ minWidth: '120px', height: '32px', marginLeft: '0.2rem', padding: '0 8px' }}>
                     <option value="table">Table</option>
                     <option value="bar">Bar graph</option>
-                  </select>
+                  </CourseDashboardSelect>
                 </label>
               </div>
-              <p style={{ margin: '0.35rem 0 0.55rem 0', color: '#64748b', fontSize: '0.86rem' }}>
+              <p style={{ margin: '0.35rem 0 0.55rem 0', color: dashboardPalette.muted, fontSize: '0.86rem' }}>
                 Submission count, average score, and latest activity per student.
               </p>
               {studentTrendView === 'table' ? (
@@ -691,10 +687,10 @@ export default function Analytics() {
                   {sortedPerStudentRows.map((row) => {
                     const colorMeta = scoreColorMeta(row.average_score_percent);
                     return (
-                      <tr key={row.student_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.student_name}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{row.submission_count}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155', fontWeight: 700 }}>
+                      <tr key={row.student_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
+                        <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.student_name}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{row.submission_count}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text, fontWeight: 700 }}>
                           {getLetterGrade(row.average_score_percent)}
                         </td>
                         <td style={{ padding: '0.58rem 0.55rem' }}>
@@ -702,11 +698,11 @@ export default function Analytics() {
                             {formatPercent(row.average_score_percent)}
                           </span>
                         </td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.median_score_percent)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.min_score_percent)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.max_score_percent)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatDate(row.last_submission_date)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.median_score_percent)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatDate(row.last_submission_date)}</td>
                       </tr>
                     );
                   })}
@@ -719,21 +715,21 @@ export default function Analytics() {
                   maxRows={16}
                 />
               )}
-            </section>
+            </SurfaceCard>
           </div>
 
-          <section style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '0.75rem', background: 'white', overflowX: 'auto' }}>
+          <SurfaceCard style={{ padding: '0.75rem', overflowX: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Per-assignment summary</h2>
-              <label style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 700 }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', color: dashboardPalette.navy }}>Per-assignment summary</h2>
+              <label style={{ fontSize: '0.78rem', color: dashboardPalette.muted, fontWeight: 700 }}>
                 View{' '}
-                <select value={assignmentSummaryView} onChange={(e) => setAssignmentSummaryView(e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '0.25rem 0.4rem', background: 'white', marginLeft: '0.2rem' }}>
+                <CourseDashboardSelect value={assignmentSummaryView} onChange={(e) => setAssignmentSummaryView(e.target.value)} style={{ minWidth: '120px', height: '32px', marginLeft: '0.2rem', padding: '0 8px' }}>
                   <option value="table">Table</option>
                   <option value="bar">Bar graph</option>
-                </select>
+                </CourseDashboardSelect>
               </label>
             </div>
-            <p style={{ margin: '0.35rem 0 0.55rem 0', color: '#64748b', fontSize: '0.86rem' }}>
+            <p style={{ margin: '0.35rem 0 0.55rem 0', color: dashboardPalette.muted, fontSize: '0.86rem' }}>
               Assignment-level score stats and below-target rates.
             </p>
             {assignmentSummaryView === 'table' ? (
@@ -755,18 +751,18 @@ export default function Analytics() {
                   const scoreMeta = scoreColorMeta(row.mean_score_percent);
                   const flaggedMeta = scoreColorMeta(100 - Number(row.below_target_percent || 0));
                   return (
-                    <tr key={row.assignment_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.assignment_title}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{row.submission_count}</td>
+                    <tr key={row.assignment_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
+                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.assignment_title}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{row.submission_count}</td>
                       <td style={{ padding: '0.58rem 0.55rem' }}>
                         <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${scoreMeta.border}`, background: scoreMeta.background, color: scoreMeta.color, fontWeight: 700 }}>
                           {formatPercent(row.mean_score_percent)}
                         </span>
                       </td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.median_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.min_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.max_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.median_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
                       <td style={{ padding: '0.58rem 0.55rem' }}>
                         <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${flaggedMeta.border}`, background: flaggedMeta.background, color: flaggedMeta.color, fontWeight: 700 }}>
                           {formatPercent(row.below_target_percent)}
@@ -784,9 +780,9 @@ export default function Analytics() {
                 maxRows={12}
               />
             )}
-          </section>
+          </SurfaceCard>
         </>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }

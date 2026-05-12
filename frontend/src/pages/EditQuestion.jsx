@@ -8,6 +8,7 @@ import { getQuestion, updateQuestion, uploadImage, getImageSignedUrl } from '../
 import StudentPreview from '../components/StudentPreview';
 import CodingQuestionBuilder from '../components/CodingQuestionBuilder';
 import { createDefaultCodingConfig, normalizeEditableCodingConfig, sanitizeCodingConfigForSave, getQuestionCodingConfig, isCodingQuestion, getCodingAuthoringError } from '../utils/coding';
+import { CourseDashboardBackButton, CourseDashboardSpinnerState } from '../components/CourseDashboardUI';
 
 const DEFAULT_RUBRIC_PARTS = [
   {
@@ -61,6 +62,9 @@ export default function EditQuestion() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [viewMode, setViewMode] = useState('edit');
+  const handleBack = () => {
+    window.location.hash = returnTo || 'questions';
+  };
 
   useEffect(() => {
     let active = true;
@@ -646,8 +650,13 @@ export default function EditQuestion() {
   if (loadingQuestion) {
     return (
       <div style={styles.container}>
+        <div style={styles.wrapper}>
+          <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+            Back
+          </CourseDashboardBackButton>
+        </div>
         <div style={{ ...styles.wrapper, textAlign: 'center', padding: '2rem 0' }}>
-          <div style={styles.card}>Loading question...</div>
+          <CourseDashboardSpinnerState />
         </div>
       </div>
     );
@@ -657,10 +666,10 @@ export default function EditQuestion() {
     return (
       <div style={styles.container}>
         <div style={styles.wrapper}>
-          <div style={styles.errorBanner}>⚠️ No question ID provided.</div>
-          <button type="button" style={styles.secondaryBtn} onClick={() => { window.location.hash = returnTo || 'questions'; }}>
+          <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
             Back
-          </button>
+          </CourseDashboardBackButton>
+          <div style={styles.errorBanner}>⚠️ No question ID provided.</div>
         </div>
       </div>
     );
@@ -669,6 +678,9 @@ export default function EditQuestion() {
   return (
     <div style={styles.container}>
       <div style={styles.wrapper}>
+        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
 
         {/* Header */}
         <header style={styles.header}>
@@ -676,7 +688,7 @@ export default function EditQuestion() {
             <h1 style={{ margin: 0, fontSize: '28px', color: '#1a202c' }}>Edit Question</h1>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button type="button" style={styles.secondaryBtn} onClick={() => { window.location.hash = returnTo || 'questions'; }}>Cancel</button>
+            <button type="button" style={styles.secondaryBtn} onClick={handleBack}>Cancel</button>
             <button type="submit" onClick={handleSubmit} style={styles.primaryBtn} disabled={loading}>
               {loading ? 'Saving...' : 'Save Changes'}
             </button>

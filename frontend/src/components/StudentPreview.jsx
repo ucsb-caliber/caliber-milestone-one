@@ -7,6 +7,8 @@ import 'katex/dist/katex.min.css';
 import { getImageSignedUrl, runCodingQuestion } from '../api';
 import CodeEditor from './CodeEditor';
 import { getQuestionCodingConfig, isCodingQuestion } from '../utils/coding';
+import { dashboardPalette } from './CourseDashboardUI';
+import useBodyScrollLock from '../hooks/useBodyScrollLock';
 
 /**
  * StudentPreview - A reusable component to display an assignment as students would see it
@@ -33,6 +35,8 @@ export default function StudentPreview({
   closeButtonText = 'Back to Course',
   secondaryActionText = '',
   onSecondaryAction = null,
+  assignmentBannerLeading,
+  assignmentBannerActions,
   initialAnswers,
   initialQuestionIndex,
   initialSubmitted,
@@ -49,6 +53,8 @@ export default function StudentPreview({
   submitButtonText = 'Submit Assignment',
   showPrevNextButtons = true
 }) {
+  useBodyScrollLock(!inline);
+
   const [currentIndex, setCurrentIndex] = useState(Number.isInteger(initialQuestionIndex) ? initialQuestionIndex : 0);
   const [answers, setAnswers] = useState(initialAnswers || {});
   const [submitted, setSubmitted] = useState(Boolean(initialSubmitted));
@@ -225,12 +231,12 @@ export default function StudentPreview({
   // Get type badge color
   const getTypeBadgeStyle = (type) => {
     const colors = {
-      'Homework': { bg: '#eef2ff', color: '#4f46e5' },
-      'Quiz': { bg: '#fef3c7', color: '#d97706' },
-      'Lab': { bg: '#d1fae5', color: '#059669' },
-      'Exam': { bg: '#fee2e2', color: '#dc2626' },
-      'Reading': { bg: '#e0e7ff', color: '#4338ca' },
-      'Other': { bg: '#f3f4f6', color: '#6b7280' }
+      'Homework': { bg: dashboardPalette.surface, color: dashboardPalette.navy },
+      'Quiz': { bg: '#fff7e0', color: '#8a5a00' },
+      'Lab': { bg: '#eef6f0', color: '#215b39' },
+      'Exam': { bg: '#fef2f2', color: '#b91c1c' },
+      'Reading': { bg: '#eef4fa', color: dashboardPalette.navyMid },
+      'Other': { bg: dashboardPalette.surface, color: dashboardPalette.muted }
     };
     return colors[type] || colors['Other'];
   };
@@ -240,43 +246,47 @@ export default function StudentPreview({
   const styles = {
     overlay: {
       position: 'fixed',
-      top: '72px',
+      top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      background: '#f3f4f6',
+      background: dashboardPalette.surface,
       zIndex: 1000,
-      overflow: 'auto'
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      overscrollBehavior: 'contain',
+      WebkitOverflowScrolling: 'touch',
+      touchAction: 'pan-y'
     },
     container: {
-      maxWidth: '800px',
+      maxWidth: '960px',
       margin: '0 auto',
-      padding: '2rem',
+      padding: '24px',
       minHeight: '100vh',
       display: 'flex',
       flexDirection: 'column'
     },
     previewBanner: {
-      background: '#4f46e5',
-      color: 'white',
+      background: dashboardPalette.white,
+      color: dashboardPalette.text,
       padding: '0.75rem 1rem',
       borderRadius: '8px',
       marginBottom: '1.5rem',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      boxShadow: '0 2px 4px rgba(79, 70, 229, 0.3)'
+      border: `1px solid ${dashboardPalette.border}`
     },
     assignmentBanner: {
-      background: '#374151',
-      color: 'white',
+      background: dashboardPalette.white,
+      color: dashboardPalette.text,
       padding: '0.75rem 1rem',
       borderRadius: '8px',
       marginBottom: '1.5rem',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      boxShadow: '0 2px 4px rgba(55, 65, 81, 0.3)'
+      border: `1px solid ${dashboardPalette.border}`
     },
     bannerText: {
       display: 'flex',
@@ -286,32 +296,30 @@ export default function StudentPreview({
     },
     closeButton: {
       padding: '0.5rem 1rem',
-      background: 'rgba(255,255,255,0.2)',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
+      background: dashboardPalette.white,
+      color: dashboardPalette.text,
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
-      fontWeight: '500',
-      transition: 'background 0.15s'
+      fontWeight: '600'
     },
     secondaryButton: {
       padding: '0.5rem 1rem',
-      background: 'rgba(255,255,255,0.2)',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
+      background: dashboardPalette.white,
+      color: dashboardPalette.text,
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
-      fontWeight: '500',
-      transition: 'background 0.15s'
+      fontWeight: '600'
     },
     header: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '1.5rem',
+      background: dashboardPalette.white,
+      borderRadius: '8px',
+      padding: '1rem 1.25rem',
       marginBottom: '1rem',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+      border: `1px solid ${dashboardPalette.border}`
     },
     titleRow: {
       display: 'flex',
@@ -323,13 +331,14 @@ export default function StudentPreview({
       margin: 0,
       fontSize: '1.5rem',
       fontWeight: '700',
-      color: '#111827'
+      color: dashboardPalette.navy
     },
     typeBadge: {
       padding: '0.375rem 0.75rem',
-      borderRadius: '6px',
-      fontSize: '0.875rem',
-      fontWeight: '600'
+      borderRadius: '8px',
+      fontSize: '0.82rem',
+      fontWeight: '600',
+      border: `1px solid ${dashboardPalette.border}`
     },
     progressSection: {
       marginTop: '1rem'
@@ -339,44 +348,43 @@ export default function StudentPreview({
       justifyContent: 'space-between',
       marginBottom: '0.5rem',
       fontSize: '0.875rem',
-      color: '#6b7280'
+      color: dashboardPalette.muted
     },
     progressBar: {
       height: '8px',
-      background: '#e5e7eb',
+      background: dashboardPalette.border,
       borderRadius: '4px',
       overflow: 'hidden'
     },
     progressFill: {
       height: '100%',
-      background: '#4f46e5',
-      borderRadius: '4px',
-      transition: 'width 0.3s ease'
+      background: dashboardPalette.navy,
+      borderRadius: '4px'
     },
     questionCard: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '2rem',
+      background: dashboardPalette.white,
+      borderRadius: '8px',
+      padding: '1.5rem',
       marginBottom: '1rem',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+      border: `1px solid ${dashboardPalette.border}`,
       flex: 1
     },
     questionNumber: {
       fontSize: '0.875rem',
       fontWeight: '600',
-      color: '#6b7280',
+      color: dashboardPalette.muted,
       marginBottom: '0.5rem'
     },
     questionTitle: {
-      fontSize: '1.25rem',
+      fontSize: '1.15rem',
       fontWeight: '700',
-      color: '#111827',
+      color: dashboardPalette.navy,
       marginBottom: '1rem'
     },
     questionText: {
-      fontSize: '1rem',
-      lineHeight: '1.7',
-      color: '#374151',
+      fontSize: '0.98rem',
+      lineHeight: '1.6',
+      color: dashboardPalette.text,
       marginBottom: '1.5rem'
     },
     questionImage: {
@@ -384,7 +392,7 @@ export default function StudentPreview({
       height: 'auto',
       maxHeight: '400px',
       borderRadius: '8px',
-      border: '1px solid #e5e7eb',
+      border: `1px solid ${dashboardPalette.border}`,
       marginBottom: '1.5rem',
       objectFit: 'contain'
     },
@@ -394,42 +402,41 @@ export default function StudentPreview({
     answerLabel: {
       fontSize: '0.875rem',
       fontWeight: '600',
-      color: '#374151',
+      color: dashboardPalette.text,
       marginBottom: '1rem'
     },
     choiceButton: {
       width: '100%',
-      padding: '1rem 1.25rem',
-      marginBottom: '0.75rem',
-      border: '2px solid #e5e7eb',
+      padding: '0.9rem 1rem',
+      marginBottom: '0.6rem',
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
-      background: 'white',
+      background: dashboardPalette.white,
       cursor: 'pointer',
       textAlign: 'left',
-      fontSize: '1rem',
-      color: '#374151',
-      transition: 'all 0.15s',
+      fontSize: '0.95rem',
+      color: dashboardPalette.text,
       display: 'flex',
       alignItems: 'center',
       gap: '0.75rem'
     },
     choiceButtonSelected: {
-      border: '2px solid #4f46e5',
-      background: '#eef2ff'
+      border: `1px solid ${dashboardPalette.navy}`,
+      background: '#eef4fa'
     },
     choiceButtonCorrect: {
-      border: '2px solid #10b981',
-      background: '#d1fae5'
+      border: '1px solid #86efac',
+      background: '#eef6f0'
     },
     choiceButtonIncorrect: {
-      border: '2px solid #ef4444',
-      background: '#fee2e2'
+      border: '1px solid #fecaca',
+      background: '#fef2f2'
     },
     choiceIndicator: {
       width: '24px',
       height: '24px',
-      borderRadius: '50%',
-      border: '2px solid #d1d5db',
+      borderRadius: '8px',
+      border: `1px solid ${dashboardPalette.border}`,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -438,20 +445,19 @@ export default function StudentPreview({
       flexShrink: 0
     },
     choiceIndicatorSelected: {
-      border: '2px solid #4f46e5',
-      background: '#4f46e5',
-      color: 'white'
+      border: `1px solid ${dashboardPalette.navy}`,
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white
     },
     textArea: {
       width: '100%',
       minHeight: '150px',
       padding: '1rem',
-      border: '2px solid #e5e7eb',
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
-      fontSize: '1rem',
+      fontSize: '0.95rem',
       fontFamily: 'inherit',
       resize: 'vertical',
-      transition: 'border-color 0.15s',
       boxSizing: 'border-box'
     },
     codeMetaRow: {
@@ -468,34 +474,35 @@ export default function StudentPreview({
       flexWrap: 'wrap'
     },
     codeBadge: {
-      background: '#eff6ff',
-      color: '#1d4ed8',
-      borderRadius: '999px',
-      padding: '0.35rem 0.7rem',
+      background: dashboardPalette.surface,
+      color: dashboardPalette.navy,
+      borderRadius: '8px',
+      padding: '0.35rem 0.6rem',
       fontSize: '0.8rem',
-      fontWeight: '700'
+      fontWeight: '700',
+      border: `1px solid ${dashboardPalette.border}`
     },
     runButton: {
-      border: 'none',
-      background: '#2563eb',
-      color: 'white',
+      border: `1px solid ${dashboardPalette.navy}`,
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white,
       borderRadius: '8px',
       padding: '0.7rem 1rem',
-      fontSize: '0.9rem',
+      fontSize: '0.85rem',
       fontWeight: '700',
       cursor: 'pointer'
     },
     codingResultPanel: {
       marginTop: '1rem',
-      border: '1px solid #dbeafe',
-      background: '#f8fbff',
-      borderRadius: '10px',
+      border: `1px solid ${dashboardPalette.border}`,
+      background: dashboardPalette.surface,
+      borderRadius: '8px',
       padding: '1rem'
     },
     codingResultHeading: {
       fontSize: '0.9rem',
       fontWeight: '700',
-      color: '#1e3a8a',
+      color: dashboardPalette.navy,
       marginBottom: '0.75rem'
     },
     codingOutput: {
@@ -515,21 +522,19 @@ export default function StudentPreview({
       marginTop: '0.6rem'
     },
     sampleIOCard: {
-      background: 'white',
-      border: '1px solid #e2e8f0',
+      background: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
       padding: '0.55rem 0.65rem'
     },
     sampleIOLabel: {
-      color: '#64748b',
+      color: dashboardPalette.muted,
       fontSize: '0.76rem',
       fontWeight: '700',
-      textTransform: 'uppercase',
-      letterSpacing: '0.04em',
       marginBottom: '0.25rem'
     },
     sampleIOValue: {
-      color: '#0f172a',
+      color: dashboardPalette.text,
       fontSize: '0.84rem',
       whiteSpace: 'pre-wrap',
       fontFamily: 'monospace',
@@ -554,14 +559,14 @@ export default function StudentPreview({
       transition: 'all 0.15s'
     },
     navButtonPrev: {
-      background: '#f3f4f6',
-      border: 'none',
-      color: '#374151'
+      background: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
+      color: dashboardPalette.text
     },
     navButtonNext: {
-      background: '#4f46e5',
-      border: 'none',
-      color: 'white'
+      background: dashboardPalette.navy,
+      border: `1px solid ${dashboardPalette.navy}`,
+      color: dashboardPalette.white
     },
     navButtonDisabled: {
       opacity: 0.5,
@@ -569,14 +574,13 @@ export default function StudentPreview({
     },
     submitButton: {
       padding: '0.75rem 2rem',
-      background: '#10b981',
-      color: 'white',
-      border: 'none',
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.navy}`,
       borderRadius: '8px',
       cursor: 'pointer',
-      fontSize: '1rem',
+      fontSize: '0.95rem',
       fontWeight: '600',
-      transition: 'background 0.15s'
     },
     questionNav: {
       display: 'flex',
@@ -588,54 +592,62 @@ export default function StudentPreview({
     questionDot: {
       width: '32px',
       height: '32px',
-      borderRadius: '50%',
-      border: '2px solid #e5e7eb',
-      background: 'white',
+      borderRadius: '8px',
+      border: `1px solid ${dashboardPalette.border}`,
+      background: dashboardPalette.white,
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       fontSize: '0.75rem',
       fontWeight: '600',
-      color: '#6b7280',
-      transition: 'all 0.15s'
+      color: dashboardPalette.muted
     },
     questionDotCurrent: {
-      border: '2px solid #4f46e5',
-      background: '#4f46e5',
-      color: 'white'
+      border: `1px solid ${dashboardPalette.navy}`,
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white
     },
     questionDotAnswered: {
-      border: '2px solid #4f46e5',
-      background: '#eef2ff',
-      color: '#4f46e5'
+      border: `1px solid ${dashboardPalette.navy}`,
+      background: '#eef4fa',
+      color: dashboardPalette.navy
     },
     submittedBanner: {
-      background: '#10b981',
-      color: 'white',
-      padding: '1rem',
+      background: dashboardPalette.white,
+      color: '#215b39',
+      padding: '0.85rem 1rem',
       borderRadius: '8px',
       marginBottom: '1rem',
       textAlign: 'center',
-      fontWeight: '600'
+      fontWeight: '600',
+      border: '1px solid #86efac'
     },
     notSubmittedBanner: {
-      background: '#dc2626',
-      color: 'white',
-      padding: '1rem',
+      background: dashboardPalette.white,
+      color: dashboardPalette.dangerText,
+      padding: '0.85rem 1rem',
       borderRadius: '8px',
       marginBottom: '1rem',
       textAlign: 'center',
-      fontWeight: '600'
+      fontWeight: '600',
+      border: `1px solid ${dashboardPalette.dangerBorder}`
     },
     emptyState: {
       textAlign: 'center',
       padding: '4rem 2rem',
-      color: '#6b7280'
+      color: dashboardPalette.muted
     }
   };
-  const wrapperStyle = inline 
-    ? { background: '#f3f4f6', height: '100%', overflowY: 'auto' } 
+  const wrapperStyle = inline
+    ? {
+        background: dashboardPalette.surface,
+        height: '100%',
+        overflowY: 'auto',
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        touchAction: 'pan-y'
+      }
     : styles.overlay;
   const containerStyle = inline
     ? { ...styles.container, maxWidth: '100%', padding: '1rem' }
@@ -662,21 +674,7 @@ export default function StudentPreview({
               )}
             </div>
           )}
-          {!isPreviewMode && onClose && (
-            <div style={styles.assignmentBanner}>
-              <div style={styles.bannerText}>
-                Assignment
-              </div>
-              <button
-                style={styles.closeButton}
-                onClick={onClose}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
-              >
-                {closeButtonText}
-              </button>
-            </div>
-          )}
+          {assignmentBannerNode}
           <div style={styles.emptyState}>
             <h2>No Questions</h2>
             <p>This assignment doesn't have any questions yet.</p>
@@ -713,6 +711,53 @@ export default function StudentPreview({
   const isLastQuestion = currentIndex === totalQuestions - 1;
   const showFinishPreviewButton = isLastQuestion && isPreviewMode && onClose;
   const showNavigationFooter = showPrevNextButtons || showFinishPreviewButton;
+  const defaultAssignmentBannerActions = (
+    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      {secondaryActionText && onSecondaryAction ? (
+        <button
+          style={styles.secondaryButton}
+          onClick={onSecondaryAction}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.3)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
+          }}
+        >
+          {secondaryActionText}
+        </button>
+      ) : null}
+      <button
+        style={{
+          ...styles.closeButton,
+          ...(isSubmitAction
+            ? { background: dashboardPalette.navy, color: dashboardPalette.white, border: `1px solid ${dashboardPalette.navy}` }
+            : {})
+        }}
+        onClick={isSubmitAction ? onSubmit : onClose}
+        disabled={isSubmitting}
+        onMouseEnter={(e) => {
+          if (isSubmitting) return;
+          e.currentTarget.style.background = isSubmitAction
+            ? dashboardPalette.navyMid
+            : dashboardPalette.surface;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = isSubmitAction
+            ? dashboardPalette.navy
+            : dashboardPalette.white;
+        }}
+      >
+        {primaryButtonText}
+      </button>
+    </div>
+  );
+  const assignmentBannerNode = !isPreviewMode && onClose ? (
+    <div style={styles.assignmentBanner}>
+      {assignmentBannerLeading ?? <div style={styles.bannerText}>Assignment</div>}
+      {assignmentBannerActions !== undefined ? assignmentBannerActions : defaultAssignmentBannerActions}
+    </div>
+  ) : null;
 
   return (
     <div style={wrapperStyle}>
@@ -735,52 +780,7 @@ export default function StudentPreview({
             )}
           </div>
         )}
-        {!isPreviewMode && onClose && (
-          <div style={styles.assignmentBanner}>
-            <div style={styles.bannerText}>
-              Assignment
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {secondaryActionText && onSecondaryAction && (
-                <button
-                  style={styles.secondaryButton}
-                  onClick={onSecondaryAction}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.3)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
-                  }}
-                >
-                  {secondaryActionText}
-                </button>
-              )}
-              <button
-                style={{
-                  ...styles.closeButton,
-                  ...(isSubmitAction
-                    ? { background: '#10b981' }
-                    : {})
-                }}
-                onClick={isSubmitAction ? onSubmit : onClose}
-                disabled={isSubmitting}
-                onMouseEnter={(e) => {
-                  if (isSubmitting) return;
-                  e.currentTarget.style.background = isSubmitAction
-                    ? '#059669'
-                    : 'rgba(255,255,255,0.3)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = isSubmitAction
-                    ? '#10b981'
-                    : 'rgba(255,255,255,0.2)';
-                }}
-              >
-                {primaryButtonText}
-              </button>
-            </div>
-          </div>
-        )}
+        {assignmentBannerNode}
 
         {/* Submitted Banner */}
         {showStatusBanner && (submitted || forceReadOnly) && (
@@ -946,7 +946,7 @@ export default function StudentPreview({
                         </span>
                         <span>{choice}</span>
                         {showResult && showCorrectAnswers && isCorrect && (
-                          <span style={{ marginLeft: 'auto', color: '#10b981' }}>✓</span>
+                          <span style={{ marginLeft: 'auto', color: dashboardPalette.navy }}>✓</span>
                         )}
                         {showResult && showCorrectAnswers && !isCorrect && isSelected && (
                           <span style={{ marginLeft: 'auto', color: '#ef4444' }}>✗</span>
@@ -963,7 +963,7 @@ export default function StudentPreview({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <div style={styles.answerLabel}>Your answer:</div>
                   {isPreviewMode && (
-                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    <span style={{ fontSize: '0.875rem', color: dashboardPalette.muted }}>
                       {rubricParts.reduce((sum, p) => {
                         const levels = p.rubric_levels || [];
                         const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(p.points) || 0);
@@ -974,7 +974,7 @@ export default function StudentPreview({
                 </div>
                 {isPreviewMode && (
                   <div style={{ marginBottom: '1rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem', fontWeight: '600' }}>
+                    <div style={{ fontSize: '0.75rem', color: dashboardPalette.muted, marginBottom: '0.5rem', fontWeight: '600' }}>
                       Grading rubric (visible to instructors only):
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -982,13 +982,13 @@ export default function StudentPreview({
                         const levels = part.rubric_levels || [];
                         if (levels.length > 0) {
                           return levels.map((l, i) => (
-                            <div key={`${partIdx}-${i}`} style={{ fontSize: '0.8rem', color: '#4b5563', padding: '0.5rem', background: '#f9fafb', borderRadius: '4px' }}>
+                            <div key={`${partIdx}-${i}`} style={{ fontSize: '0.8rem', color: dashboardPalette.text, padding: '0.5rem', background: dashboardPalette.surface, borderRadius: '8px', border: `1px solid ${dashboardPalette.border}` }}>
                               <span style={{ fontWeight: '600' }}>+{l.points || 0} pts:</span> {l.criteria || '—'}
                             </div>
                           ));
                         }
                         return (
-                          <div key={partIdx} style={{ fontSize: '0.8rem', color: '#4b5563', padding: '0.5rem', background: '#f9fafb', borderRadius: '4px' }}>
+                          <div key={partIdx} style={{ fontSize: '0.8rem', color: dashboardPalette.text, padding: '0.5rem', background: dashboardPalette.surface, borderRadius: '8px', border: `1px solid ${dashboardPalette.border}` }}>
                             <span style={{ fontWeight: '600' }}>+{part.points || 0} pts:</span> {part.rubric_text || '—'}
                           </div>
                         );
@@ -1002,8 +1002,8 @@ export default function StudentPreview({
                   value={selectedAnswer || ''}
                   onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
                   disabled={isReadOnly}
-                  onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                  onFocus={(e) => e.target.style.borderColor = dashboardPalette.navy}
+                  onBlur={(e) => e.target.style.borderColor = dashboardPalette.border}
                 />
               </>
             )}
@@ -1013,7 +1013,7 @@ export default function StudentPreview({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <div style={styles.answerLabel}>Your response:</div>
                   {isPreviewMode && (
-                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    <span style={{ fontSize: '0.875rem', color: dashboardPalette.muted }}>
                       {rubricParts.reduce((sum, p) => {
                         const levels = p.rubric_levels || [];
                         const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(p.points) || 0);
@@ -1051,7 +1051,7 @@ export default function StudentPreview({
                         )}
                       </div>
                       {isPreviewMode && levels.length > 0 && (
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                        <div style={{ fontSize: '0.75rem', color: dashboardPalette.muted, marginBottom: '0.5rem' }}>
                           Rubric (instructors only):
                           {levels.map((l, i) => (
                             <div key={i} style={{ marginBottom: '0.2rem' }}><span style={{ fontWeight: '600' }}>+{l.points}:</span> {l.criteria || '—'}</div>
@@ -1068,8 +1068,8 @@ export default function StudentPreview({
                           handleTextAnswer(currentQuestion.id, newParts);
                         }}
                         disabled={isReadOnly}
-                        onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
-                        onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                        onFocus={(e) => e.target.style.borderColor = dashboardPalette.navy}
+                        onBlur={(e) => e.target.style.borderColor = dashboardPalette.border}
                       />
                     </div>
                   );
@@ -1085,7 +1085,7 @@ export default function StudentPreview({
                     <div style={styles.codeBadgeRow}>
                       <span style={styles.codeBadge}>C++</span>
                       {codingConfig.function_signature && (
-                        <span style={{ ...styles.codeBadge, background: '#ecfdf5', color: '#047857' }}>
+                        <span style={{ ...styles.codeBadge, background: dashboardPalette.white, color: dashboardPalette.navyMid }}>
                           {codingConfig.function_signature}
                         </span>
                       )}
@@ -1202,8 +1202,8 @@ export default function StudentPreview({
                   value={selectedAnswer || ''}
                   onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
                   disabled={isReadOnly}
-                  onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                  onFocus={(e) => e.target.style.borderColor = dashboardPalette.navy}
+                  onBlur={(e) => e.target.style.borderColor = dashboardPalette.border}
                 />
               </>
             )}
@@ -1217,8 +1217,8 @@ export default function StudentPreview({
                   value={selectedAnswer || ''}
                   onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
                   disabled={isReadOnly}
-                  onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                  onFocus={(e) => e.target.style.borderColor = dashboardPalette.navy}
+                  onBlur={(e) => e.target.style.borderColor = dashboardPalette.border}
                 />
               </>
             )}
@@ -1254,13 +1254,13 @@ export default function StudentPreview({
             <div style={{ display: 'flex', gap: '1rem' }}>
               {showFinishPreviewButton && (
                 <button
-                  style={styles.submitButton}
-                  onClick={onClose}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
-                >
-                  Finish Preview
-                </button>
+                style={styles.submitButton}
+                onClick={onClose}
+                onMouseEnter={(e) => e.currentTarget.style.background = dashboardPalette.navyMid}
+                onMouseLeave={(e) => e.currentTarget.style.background = dashboardPalette.navy}
+              >
+                Finish Preview
+              </button>
               )}
             </div>
 
@@ -1274,10 +1274,10 @@ export default function StudentPreview({
                 onClick={handleNext}
                 disabled={isLastQuestion}
                 onMouseEnter={(e) => {
-                  if (!isLastQuestion) e.currentTarget.style.background = '#4338ca';
+                  if (!isLastQuestion) e.currentTarget.style.background = dashboardPalette.navyMid;
                 }}
                 onMouseLeave={(e) => {
-                  if (!isLastQuestion) e.currentTarget.style.background = '#4f46e5';
+                  if (!isLastQuestion) e.currentTarget.style.background = dashboardPalette.navy;
                 }}
               >
                 Next →

@@ -5,7 +5,7 @@ const OIDC_STATE_STORAGE_KEY = 'caliber-oidc-state';
 const OIDC_PKCE_VERIFIER_STORAGE_KEY = 'caliber-oidc-pkce-verifier';
 const OIDC_POST_LOGIN_HASH_STORAGE_KEY = 'caliber-oidc-post-login-hash';
 const PORTAL_BASE_URL = (import.meta.env.VITE_PORTAL_BASE_URL || '').replace(/\/$/, '');
-const PORTAL_LOGIN_PATH = '/login?next=%2Fcaliber%2F%23student-courses';
+const PORTAL_LOGIN_PATH = '/login?next=%2Fcaliber%2F%23post-login-default';
 
 let authRecoveryInProgress = false;
 
@@ -28,7 +28,7 @@ function buildCleanAppLocation() {
     url.searchParams.delete(key);
   });
   if (!url.hash) {
-    url.hash = '#student-courses';
+    url.hash = '#post-login-default';
   }
   return `${url.pathname}${url.search}${url.hash}`;
 }
