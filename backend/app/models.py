@@ -92,6 +92,7 @@ class AssignmentProgress(SQLModel, table=True):
     student_id: str = Field(index=True)
     research_id: Optional[str] = Field(default=None, index=True)
     answers: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id
+    question_time_ms: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id with cumulative view time in ms
     grading_data: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id with rubric-part scores/comments
     current_question_index: int = Field(default=0)
     submitted: bool = Field(default=False)

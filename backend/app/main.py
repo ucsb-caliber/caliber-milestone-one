@@ -476,6 +476,22 @@ def _safe_json_loads(raw: Any, default: Any):
         return default
 
 
+def _normalize_question_time_ms(raw: Any) -> dict[str, int]:
+    parsed = _safe_json_loads(raw, {})
+    if not isinstance(parsed, dict):
+        return {}
+    normalized: dict[str, int] = {}
+    for key, value in parsed.items():
+        try:
+            millis = int(value)
+        except (TypeError, ValueError):
+            continue
+        if millis < 0:
+            continue
+        normalized[str(key)] = millis
+    return normalized
+
+
 def _is_coding_question_type(question_type: str) -> bool:
     return (question_type or "").strip().lower() == "coding"
 
@@ -2407,6 +2423,7 @@ def get_instructor_analytics(
 
     for assignment in selected_assignments:
         question_ids = _safe_json_loads(assignment.assignment_questions, [])
+        assignment_question_id_set = {str(question_id) for question_id in question_ids}
         assignment_questions = get_questions_by_ids(session, question_ids)
         progress_rows = list_assignment_progress_for_students(session, assignment.id, student_ids)
         progress_by_student_id = {row.student_id: row for row in progress_rows}
@@ -2426,6 +2443,12 @@ def get_instructor_analytics(
                     continue
 
             answers = _safe_json_loads(progress.answers, {})
+            question_time_ms_all = _normalize_question_time_ms(progress.question_time_ms)
+            question_time_ms = {
+                key: value
+                for key, value in question_time_ms_all.items()
+                if key in assignment_question_id_set
+            }
             grading_data = _safe_json_loads(progress.grading_data, {})
             computed = _build_grading_response(
                 assignment=assignment,
@@ -2463,18 +2486,24 @@ def get_instructor_analytics(
                     submitted_at=event_time,
                     score_percent=score_percent,
                     question_scores=question_scores,
+                    question_time_ms=question_time_ms,
                 )
             )
 
     assignment_score_percents = [float(record.score_percent) for record in records]
     question_score_percents: list[float] = []
+    average_time_per_submission_seconds: list[float] = []
     for record in records:
         for question_data in record.question_scores.values():
             question_score_percents.append(float(question_data.get("percent") or 0.0))
+        time_values_ms = [float(value) for value in (record.question_time_ms or {}).values() if float(value) >= 0]
+        if time_values_ms:
+            average_time_per_submission_seconds.append((sum(time_values_ms) / len(time_values_ms)) / 1000.0)
 
     summary = AnalyticsSummaryStats(
         average_assignment_score_percent=round(_mean_or_none(assignment_score_percents), 4) if assignment_score_percents else None,
         average_question_score_percent=round(_mean_or_none(question_score_percents), 4) if question_score_percents else None,
+        average_time_per_question_seconds=round(_mean_or_none(average_time_per_submission_seconds), 4) if average_time_per_submission_seconds else None,
         average_overall_grade_percent=round(_mean_or_none(assignment_score_percents), 4) if assignment_score_percents else None,
         median_score_percent=round(float(statistics.median(assignment_score_percents)), 4) if assignment_score_percents else None,
         min_score_percent=round(min(assignment_score_percents), 4) if assignment_score_percents else None,
@@ -2580,10 +2609,25 @@ def get_instructor_analytics(
 
         avg_score = _mean_or_none([float(item.score_percent) for item in sorted_entries])
         score_values = [float(item.score_percent) for item in sorted_entries]
+        total_question_time_ms = 0.0
+        total_timed_questions = 0
+        for item in sorted_entries:
+            for value in (item.question_time_ms or {}).values():
+                time_ms = float(value)
+                if time_ms < 0:
+                    continue
+                total_question_time_ms += time_ms
+                total_timed_questions += 1
+        average_time_per_question_seconds = (
+            (total_question_time_ms / total_timed_questions) / 1000.0
+            if total_timed_questions > 0
+            else None
+        )
         last_submission = max(
             (item.submitted_at for item in sorted_entries if item.submitted_at is not None),
             default=None,
         )
+        latest_entry = sorted_entries[-1]
         student_name = sorted_entries[0].student_name
 
         per_student_trend.append(
@@ -2591,7 +2635,9 @@ def get_instructor_analytics(
                 student_id=student_id,
                 student_name=student_name,
                 submission_count=len(sorted_entries),
+                latest_assignment_id=latest_entry.assignment_id if latest_entry else None,
                 average_score_percent=round(avg_score, 4) if avg_score is not None else None,
+                average_time_per_question_seconds=round(average_time_per_question_seconds, 4) if average_time_per_question_seconds is not None else None,
                 median_score_percent=round(float(statistics.median(score_values)), 4) if score_values else None,
                 min_score_percent=round(min(score_values), 4) if score_values else None,
                 max_score_percent=round(max(score_values), 4) if score_values else None,
@@ -2601,7 +2647,6 @@ def get_instructor_analytics(
         )
 
         if max_streak >= 2:
-            latest_entry = sorted_entries[-1]
             students_at_risk.append(
                 StudentAtRiskItem(
                     student_id=student_id,
@@ -2629,18 +2674,31 @@ def get_instructor_analytics(
                 "assignment_title": record.assignment_title,
                 "submission_count": 0,
                 "scores": [],
+                "question_time_total_ms": 0.0,
+                "question_time_count": 0,
             },
         )
         agg["submission_count"] += 1
         for question_data in record.question_scores.values():
             q_percent = float(question_data.get("percent") or 0.0)
             agg["scores"].append(q_percent)
+        for question_time_ms in (record.question_time_ms or {}).values():
+            elapsed_ms = float(question_time_ms)
+            if elapsed_ms < 0:
+                continue
+            agg["question_time_total_ms"] += elapsed_ms
+            agg["question_time_count"] += 1
 
     assignment_question_score_summary = [
         AssignmentQuestionScoreSummaryItem(
             assignment_id=assignment_id_key,
             assignment_title=data["assignment_title"],
             submission_count=int(data["submission_count"]),
+            average_time_per_question_seconds=(
+                round((float(data["question_time_total_ms"]) / float(data["question_time_count"])) / 1000.0, 4)
+                if data["question_time_count"]
+                else None
+            ),
             mean_score_percent=round(_mean_or_none(data["scores"]), 4) if data["scores"] else None,
             median_score_percent=round(float(statistics.median(data["scores"])), 4) if data["scores"] else None,
             min_score_percent=round(min(data["scores"]), 4) if data["scores"] else None,
@@ -2943,6 +3001,7 @@ def get_student_assignment_progress(
         assignment_id=progress.assignment_id,
         student_id=progress.student_id,
         answers=json.loads(progress.answers) if progress.answers else {},
+        question_time_ms=_normalize_question_time_ms(progress.question_time_ms),
         current_question_index=progress.current_question_index,
         submitted=progress.submitted,
         submitted_at=progress.submitted_at,
@@ -3080,6 +3139,7 @@ def save_student_assignment_progress(
         assignment_id=assignment_id,
         student_id=user_id,
         answers=merged_answers if (progress_data.answers is not None or progress_data.submitted) else None,
+        question_time_ms=progress_data.question_time_ms,
         grading_data=merged_grading_data if progress_data.submitted else None,
         current_question_index=progress_data.current_question_index,
         submitted=progress_data.submitted,
@@ -3090,6 +3150,7 @@ def save_student_assignment_progress(
         assignment_id=progress.assignment_id,
         student_id=progress.student_id,
         answers=json.loads(progress.answers) if progress.answers else {},
+        question_time_ms=_normalize_question_time_ms(progress.question_time_ms),
         current_question_index=progress.current_question_index,
         submitted=progress.submitted,
         submitted_at=progress.submitted_at,

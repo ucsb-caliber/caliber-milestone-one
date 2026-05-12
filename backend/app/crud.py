@@ -295,6 +295,7 @@ def create_assignment_progress_rows(session: Session, assignment_id: int, studen
             assignment_id=assignment_id,
             student_id=student_id,
             answers="{}",
+            question_time_ms="{}",
             current_question_index=0,
             submitted=False
         ))
@@ -332,6 +333,7 @@ def upsert_assignment_progress(
     assignment_id: int,
     student_id: str,
     answers: Optional[dict] = None,
+    question_time_ms: Optional[dict] = None,
     grading_data: Optional[dict] = None,
     current_question_index: Optional[int] = None,
     submitted: Optional[bool] = None,
@@ -347,6 +349,7 @@ def upsert_assignment_progress(
             student_id=student_id,
             research_id=research_id,
             answers="{}",
+            question_time_ms="{}",
             current_question_index=0,
             submitted=False
         )
@@ -359,6 +362,31 @@ def upsert_assignment_progress(
 
     if answers is not None:
         progress.answers = json.dumps(answers)
+    if question_time_ms is not None:
+        existing_question_time = {}
+        try:
+            existing_question_time = json.loads(progress.question_time_ms or "{}")
+        except Exception:
+            existing_question_time = {}
+        if not isinstance(existing_question_time, dict):
+            existing_question_time = {}
+        merged_question_time: dict[str, int] = dict(existing_question_time)
+        if isinstance(question_time_ms, dict):
+            for key, value in question_time_ms.items():
+                key_str = str(key)
+                try:
+                    millis = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if millis < 0:
+                    continue
+                previous = merged_question_time.get(key_str)
+                try:
+                    previous_int = int(previous) if previous is not None else 0
+                except (TypeError, ValueError):
+                    previous_int = 0
+                merged_question_time[key_str] = max(previous_int, millis)
+        progress.question_time_ms = json.dumps(merged_question_time)
     if grading_data is not None:
         progress.grading_data = json.dumps(grading_data)
     if current_question_index is not None:
@@ -394,6 +422,7 @@ def update_assignment_grading(
             assignment_id=assignment_id,
             student_id=student_id,
             answers="{}",
+            question_time_ms="{}",
             grading_data="{}",
             current_question_index=0,
             submitted=False,
