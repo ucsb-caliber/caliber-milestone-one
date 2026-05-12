@@ -616,34 +616,16 @@ export default function Analytics() {
               <tbody>
                 {sortedAssignmentQuestionRows.map((row) => {
                   return (
-<<<<<<< HEAD
                     <tr key={row.assignment_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
                       <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.assignment_title}</td>
-                      <td style={{ padding: '0.58rem 0.55rem' }}>
-                        <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${scoreMeta.border}`, background: scoreMeta.background, color: scoreMeta.color, fontWeight: 700 }}>
-                          {formatPercent(row.mean_score_percent)}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.median_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
+                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatDurationSeconds(row.average_time_per_question_seconds)}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
-=======
-                    <tr key={row.assignment_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.assignment_title}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatDurationSeconds(row.average_time_per_question_seconds)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
->>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
                     </tr>
                   );
                 })}
                 {!sortedAssignmentQuestionRows.length ? (
                   <tr>
-<<<<<<< HEAD
-                    <td colSpan={6} style={{ padding: '0.7rem 0.55rem', color: dashboardPalette.muted }}>No assignment question-score data available.</td>
-=======
-                    <td colSpan={3} style={{ padding: '0.7rem 0.55rem', color: '#64748b' }}>No assignment question-score data available.</td>
->>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
+                    <td colSpan={3} style={{ padding: '0.7rem 0.55rem', color: dashboardPalette.muted }}>No assignment question-score data available.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -740,21 +722,9 @@ export default function Analytics() {
                         <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text, fontWeight: 700 }}>
                           {getLetterGrade(row.average_score_percent)}
                         </td>
-<<<<<<< HEAD
-                        <td style={{ padding: '0.58rem 0.55rem' }}>
-                          <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${colorMeta.border}`, background: colorMeta.background, color: colorMeta.color, fontWeight: 700 }}>
-                            {formatPercent(row.average_score_percent)}
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.median_score_percent)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
+                        <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatDurationSeconds(row.average_time_per_question_seconds)}</td>
                         <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
                         <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatDate(row.last_submission_date)}</td>
-=======
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatDurationSeconds(row.average_time_per_question_seconds)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
-                        <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatDate(row.last_submission_date)}</td>
                         <td style={{ padding: '0.58rem 0.55rem' }}>
                           {row.latest_assignment_id ? (
                             <button
@@ -763,9 +733,9 @@ export default function Analytics() {
                                 window.location.hash = `#course/${courseId}/assignment/${row.latest_assignment_id}/grade/${encodeURIComponent(row.student_id)}`;
                               }}
                               style={{
-                                border: 'none',
-                                background: '#2563eb',
-                                color: 'white',
+                                border: `1px solid ${dashboardPalette.border}`,
+                                background: dashboardPalette.white,
+                                color: dashboardPalette.navy,
                                 borderRadius: 8,
                                 padding: '0.28rem 0.52rem',
                                 fontWeight: 700,
@@ -775,10 +745,9 @@ export default function Analytics() {
                               View
                             </button>
                           ) : (
-                            <span style={{ color: '#94a3b8' }}>—</span>
+                            <span style={{ color: dashboardPalette.muted }}>—</span>
                           )}
                         </td>
->>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
                       </tr>
                     );
                   })}
@@ -822,25 +791,10 @@ export default function Analytics() {
                 {sortedPerAssignmentSummaryRows.map((row) => {
                   const flaggedMeta = scoreColorMeta(100 - Number(row.below_target_percent || 0));
                   return (
-<<<<<<< HEAD
                     <tr key={row.assignment_id} style={{ borderBottom: `1px solid ${dashboardPalette.border}` }}>
                       <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: dashboardPalette.navy }}>{row.assignment_title}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{row.submission_count}</td>
-                      <td style={{ padding: '0.58rem 0.55rem' }}>
-                        <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${scoreMeta.border}`, background: scoreMeta.background, color: scoreMeta.color, fontWeight: 700 }}>
-                          {formatPercent(row.mean_score_percent)}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.median_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.min_score_percent)}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.max_score_percent)}</td>
                       <td style={{ padding: '0.58rem 0.55rem', color: dashboardPalette.text }}>{formatPercent(row.stddev_score_percent)}</td>
-=======
-                    <tr key={row.assignment_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.58rem 0.55rem', fontWeight: 700, color: '#0f172a' }}>{row.assignment_title}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{row.submission_count}</td>
-                      <td style={{ padding: '0.58rem 0.55rem', color: '#334155' }}>{formatPercent(row.stddev_score_percent)}</td>
->>>>>>> 2c5d663 (Added time tracking per question and allowed submisisons to be viewed individually from teh analytics page. Made the table neater by not having median, min, max (those still show in the graph))
                       <td style={{ padding: '0.58rem 0.55rem' }}>
                         <span style={{ padding: '0.18rem 0.48rem', borderRadius: 999, border: `1px solid ${flaggedMeta.border}`, background: flaggedMeta.background, color: flaggedMeta.color, fontWeight: 700 }}>
                           {formatPercent(row.below_target_percent)}
