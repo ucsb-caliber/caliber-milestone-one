@@ -6,7 +6,7 @@ Supporting modules:
   ``question_inputs`` — skip/vision/format and coarse algorithm tag from raw text.
   ``prompts`` — generation and verification prompt strings.
   ``variant_validation`` — deterministic JSON checks and answer normalization.
-  ``llm_client`` — provider JSON calls.
+  ``llm_client`` — OpenRouter JSON calls.
   ``exam_tests_questions`` — default question DB from PDFs (or env override).
 """
 
@@ -18,9 +18,8 @@ from .config import (
     MAX_RETRIES,
     generation_source_max_chars,
     openrouter_timeout_verify,
-    resolved_llm_model,
+    resolved_openrouter_model,
     telemetry_enabled,
-    variant_llm_provider,
 )
 from .exam_tests_questions import load_questions_database
 from .llm_client import call_llm, text_model_supports_images
@@ -97,7 +96,7 @@ def generate_variant(index, db_path=None, ingestion_index=-1, questions_db=None)
         image_paths = [q["image_crops"][0]]
     elif use_vision and not text_model_supports_images() and DEBUG:
         print(
-            "[DEBUG] Vision requested but variant vision is disabled; "
+            "[DEBUG] Vision requested but OPENROUTER_VISION / OPENROUTER_SEND_IMAGES disabled; "
             "using question text only."
         )
 
@@ -105,12 +104,11 @@ def generate_variant(index, db_path=None, ingestion_index=-1, questions_db=None)
     contract = route_stem(q.get("text", "") or "")
     forced_type = contract.question_format
     expected_mcq_options = contract.expected_mcq_options
-    provider_label = variant_llm_provider()
-    gen_label = resolved_llm_model(provider_label)
+    gen_label = resolved_openrouter_model()
     print(
         f"Format: {forced_type} | Algorithm: {algorithm} | Mode: {contract.mode} | "
         f"Lang: {contract.language} | Reskin: {contract.allow_thematic_reskin} | "
-        f"Route: {contract.routing_source} | LLM: {provider_label}/{gen_label}"
+        f"Route: {contract.routing_source} | Gen Model: {gen_label}"
     )
     qid = q.get("question_id") or ""
     if telemetry_enabled():
@@ -163,7 +161,7 @@ def generate_variant(index, db_path=None, ingestion_index=-1, questions_db=None)
         late_fr = free_response_correct_answer_invalid(
             gen_ans, variant, contract.language, contract, q.get("text", "")
         )
-        if forced_type == "FREE_RESPONSE" and late_fr:
+        if forced_type in ("FREE_RESPONSE", "CODING") and late_fr:
             print(f"  Invalid correct_answer: {late_fr}")
             continue
 
@@ -215,6 +213,7 @@ def generate_variant(index, db_path=None, ingestion_index=-1, questions_db=None)
                     else len(ingestions) + ingestion_index
                 ),
                 "type": forced_type,
+                "autograde_kind": contract.autograde_kind,
                 "language": contract.language,
                 "question_mode": contract.mode,
                 "routing": contract.routing_source,
