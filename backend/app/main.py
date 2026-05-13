@@ -48,8 +48,7 @@ from .crud import (create_question, get_question, get_questions, get_questions_c
                   update_assignment_grading,
                   delete_unverified_questions_by_source, get_coding_question_private,
                   upsert_coding_question_private, create_coding_run)
-from .utils import extract_text_from_pdf, send_to_agent_pipeline, extract_questions_from_pdf_bytes
-from .m2_pipeline import extract_questions_with_m2
+from .odl_pipeline import extract_questions_with_odl
 from .auth import (
     get_current_user,
     get_current_user_email,
@@ -1354,7 +1353,6 @@ def process_pdf_background(
         user_id: The authenticated OIDC subject
     """
     inserted_count = 0
-    text = ""
     question_dicts = []
 
     def cancel_requested() -> bool:
@@ -1416,11 +1414,10 @@ def process_pdf_background(
         mark_canceled("before processing started")
         return
 
-    # Primary path: run the copied Milestone 2 layout parser from this repo.
     _update_upload_job(job_id, status="running", progress_percent=10, message="Parsing PDF layout")
     try:
-        m2_start = time.time()
-        question_dicts = extract_questions_with_m2(
+        parse_start = time.time()
+        question_dicts = extract_questions_with_odl(
             file_content=file_content,
             source_name=storage_path,
             output_dir=Path(UPLOAD_DIR) / "layout_debug",
@@ -1428,46 +1425,24 @@ def process_pdf_background(
             should_cancel=cancel_requested,
         )
         print(
-            f"[m2] completed source={storage_path} "
-            f"questions={len(question_dicts)} elapsed={time.time() - m2_start:.1f}s"
+            f"[odl] completed source={storage_path} "
+            f"questions={len(question_dicts)} elapsed={time.time() - parse_start:.1f}s"
         )
     except Exception as e:
-        print(f"Error running copied M2 parser for {storage_path}: {e!r}")
+        print(f"Error running odl parser for {storage_path}: {e!r}")
 
     if cancel_requested() and not question_dicts:
         mark_canceled("PDF parsing")
         return
-
-    try:
-        # Secondary path: in-repo text + OCR extractor.
-        if not question_dicts and not cancel_requested():
-            _update_upload_job(job_id, status="running", progress_percent=25, message="Using fallback extractor")
-            question_dicts = extract_questions_from_pdf_bytes(file_content, storage_path)
-    except Exception as e:
-        print(f"Error extracting structured questions from {storage_path}: {e!r}")
-
-    # Compatibility fallback for edge-cases where the structured extractor fails.
-    if not question_dicts and not cancel_requested():
-        try:
-            text = extract_text_from_pdf(file_content)
-        except Exception as e:
-            print(f"Error extracting text from {storage_path}: {e!r}")
-
-        try:
-            _update_upload_job(job_id, status="running", progress_percent=35, message="Using compatibility parser")
-            question_dicts = send_to_agent_pipeline(text, storage_path)
-        except Exception as e:
-            print(f"Error in fallback agent pipeline for {storage_path}: {e!r}")
 
     if not question_dicts:
         if cancel_requested():
             mark_canceled("fallback parsing")
             return
 
-        fallback_text = (text or "").strip()[:300]
         question_dicts = [{
             "title": "Extracted Preview",
-            "text": fallback_text or f"Unable to parse content from {storage_path}.",
+            "text": f"Unable to parse content from {storage_path}.",
             "tags": "auto-generated,pdf-upload",
             "keywords": "pdf,upload,fallback"
         }]
