@@ -1,29 +1,12 @@
 import json
 import pathlib
 import sys
-import types
 import unittest
 from datetime import datetime, timezone
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
-pdfplumber_stub = types.ModuleType("pdfplumber")
-
-
-class _PdfPlumberStubContext:
-    pages = []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-pdfplumber_stub.open = lambda *args, **kwargs: _PdfPlumberStubContext()
-sys.modules.setdefault("pdfplumber", pdfplumber_stub)
 
 from app.main import _all_students_graded_for_assignment, _build_grading_response, _get_assignment_phase, _has_late_due_passed, _sync_assignment_post_due_grading
 from app.models import Assignment, AssignmentProgress, Question

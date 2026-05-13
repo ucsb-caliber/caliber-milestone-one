@@ -4,9 +4,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    poppler-utils \
-    tesseract-ocr \
-    libgl1 \
+    default-jre-headless \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 

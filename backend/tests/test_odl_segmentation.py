@@ -19,7 +19,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from app.m2_pipeline import _stable_title
+from app.odl_pipeline import _stable_title
 from app.odl_pipeline import (
     _is_question_start,
     _segment_questions,

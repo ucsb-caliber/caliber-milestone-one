@@ -1,14 +1,10 @@
 """
 opendataloader-pdf based extraction pipeline.
 
-This is the Tier 1 replacement for the M2 (Detectron2/EfficientDet + Tesseract)
-parser. It runs the `opendataloader-pdf` Java CLI (via the Python wrapper) on
-the uploaded PDF, walks the resulting JSON tree in reading order, segments
-question boundaries with the same regexes used by `m2/layout_ingest.py`,
-re-emits per-question Markdown, and runs the existing LLM cleanup guardrails.
-
-Public API mirrors `extract_questions_with_m2` so `process_pdf_background`
-can swap implementations behind the `PDF_PARSER` env flag.
+Runs the `opendataloader-pdf` Java CLI (via the Python wrapper) on the uploaded
+PDF, walks the resulting JSON tree in reading order, segments question
+boundaries with regex heuristics, re-emits per-question Markdown, and runs the
+existing LLM cleanup guardrails.
 """
 
 from __future__ import annotations
@@ -27,7 +23,67 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .llm_cleanup import local_llm_markdown_cleanup_with_meta
-from .m2_pipeline import _keywords_from_text, _stable_title
+
+
+def _keywords_from_text(text: str, max_keywords: int = 8) -> str:
+    words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9]{3,}", text or "")]
+    stop = {
+        "that", "this", "with", "from", "your", "have", "will", "what", "when",
+        "where", "which", "their", "there", "into", "about", "after", "before",
+        "question", "problem", "points", "show", "using", "given", "suppose",
+    }
+    uniq: List[str] = []
+    seen = set()
+    for w in words:
+        if w in stop or w in seen:
+            continue
+        seen.add(w)
+        uniq.append(w)
+        if len(uniq) >= max_keywords:
+            break
+    return ",".join(uniq) if uniq else "pdf,upload"
+
+
+# Lines that are pure question-number markers and should NOT become the
+# stored title. The ODL pipeline can emit these as standalone lines when
+# opendataloader-pdf inlines the numeral into the list item's `content`.
+_PURE_MARKER_LINE_RE = re.compile(
+    r"^\s*(?:"
+    r"\d+\.?"
+    r"|Problem\s+\d+"
+    r"|Question\s+\d+"
+    r"|Q\s*\d+"
+    r")\s*[:.\-]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _stable_title(text: str, fallback: str = "Extracted Question") -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return fallback
+
+    candidate = ""
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Skip leading markdown headings, bullets, and bare-numeral markers
+        # so the displayed title is the question's actual first content line.
+        stripped_for_check = re.sub(r"^[#>\-*]+\s*", "", stripped).strip()
+        if _PURE_MARKER_LINE_RE.match(stripped_for_check):
+            continue
+        candidate = stripped
+        break
+
+    if not candidate:
+        # Every line was a marker (or the text was effectively empty);
+        # fall back to the first line so we degrade gracefully.
+        candidate = raw.splitlines()[0].strip()
+
+    candidate = re.sub(r"^#{1,6}\s*", "", candidate).strip()
+    candidate = candidate[:80]
+    return candidate or fallback
 
 
 # ===================== QUESTION DETECTION =====================
@@ -687,11 +743,10 @@ def extract_questions_with_odl(
     """
     Parse a PDF with opendataloader-pdf and return Milestone 1 question dicts.
 
-    Mirrors the contract of `extract_questions_with_m2`:
-    - returns `[]` on cancellation or non-fatal errors so callers fall back
-      to the secondary extractor.
-    - emits progress through `progress_callback(current, total, message)`
-      with phase-bucketed values that `m2_progress` already understands.
+    Returns ``[]`` on cancellation or non-fatal errors (callers may show an
+    empty-parse stub). Emits progress through ``progress_callback(current,
+    total, message)`` with phases that ``process_pdf_background`` maps to job
+    progress (parse vs formatting/LLM).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
