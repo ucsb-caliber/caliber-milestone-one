@@ -12,6 +12,11 @@ import { createDefaultCodingConfig, normalizeEditableCodingConfig, sanitizeCodin
 import { CourseDashboardBackButton, dashboardPalette } from '../components/CourseDashboardUI';
 import { getFromHash, navigateBackWithFallback } from '../utils/navigation';
 
+const DEFAULT_SHORT_ANSWER_CONFIG = {
+  valid_answers: [],
+  input_restriction: 'any',
+  points: 1,
+};
 export default function CreateQuestion() {
   const { user } = useAuth();
   const fromHash = getFromHash();
@@ -29,9 +34,10 @@ export default function CreateQuestion() {
     correct_answer: '',
     is_verified: true,
     rubric_parts: [{ part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] }],
-    short_answer_expected: '',
+    short_answer_config: { ...DEFAULT_SHORT_ANSWER_CONFIG },
     coding_config: createDefaultCodingConfig(),
   });
+  
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageInputRef, setImageInputRef] = useState(null);
@@ -42,6 +48,7 @@ export default function CreateQuestion() {
   const [isSplitView, setIsSplitView] = useState(false);
   const [showStudentPreview, setShowStudentPreview] = useState(false);
   const [profileSchool, setProfileSchool] = useState('');
+
 
   // Auto-save to LocalStorage whenever formData changes
   useEffect(() => {
@@ -197,8 +204,7 @@ export default function CreateQuestion() {
       }
       // When switching to Short Answer, collapse to single part (no multiple parts for short answer)
       if (name === 'question_type' && value === 'short_answer') {
-        const firstPart = next.rubric_parts?.[0] || { part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] };
-        next.rubric_parts = [firstPart];
+        next.short_answer_config = { ...DEFAULT_SHORT_ANSWER_CONFIG };
       }
       if (name === 'question_type' && value === 'coding') {
         next.coding_config = normalizeEditableCodingConfig(next.coding_config);
@@ -312,6 +318,38 @@ export default function CreateQuestion() {
     return levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : 0;
   };
 
+  //helper functions for short answer
+  const updateShortAnswerConfig = (patch) => {
+    setFormData(prev => ({
+      ...prev,
+      short_answer_config: { ...prev.short_answer_config, ...patch }
+    }));
+  };
+
+  const addValidAnswer = () => {
+    setFormData(prev => ({
+      ...prev,
+      short_answer_config: {
+        ...prev.short_answer_config,
+        valid_answers: [
+          ...prev.short_answer_config.valid_answers,
+          { value: '', case_sensitive: false }
+        ]
+      }
+    }));
+  };
+
+  const updateValidAnswer = (index, patch) => {
+    const updated = [...formData.short_answer_config.valid_answers];
+    updated[index] = { ...updated[index], ...patch };
+    updateShortAnswerConfig({ valid_answers: updated });
+  };
+
+  const removeValidAnswer = (index) => {
+    const updated = formData.short_answer_config.valid_answers.filter((_, i) => i !== index);
+    updateShortAnswerConfig({ valid_answers: updated });
+  };
+
   // Check if question type needs answer choices
   const needsAnswerChoices = () => {
     return ['mcq', 'true_false'].includes(formData.question_type);
@@ -337,16 +375,20 @@ export default function CreateQuestion() {
   };
 
   // Check if question type needs rubric (both FR and Short Answer)
-  const needsRubric = () => {
-    return formData.question_type === 'fr' || formData.question_type === 'short_answer';
-  };
+  const needsRubric = () => formData.question_type === 'fr';
+
 
   const getStudentPreviewQuestion = () => {
-    const answerChoices = isCoding()
-      ? sanitizeCodingConfigForSave(formData.coding_config)
-      : needsAnswerChoices()
-        ? (isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(choice => choice.trim()))
-        : formData.rubric_parts;
+    let answerChoices;
+    if (isCoding()) {
+      answerChoices = sanitizeCodingConfigForSave(formData.coding_config);
+    } else if (needsAnswerChoices()) {
+      answerChoices = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(c => c.trim());
+    } else if (isShortAnswer()) {
+      answerChoices = formData.short_answer_config;
+    } else {
+      answerChoices = formData.rubric_parts;
+    }
 
     return {
       id: 'live-preview',
@@ -452,6 +494,14 @@ export default function CreateQuestion() {
         return;
       }
     }
+    if (isShortAnswer()) {
+      const filledAnswers = formData.short_answer_config.valid_answers.filter(a => a.value.trim());
+      if (filledAnswers.length === 0) {
+        setError('Add at least one valid answer for the short answer question');
+        setLoading(false);
+        return;
+      }
+    }
 
     if (isCoding()) {
       const codingError = getCodingAuthoringError(formData.coding_config);
@@ -498,8 +548,14 @@ export default function CreateQuestion() {
         const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
         answerChoicesData = JSON.stringify(validAnswers);
         correctAnswerData = formData.correct_answer;
+      } else if (isShortAnswer()) {
+        const cleanConfig = {
+          ...formData.short_answer_config,
+          valid_answers: formData.short_answer_config.valid_answers.filter(a => a.value.trim()),
+        };
+        answerChoicesData = JSON.stringify(cleanConfig);
+        correctAnswerData = 'short_answer';
       } else if (needsRubric()) {
-        // Store rubric parts for both free response and short answer
         answerChoicesData = JSON.stringify(formData.rubric_parts);
         correctAnswerData = 'rubric';
       }
@@ -539,7 +595,7 @@ export default function CreateQuestion() {
         answer_choices: ['', '', '', ''],
         correct_answer: '',
         rubric_parts: [{ part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] }],
-        short_answer_expected: '',
+        short_answer_config: { ...DEFAULT_SHORT_ANSWER_CONFIG },
         coding_config: createDefaultCodingConfig(),
       });
       setImageFile(null);
@@ -552,6 +608,181 @@ export default function CreateQuestion() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderShortAnswerCard = () => {
+    const { valid_answers, input_restriction, points } = formData.short_answer_config;
+    const inputTypeForAnswerField = input_restriction === 'numbers' ? 'number' : 'text';
+
+    return (
+      <div style={styles.card}>
+        <label style={styles.label}>Short Answer Setup</label>
+
+        {/* Input restriction toggle */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ ...styles.label, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+            Restrict student input type
+          </label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {[
+              { value: 'any', label: 'Any text' },
+              { value: 'numbers', label: 'Numbers only' },
+              { value: 'letters', label: 'Letters only' },
+            ].map((opt) => {
+              const isActive = input_restriction === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => updateShortAnswerConfig({ input_restriction: opt.value })}
+                  style={{
+                    padding: '6px 16px',
+                    borderRadius: '99px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: isActive
+                      ? `2px solid ${dashboardPalette.navy}`
+                      : `1px solid ${dashboardPalette.border}`,
+                    background: isActive ? dashboardPalette.navyLight : dashboardPalette.white,
+                    color: isActive ? dashboardPalette.navy : dashboardPalette.text,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Valid answers list */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '10px' }}>
+            <label style={{ ...styles.label, margin: 0 }}>Valid answers</label>
+            <span style={{ fontSize: '12px', color: dashboardPalette.muted }}>
+              Students must match one of these to receive credit
+            </span>
+          </div>
+
+          {valid_answers.length === 0 && (
+            <div style={{
+              padding: '16px',
+              background: dashboardPalette.surface,
+              border: `1px dashed ${dashboardPalette.border}`,
+              borderRadius: '8px',
+              textAlign: 'center',
+              fontSize: '13px',
+              color: dashboardPalette.muted,
+              marginBottom: '10px'
+            }}>
+              No valid answers added yet. Add at least one.
+            </div>
+          )}
+
+          {valid_answers.map((ans, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '8px',
+                padding: '10px 12px',
+                background: dashboardPalette.surface,
+                border: `1px solid ${dashboardPalette.border}`,
+                borderRadius: '8px',
+              }}
+            >
+              <input
+                type={inputTypeForAnswerField}
+                value={ans.value}
+                placeholder={
+                  input_restriction === 'numbers' ? 'e.g. 42'
+                    : input_restriction === 'letters' ? 'e.g. oxygen'
+                      : 'e.g. O(log n)'
+                }
+                onChange={(e) => updateValidAnswer(idx, { value: e.target.value })}
+                style={{ ...styles.input, flex: 1 }}
+              />
+
+              {input_restriction !== 'numbers' && (
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '13px',
+                  color: dashboardPalette.muted,
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={!ans.case_sensitive}
+                    onChange={(e) => updateValidAnswer(idx, { case_sensitive: !e.target.checked })}
+                    style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                  />
+                  Case-insensitive
+                </label>
+              )}
+
+              <button
+                type="button"
+                onClick={() => removeValidAnswer(idx)}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  color: dashboardPalette.muted,
+                  cursor: 'pointer',
+                  fontSize: '20px',
+                  lineHeight: 1,
+                  padding: '0 2px',
+                  flexShrink: 0,
+                }}
+                aria-label="Remove answer"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={addValidAnswer}
+            style={{
+              ...styles.secondaryBtn,
+              borderStyle: 'dashed',
+              padding: '8px 16px',
+              fontSize: '13px',
+              height: 'auto',
+              marginTop: '4px',
+            }}
+          >
+            + Add valid answer
+          </button>
+        </div>
+
+        {/* Points */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          paddingTop: '16px',
+          borderTop: `1px solid ${dashboardPalette.border}`,
+        }}>
+          <label style={{ ...styles.label, margin: 0, whiteSpace: 'nowrap' }}>
+            Points for correct match:
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={points}
+            onChange={(e) => updateShortAnswerConfig({ points: parseInt(e.target.value) || 0 })}
+            style={{ ...styles.input, width: '80px' }}
+          />
+        </div>
+      </div>
+    );
   };
 
   const renderMetadataCard = () => (
@@ -696,29 +927,31 @@ export default function CreateQuestion() {
                     <button
                       type="button"
                       onClick={() => setViewMode('edit')}
-                      style={{ ...
-                        styles.secondaryBtn, 
-                        padding: '4px 12px', 
-                        border: 'none', 
+                      style={{
+                        ...
+                        styles.secondaryBtn,
+                        padding: '4px 12px',
+                        border: 'none',
                         width: '76px',
                         minWidth: '76px',
                         textAlign: 'center',
                         background: viewMode === 'edit' ? dashboardPalette.white : 'transparent'
-                       }}>
+                      }}>
                       Edit
                     </button>
                     <button
                       type="button"
                       onClick={() => setViewMode('preview')}
-                      style={{ ...
-                        styles.secondaryBtn, 
+                      style={{
+                        ...
+                        styles.secondaryBtn,
                         padding: '4px 12px',
-                        border: 'none', 
+                        border: 'none',
                         width: '76px',
                         minWidth: '76px',
                         textAlign: 'center',
                         background: viewMode === 'preview' ? dashboardPalette.white : 'transparent'
-                        }}>
+                      }}>
                       Preview
                     </button>
                   </div>
@@ -726,47 +959,51 @@ export default function CreateQuestion() {
               </div>
 
               {viewMode === 'preview' ? (
-                <div style={{ ...
-                styles.input,
-                minHeight: '300px',
-                padding: '12px',
-                border: `1px solid ${dashboardPalette.border}`,
-                borderRadius: '8px',
-                overflow: 'auto' }}>
+                <div style={{
+                  ...
+                  styles.input,
+                  minHeight: '300px',
+                  padding: '12px',
+                  border: `1px solid ${dashboardPalette.border}`,
+                  borderRadius: '8px',
+                  overflow: 'auto'
+                }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
                     components={{
                       code({ node, inline, className, children, ...props }) {
                         return inline ? (
-                          <code style={{ 
+                          <code style={{
                             background: dashboardPalette.surface,
                             padding: '0.2rem 0.4rem',
                             borderRadius: '3px',
                             fontSize: '0.9em',
                             fontFamily: 'monospace'
-                          }} 
+                          }}
                             {...props}>{children}</code>
                         ) : (
-                          <pre style={{ 
-                            background: '#2d2d2d', 
-                            color: '#f8f8f2', 
-                            padding: '1rem', 
+                          <pre style={{
+                            background: '#2d2d2d',
+                            color: '#f8f8f2',
+                            padding: '1rem',
                             borderRadius: '4px',
-                             overflow: 'auto', 
-                             fontSize: '0.875rem' 
-                            }}>
+                            overflow: 'auto',
+                            fontSize: '0.875rem'
+                          }}>
                             <code className={className} {...props}>{children}</code>
                           </pre>
                         );
                       },
-                      p({ children }) { return <p 
-                        style={{ 
-                          margin: '0 0 0.5rem 0', 
-                          fontSize: '1rem', 
-                          lineHeight: '1.5'
-                         }}>
-                          {children}</p>; }
+                      p({ children }) {
+                        return <p
+                          style={{
+                            margin: '0 0 0.5rem 0',
+                            fontSize: '1rem',
+                            lineHeight: '1.5'
+                          }}>
+                          {children}</p>;
+                      }
                     }}
                   >
                     {formData.text || "*Nothing to preview yet...*"}
@@ -779,7 +1016,8 @@ export default function CreateQuestion() {
                   onChange={handleInputChange}
                   onKeyDown={handleTextareaKeyDown}
                   placeholder="Supports Markdown & LaTeX: $E=mc^2$"
-                      style={{ ...
+                  style={{
+                    ...
                     styles.input,
                     minHeight: '300px',
                     padding: '12px',
@@ -797,20 +1035,20 @@ export default function CreateQuestion() {
                   {isTrueFalse() ? 'Select the correct answer' : 'Answer Choices (Select the correct one)'}
                 </label>
                 {isTrueFalse() ? (
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    gap: '12px' 
-                    }}>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}>
                     {['True', 'False'].map((choice) => (
                       <div key={choice} style={styles.choiceRow}>
                         <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice} onChange={() => setCorrectAnswer(choice)} />
-                        <span style={{ 
-                          flex: 1, 
-                          padding: '12px', 
-                          fontSize: '16px', 
-                          color: '#1a202c' 
-                          }}>{choice}</span>
+                        <span style={{
+                          flex: 1,
+                          padding: '12px',
+                          fontSize: '16px',
+                          color: '#1a202c'
+                        }}>{choice}</span>
                       </div>
                     ))}
                   </div>
@@ -821,25 +1059,29 @@ export default function CreateQuestion() {
                         <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice && choice !== ''} onChange={() => setCorrectAnswer(choice)} />
                         <input type="text" value={choice} placeholder={`Option ${index + 1}`} style={styles.input} onChange={(e) => handleAnswerChange(index, e.target.value)} />
                         {formData.answer_choices.length > 2 && (
-                          <button type="button" style={{ 
-                            border: 'none', 
-                            background: 'none', 
-                            color: '#e53e3e', 
-                            cursor: 'pointer' 
+                          <button type="button" style={{
+                            border: 'none',
+                            background: 'none',
+                            color: '#e53e3e',
+                            cursor: 'pointer'
                           }} onClick={() => removeAnswerChoice(index)}>✕</button>
                         )}
                       </div>
                     ))}
-                    <button type="button" style={{ ...
+                    <button type="button" style={{
+                      ...
                       styles.secondaryBtn,
-                      width: '100%', 
-                      marginTop: '12px', 
-                      borderStyle: 'dashed' 
-                      }} onClick={addAnswerChoice}>+ Add Another Option</button>
+                      width: '100%',
+                      marginTop: '12px',
+                      borderStyle: 'dashed'
+                    }} onClick={addAnswerChoice}>+ Add Another Option</button>
                   </>
                 )}
               </div>
             )}
+
+            {/* Short Answer builder */}
+            {isShortAnswer() && renderShortAnswerCard()}
 
             {/* Rubric Builder */}
             {needsRubric() && (
@@ -848,82 +1090,82 @@ export default function CreateQuestion() {
                   <div style={{
                     padding: '12px 16px',
                     background: dashboardPalette.surface,
-                     border: `1px solid ${dashboardPalette.border}`,
-                     borderRadius: '8px',
-                     marginBottom: '20px'
-                     }}>
-                    <div style={{ 
+                    border: `1px solid ${dashboardPalette.border}`,
+                    borderRadius: '8px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{
                       fontSize: '14px',
                       fontWeight: '600',
                       color: dashboardPalette.navy,
                       marginBottom: '6px'
-                      }}>
-                        📋 Parts vs Rubric</div>
-                    <ul style={{ 
+                    }}>
+                      📋 Parts vs Rubric</div>
+                    <ul style={{
                       margin: 0,
                       paddingLeft: '20px',
                       fontSize: '13px',
                       color: dashboardPalette.text,
                       lineHeight: 1.6
-                      }}>
+                    }}>
                       <li><strong>Parts</strong> = Sub-questions.</li>
                       <li><strong>Rubric</strong> = Grading criteria per part.</li>
                     </ul>
                   </div>
                 )}
 
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  marginBottom: '16px' 
-                  }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '16px'
+                }}>
                   <label style={styles.label}>{isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}</label>
-                  <span style={{ 
+                  <span style={{
                     fontSize: '14px',
                     color: dashboardPalette.muted
-                    }}>Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points</span>
+                  }}>Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points</span>
                 </div>
 
                 {formData.rubric_parts.map((part, partIndex) => (
-                  <div key={partIndex} style={{ 
+                  <div key={partIndex} style={{
                     background: dashboardPalette.surface,
                     border: `1px solid ${dashboardPalette.border}`,
                     borderRadius: '8px',
                     padding: '16px',
                     marginBottom: '16px'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '12px'
                     }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
-                      marginBottom: '12px' 
-                      }}>
                       {isFreeResponse() ? (
                         <input type="text" value={part.part_label} onChange={(e) => updatePartLabel(partIndex, e.target.value)} style={{ ...styles.input, width: '140px', fontWeight: '600', background: dashboardPalette.white }} placeholder="Part A" />
                       ) : (
                         <span style={{ fontWeight: '600', color: dashboardPalette.text }}>Grading levels</span>
                       )}
                       {isFreeResponse() && formData.rubric_parts.length > 1 && (
-                        <button type="button" style={{ 
+                        <button type="button" style={{
                           border: `1px solid ${dashboardPalette.dangerBorder}`,
                           background: dashboardPalette.white,
                           color: dashboardPalette.dangerText,
                           cursor: 'pointer',
                           padding: '6px 12px',
                           borderRadius: '6px',
-                          fontSize: '13px' 
+                          fontSize: '13px'
                         }} onClick={() => removePart(partIndex)}>Remove Part</button>
                       )}
                     </div>
 
-                    <div style={{ 
+                    <div style={{
                       marginTop: '12px',
                       paddingTop: '12px',
                       borderTop: `1px solid ${dashboardPalette.border}`
-                      }}>
+                    }}>
                       {part.rubric_levels.map((level, levelIndex) => (
-                        <div key={levelIndex} style={{ 
+                        <div key={levelIndex} style={{
                           display: 'flex',
                           alignItems: 'flex-start',
                           gap: '12px',
@@ -932,20 +1174,20 @@ export default function CreateQuestion() {
                           padding: '10px 12px',
                           borderRadius: '6px',
                           border: `1px solid ${dashboardPalette.border}`
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            flexShrink: 0
                           }}>
-                          <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '6px', 
-                            flexShrink: 0 
-                            }}>
                             <span style={{ fontWeight: '600' }}>+</span>
                             <input type="number" value={level.points} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'points', e.target.value)} style={{ ...styles.input, width: '56px', textAlign: 'center' }} min="0" />
                             <span style={{ fontSize: '13px' }}>pts</span>
                           </div>
                           <input type="text" value={level.criteria} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)} placeholder="Criteria..." style={{ ...styles.input, flex: 1 }} />
                           {part.rubric_levels.length > 1 && (
-                            <button type="button" style={{ 
+                            <button type="button" style={{
                               border: 'none',
                               background: 'none',
                               color: dashboardPalette.muted,
@@ -954,25 +1196,27 @@ export default function CreateQuestion() {
                           )}
                         </div>
                       ))}
-                      <button type="button" style={{ ...
-                        styles.secondaryBtn, 
+                      <button type="button" style={{
+                        ...
+                        styles.secondaryBtn,
                         padding: '8px 14px',
-                        fontSize: '13px', 
-                        borderStyle: 'dashed' 
-                        }} onClick={() => addRubricLevel(partIndex)}>+ Add level</button>
+                        fontSize: '13px',
+                        borderStyle: 'dashed'
+                      }} onClick={() => addRubricLevel(partIndex)}>+ Add level</button>
                     </div>
                   </div>
                 ))}
 
                 {isFreeResponse() && (
-                  <button type="button" style={{ ...
-                  styles.secondaryBtn,
-                  width: '100%', 
-                  borderStyle: 'dashed', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  gap: '8px'
+                  <button type="button" style={{
+                    ...
+                    styles.secondaryBtn,
+                    width: '100%',
+                    borderStyle: 'dashed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
                   }} onClick={addPart}>
                     <span style={{ fontSize: '18px' }}>+</span> Add Another Part
                   </button>
@@ -1000,32 +1244,33 @@ export default function CreateQuestion() {
           </div>
 
           {/* Sidebar / Split View (Right Column) */}
-          <aside style={{ 
+          <aside style={{
             position: 'sticky',
-            top: '24px' }}>
+            top: '24px'
+          }}>
             {isSplitView ? (
               /* --- SPLIT VIEW PREVIEW --- */
               <div style={styles.card}>
-                <div style={{ 
-                  display: 'flex', 
+                <div style={{
+                  display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'center', 
-                  marginBottom: '16px' 
-                  }}>
-                  <h3 style={{ 
+                  alignItems: 'center',
+                  marginBottom: '16px'
+                }}>
+                  <h3 style={{
                     margin: 0,
                     fontSize: '14px',
                     color: dashboardPalette.muted,
-                    textTransform: 'uppercase' 
-                    }}>Student View</h3>
-                    <span style={{ fontSize: '11px', color: dashboardPalette.muted, fontStyle: 'italic' }}>Live Preview</span>
+                    textTransform: 'uppercase'
+                  }}>Student View</h3>
+                  <span style={{ fontSize: '11px', color: dashboardPalette.muted, fontStyle: 'italic' }}>Live Preview</span>
                 </div>
-                <div style={{ 
+                <div style={{
                   border: `1px solid ${dashboardPalette.border}`,
                   borderRadius: '8px',
                   background: dashboardPalette.surface,
-                  overflow: 'hidden' 
-                  }}>
+                  overflow: 'hidden'
+                }}>
                   <StudentPreview
                     inline={true}
                     isPreviewMode={false}
