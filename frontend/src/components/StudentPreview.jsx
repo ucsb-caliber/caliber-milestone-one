@@ -641,13 +641,13 @@ export default function StudentPreview({
   };
   const wrapperStyle = inline
     ? {
-        background: dashboardPalette.surface,
-        height: '100%',
-        overflowY: 'auto',
-        overscrollBehavior: 'contain',
-        WebkitOverflowScrolling: 'touch',
-        touchAction: 'pan-y'
-      }
+      background: dashboardPalette.surface,
+      height: '100%',
+      overflowY: 'auto',
+      overscrollBehavior: 'contain',
+      WebkitOverflowScrolling: 'touch',
+      touchAction: 'pan-y'
+    }
     : styles.overlay;
   const containerStyle = inline
     ? { ...styles.container, maxWidth: '100%', padding: '1rem' }
@@ -694,13 +694,13 @@ export default function StudentPreview({
 
   const answerChoices = getAnswerChoices(currentQuestion);
   const questionType = currentQuestion.question_type?.toLowerCase();
-  const isMCQ = questionType === 'mcq' || questionType === 'true_false' || 
+  const isMCQ = questionType === 'mcq' || questionType === 'true_false' ||
     (answerChoices.length > 0 && typeof answerChoices[0] === 'string');
   const isFreeResponse = questionType === 'fr';
   const isShortAnswer = questionType === 'short_answer';
   const isCoding = isCodingQuestion(questionType);
   const codingConfig = isCoding ? getCodingConfig(currentQuestion) : null;
-  const rubricParts = (isFreeResponse || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object' 
+  const rubricParts = isFreeResponse && Array.isArray(answerChoices) && answerChoices.length > 0 && typeof answerChoices[0] === 'object'
     ? answerChoices : [];
   const selectedAnswer = answers[currentQuestion.id];
   const selectedCodingAnswer = isCoding ? getCodingAnswerPayload(currentQuestion.id) : { language: 'cpp', source_code: '' };
@@ -791,7 +791,7 @@ export default function StudentPreview({
           </div>
         )}
 
-        {/* Header with Progress */} 
+        {/* Header with Progress */}
         {showHeader && (
           <div style={styles.header}>
             <div style={styles.titleRow}>
@@ -804,7 +804,7 @@ export default function StudentPreview({
                 {assignmentType}
               </span>
             </div>
-            
+
             <div style={styles.progressSection}>
               <div style={styles.progressInfo}>
                 <span>Question {currentIndex + 1} of {totalQuestions}</span>
@@ -845,7 +845,7 @@ export default function StudentPreview({
         {/* Question Card */}
         <div style={styles.questionCard}>
           {showHeader && <div style={styles.questionNumber}>Question {currentIndex + 1}</div>}
-          
+
           {currentQuestion.title && (
             <div style={styles.questionTitle}>{currentQuestion.title}</div>
           )}
@@ -856,8 +856,8 @@ export default function StudentPreview({
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
               components={{
-                p: ({children}) => <p style={{ margin: '0 0 0.75rem 0' }}>{children}</p>,
-                code: ({node, inline, className, children, ...props}) => {
+                p: ({ children }) => <p style={{ margin: '0 0 0.75rem 0' }}>{children}</p>,
+                code: ({ node, inline, className, children, ...props }) => {
                   return inline ? (
                     <code style={{
                       background: '#e9ecef',
@@ -905,15 +905,15 @@ export default function StudentPreview({
                     const isSelected = selectedAnswer === choice;
                     const isCorrect = choice === currentQuestion.correct_answer;
                     const showResult = !isPreviewMode && (submitted || showCorrectAnswers) && isSelected;
-                    
+
                     let buttonStyle = { ...styles.choiceButton };
                     let indicatorStyle = { ...styles.choiceIndicator };
-                    
+
                     if (isSelected) {
                       buttonStyle = { ...buttonStyle, ...styles.choiceButtonSelected };
                       indicatorStyle = { ...indicatorStyle, ...styles.choiceIndicatorSelected };
                     }
-                    
+
                     if (showResult && showCorrectAnswers) {
                       if (isCorrect) {
                         buttonStyle = { ...buttonStyle, ...styles.choiceButtonCorrect };
@@ -958,55 +958,109 @@ export default function StudentPreview({
               </>
             )}
 
-            {isShortAnswer && rubricParts.length > 0 && (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <div style={styles.answerLabel}>Your answer:</div>
-                  {isPreviewMode && (
-                    <span style={{ fontSize: '0.875rem', color: dashboardPalette.muted }}>
-                      {rubricParts.reduce((sum, p) => {
-                        const levels = p.rubric_levels || [];
-                        const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(p.points) || 0);
-                        return sum + maxPts;
-                      }, 0)} points total
-                    </span>
-                  )}
-                </div>
-                {isPreviewMode && (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: dashboardPalette.muted, marginBottom: '0.5rem', fontWeight: '600' }}>
-                      Grading rubric (visible to instructors only):
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-                      {rubricParts.flatMap((part, partIdx) => {
-                        const levels = part.rubric_levels || [];
-                        if (levels.length > 0) {
-                          return levels.map((l, i) => (
-                            <div key={`${partIdx}-${i}`} style={{ fontSize: '0.8rem', color: dashboardPalette.text, padding: '0.5rem', background: dashboardPalette.surface, borderRadius: '8px', border: `1px solid ${dashboardPalette.border}` }}>
-                              <span style={{ fontWeight: '600' }}>+{l.points || 0} pts:</span> {l.criteria || '—'}
-                            </div>
-                          ));
-                        }
-                        return (
-                          <div key={partIdx} style={{ fontSize: '0.8rem', color: dashboardPalette.text, padding: '0.5rem', background: dashboardPalette.surface, borderRadius: '8px', border: `1px solid ${dashboardPalette.border}` }}>
-                            <span style={{ fontWeight: '600' }}>+{part.points || 0} pts:</span> {part.rubric_text || '—'}
-                          </div>
-                        );
-                      })}
-                    </div>
+            {isShortAnswer && (() => {
+              // Parse short answer config (new format: object with valid_answers)
+              // vs old format (array of rubric parts)
+              let saConfig = null;
+              if (
+                answerChoices &&
+                !Array.isArray(answerChoices) &&
+                typeof answerChoices === 'object' &&
+                answerChoices.valid_answers
+              ) {
+                saConfig = answerChoices;
+              }
+
+              const restriction = saConfig?.input_restriction || 'any';
+              const inputType = restriction === 'numbers' ? 'number' : 'text';
+              const inputPattern = restriction === 'letters' ? '[A-Za-z]*' : undefined;
+
+              return (
+                <>
+                  <div style={styles.answerLabel}>
+                    Your answer:
+                    {restriction !== 'any' && (
+                      <span style={{
+                        marginLeft: '0.5rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        background: dashboardPalette.navyLight,
+                        color: dashboardPalette.navy,
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                      }}>
+                        {restriction === 'numbers' ? 'numbers only' : 'letters only'}
+                      </span>
+                    )}
                   </div>
-                )}
-                <textarea
-                  style={styles.textArea}
-                  placeholder="Enter your short answer..."
-                  value={selectedAnswer || ''}
-                  onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
-                  disabled={isReadOnly}
-                  onFocus={(e) => e.target.style.borderColor = dashboardPalette.navy}
-                  onBlur={(e) => e.target.style.borderColor = dashboardPalette.border}
-                />
-              </>
-            )}
+
+                  <input
+                    type={inputType}
+                    pattern={inputPattern}
+                    placeholder="Type your answer here…"
+                    value={selectedAnswer || ''}
+                    onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                    disabled={isReadOnly}
+                    onFocus={(e) => e.target.style.borderColor = dashboardPalette.navy}
+                    onBlur={(e) => e.target.style.borderColor = dashboardPalette.border}
+                    style={{
+                      width: '100%',
+                      maxWidth: '420px',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: `1px solid ${dashboardPalette.border}`,
+                      fontSize: '0.95rem',
+                      color: dashboardPalette.text,
+                      background: isReadOnly ? dashboardPalette.surface : dashboardPalette.white,
+                      boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+
+                  {/* Valid answers — shown in preview/instructor mode only */}
+                  {isPreviewMode && saConfig?.valid_answers?.length > 0 && (
+                    <div style={{
+                      marginTop: '0.85rem',
+                      padding: '0.65rem 0.75rem',
+                      background: dashboardPalette.surface,
+                      border: `1px solid ${dashboardPalette.border}`,
+                      borderRadius: '8px',
+                      fontSize: '0.82rem'
+                    }}>
+                      <div style={{ fontWeight: 700, color: dashboardPalette.navy, marginBottom: '0.4rem' }}>
+                        Valid answers (instructor view):
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {saConfig.valid_answers.map((ans, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              background: dashboardPalette.navyLight,
+                              color: dashboardPalette.navy,
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '6px',
+                              border: `1px solid ${dashboardPalette.border}`,
+                              fontWeight: 600,
+                              fontSize: '0.8rem',
+                            }}
+                          >
+                            {ans.value}
+                            {!ans.case_sensitive && (
+                              <span style={{ opacity: 0.6, fontWeight: 400, marginLeft: '4px' }}>(any case)</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                      {saConfig.points != null && (
+                        <div style={{ marginTop: '0.5rem', color: dashboardPalette.muted, fontSize: '0.78rem' }}>
+                          {saConfig.points} point{saConfig.points !== 1 ? 's' : ''} for a correct match
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {isFreeResponse && rubricParts.length > 0 && (
               <>
@@ -1028,9 +1082,9 @@ export default function StudentPreview({
                   const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(part.points) || 0);
                   return (
                     <div key={idx} style={{ marginBottom: '1.5rem' }}>
-                      <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
                         alignItems: 'center',
                         marginBottom: '0.5rem'
                       }}>
@@ -1038,10 +1092,10 @@ export default function StudentPreview({
                           {part.part_label || `Part ${String.fromCharCode(65 + idx)}`}
                         </span>
                         {isPreviewMode && (
-                          <span style={{ 
-                            background: '#e0f2fe', 
-                            color: '#0369a1', 
-                            padding: '4px 10px', 
+                          <span style={{
+                            background: '#e0f2fe',
+                            color: '#0369a1',
+                            padding: '4px 10px',
                             borderRadius: '4px',
                             fontSize: '0.75rem',
                             fontWeight: '600'
@@ -1193,7 +1247,8 @@ export default function StudentPreview({
               </>
             )}
 
-            {(isFreeResponse || isShortAnswer) && rubricParts.length === 0 && (
+            {isFreeResponse && rubricParts.length === 0 && (
+
               <>
                 <div style={styles.answerLabel}>Your response:</div>
                 <textarea
@@ -1254,13 +1309,13 @@ export default function StudentPreview({
             <div style={{ display: 'flex', gap: '1rem' }}>
               {showFinishPreviewButton && (
                 <button
-                style={styles.submitButton}
-                onClick={onClose}
-                onMouseEnter={(e) => e.currentTarget.style.background = dashboardPalette.navyMid}
-                onMouseLeave={(e) => e.currentTarget.style.background = dashboardPalette.navy}
-              >
-                Finish Preview
-              </button>
+                  style={styles.submitButton}
+                  onClick={onClose}
+                  onMouseEnter={(e) => e.currentTarget.style.background = dashboardPalette.navyMid}
+                  onMouseLeave={(e) => e.currentTarget.style.background = dashboardPalette.navy}
+                >
+                  Finish Preview
+                </button>
               )}
             </div>
 

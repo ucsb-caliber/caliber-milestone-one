@@ -816,64 +816,172 @@ export default function QuestionCard({
         }
 
         // For Free Response and Short Answer: show rubric parts
-        if ((isFR || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object') {
-          const getPartMaxPoints = (p) => {
-            const levels = p.rubric_levels || [];
-            if (levels.length > 0) return Math.max(...levels.map(l => parseInt(l.points) || 0));
-            return parseInt(p.points) || 0;
-          };
-          const totalPoints = answerChoices.reduce((sum, p) => sum + getPartMaxPoints(p), 0);
+        // For Short Answer: show inline input + valid answers (new format)
+if (isShortAnswer) {
+  let saConfig = null;
+  if (
+    answerChoices &&
+    !Array.isArray(answerChoices) &&
+    typeof answerChoices === 'object' &&
+    answerChoices.valid_answers
+  ) {
+    saConfig = answerChoices;
+  }
+
+  const restriction = saConfig?.input_restriction || 'any';
+  const inputType = restriction === 'numbers' ? 'number' : 'text';
+
+  return (
+    <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+      {/* Inline answer input */}
+      <div style={{ marginBottom: '0.75rem' }}>
+        <label style={{
+          display: 'block',
+          fontSize: '0.8rem',
+          fontWeight: 700,
+          color: dashboardPalette.muted,
+          marginBottom: '0.4rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em'
+        }}>
+          Your answer
+          {restriction !== 'any' && (
+            <span style={{
+              marginLeft: '0.5rem',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              background: dashboardPalette.navyLight,
+              color: dashboardPalette.navy,
+              padding: '1px 6px',
+              borderRadius: '4px',
+              textTransform: 'none',
+              letterSpacing: 0
+            }}>
+              {restriction === 'numbers' ? 'numbers only' : 'letters only'}
+            </span>
+          )}
+        </label>
+        <input
+          type={inputType}
+          placeholder="Type your answer here…"
+          style={{
+            width: '100%',
+            maxWidth: '360px',
+            padding: '0.5rem 0.75rem',
+            borderRadius: '8px',
+            border: `1px solid ${dashboardPalette.border}`,
+            fontSize: '0.95rem',
+            color: dashboardPalette.text,
+            background: dashboardPalette.white,
+            boxSizing: 'border-box',
+            outline: 'none',
+          }}
+        />
+      </div>
+
+      {/* Valid answers — instructor view */}
+      {saConfig?.valid_answers?.length > 0 && (
+        <div style={{
+          padding: '0.65rem 0.75rem',
+          background: dashboardPalette.surface,
+          border: `1px solid ${dashboardPalette.border}`,
+          borderRadius: '8px',
+          fontSize: '0.82rem'
+        }}>
+          <div style={{ fontWeight: 700, color: dashboardPalette.navy, marginBottom: '0.4rem' }}>
+            Valid answers:
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {saConfig.valid_answers.map((ans, i) => (
+              <span
+                key={i}
+                style={{
+                  background: dashboardPalette.navyLight,
+                  color: dashboardPalette.navy,
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '6px',
+                  border: `1px solid ${dashboardPalette.border}`,
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                }}
+              >
+                {ans.value}
+                {!ans.case_sensitive && (
+                  <span style={{ opacity: 0.6, fontWeight: 400, marginLeft: '4px' }}>(any case)</span>
+                )}
+              </span>
+            ))}
+          </div>
+          {saConfig.points != null && (
+            <div style={{ marginTop: '0.5rem', color: dashboardPalette.muted, fontSize: '0.78rem' }}>
+              {saConfig.points} point{saConfig.points !== 1 ? 's' : ''} for a correct match
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// For Short Answer: show inline input + valid answers (new format)
+if (isFR && answerChoices.length > 0 && typeof answerChoices[0] === 'object') {
+  const getPartMaxPoints = (p) => {
+    const levels = p.rubric_levels || [];
+    if (levels.length > 0) return Math.max(...levels.map(l => parseInt(l.points) || 0));
+    return parseInt(p.points) || 0;
+  };
+  const totalPoints = answerChoices.reduce((sum, p) => sum + getPartMaxPoints(p), 0);
+  return (
+    <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <div style={{ fontSize: '0.875rem', fontWeight: '700', color: dashboardPalette.navy }}>
+          Parts & Rubric ({answerChoices.length} parts):
+        </div>
+        <span style={{ fontSize: '0.75rem', color: dashboardPalette.muted, fontWeight: '600' }}>
+          {totalPoints} pts total
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {answerChoices.map((part, index) => {
+          const levels = part.rubric_levels || [];
+          const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(part.points) || 0);
           return (
-            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.875rem', fontWeight: '700', color: dashboardPalette.navy }}>
-                  Parts & Rubric ({answerChoices.length} parts):
-                </div>
-                <span style={{ fontSize: '0.75rem', color: dashboardPalette.muted, fontWeight: '600' }}>
-                  {totalPoints} pts total
+            <div
+              key={index}
+              style={{
+                padding: '0.75rem',
+                borderRadius: '8px',
+                border: `1px solid ${dashboardPalette.border}`,
+                background: dashboardPalette.surface,
+                fontSize: '0.875rem'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                <span style={{ fontWeight: '600', color: dashboardPalette.text }}>
+                  {part.part_label || `Part ${index + 1}`}
+                </span>
+                <span style={{ background: dashboardPalette.white, color: dashboardPalette.navy, padding: '2px 8px', borderRadius: '6px', border: `1px solid ${dashboardPalette.border}`, fontSize: '0.75rem', fontWeight: '600' }}>
+                  {maxPts} pts max
                 </span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {answerChoices.map((part, index) => {
-                  const levels = part.rubric_levels || [];
-                  const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(part.points) || 0);
-                  return (
-                    <div
-                      key={index}
-                      style={{
-                        padding: '0.75rem',
-                        borderRadius: '8px',
-                        border: `1px solid ${dashboardPalette.border}`,
-                        background: dashboardPalette.surface,
-                        fontSize: '0.875rem'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                        <span style={{ fontWeight: '600', color: dashboardPalette.text }}>
-                          {part.part_label || `Part ${index + 1}`}
-                        </span>
-                        <span style={{ background: dashboardPalette.white, color: dashboardPalette.navy, padding: '2px 8px', borderRadius: '6px', border: `1px solid ${dashboardPalette.border}`, fontSize: '0.75rem', fontWeight: '600' }}>
-                          {maxPts} pts max
-                        </span>
-                      </div>
-                      {levels.length > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          {levels.map((l, i) => (
-                            <div key={i} style={{ fontSize: '0.8rem', color: dashboardPalette.muted, lineHeight: 1.3 }}>
-                              <span style={{ fontWeight: '600', color: dashboardPalette.navy }}>+{l.points || 0}:</span> {l.criteria || '—'}
-                            </div>
-                          ))}
-                        </div>
-                      ) : part.rubric_text && (
-                        <p style={{ margin: 0, color: dashboardPalette.muted, fontSize: '0.8rem', lineHeight: 1.4 }}>{part.rubric_text}</p>
-                      )}
+              {levels.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  {levels.map((l, i) => (
+                    <div key={i} style={{ fontSize: '0.8rem', color: dashboardPalette.muted, lineHeight: 1.3 }}>
+                      <span style={{ fontWeight: '600', color: dashboardPalette.navy }}>+{l.points || 0}:</span> {l.criteria || '—'}
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              ) : part.rubric_text && (
+                <p style={{ margin: 0, color: dashboardPalette.muted, fontSize: '0.8rem', lineHeight: 1.4 }}>{part.rubric_text}</p>
+              )}
             </div>
           );
-        }
+        })}
+      </div>
+    </div>
+  );
+}
 
         if (isCoding) {
           const codingConfig = getQuestionCodingConfig(question);
