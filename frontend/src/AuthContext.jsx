@@ -238,7 +238,9 @@ function storeAuthUser(user) {
     localStorage.removeItem(AUTH_USER_STORAGE_KEY);
     return;
   }
-  localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+  // Strip impersonation state — it must be re-validated from the server on every load
+  const { impersonation: _imp, ...rest } = user;
+  localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(rest));
 }
 
 function loadStoredUser() {
@@ -251,28 +253,49 @@ function loadStoredUser() {
   }
 }
 
+async function fetchMe(authHeader) {
+  try {
+    const res = await fetch(`${API_BASE}/api/me`, {
+      method: 'GET',
+      headers: authHeader || {},
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 async function fetchKeycloakUser() {
   let response;
+  let authHeader = null;
   if (isTestModeEnabled()) {
+    authHeader = { Authorization: 'Bearer test-token-1' };
     response = await fetch(`${API_BASE}/api/user`, {
       method: 'GET',
-      headers: { Authorization: 'Bearer test-token-1' },
+      headers: authHeader,
       credentials: 'include',
     });
   } else {
-    const accessToken = await getValidAccessToken();
-    if (accessToken) {
-      response = await fetch(`${API_BASE}/api/user`, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        credentials: 'include',
-      });
-    } else {
-      response = await fetch(`${API_BASE}/api/user`, {
-        method: 'GET',
-        headers: {},
-        credentials: 'include',
-      });
+    // Prefer cookie/session auth first so switching portal accounts takes effect immediately.
+    response = await fetch(`${API_BASE}/api/user`, {
+      method: 'GET',
+      headers: {},
+      credentials: 'include',
+    });
+
+    // Fallback to direct OIDC bearer only when cookie auth is unavailable.
+    if (response.status === 401) {
+      const accessToken = await getValidAccessToken();
+      if (accessToken) {
+        authHeader = { Authorization: `Bearer ${accessToken}` };
+        response = await fetch(`${API_BASE}/api/user`, {
+          method: 'GET',
+          headers: authHeader,
+          credentials: 'include',
+        });
+      }
     }
   }
 
@@ -286,6 +309,8 @@ async function fetchKeycloakUser() {
   }
 
   const payload = await response.json();
+  const meData = await fetchMe(authHeader);
+
   return {
     id: payload.user_id,
     user_id: payload.user_id,
@@ -294,6 +319,7 @@ async function fetchKeycloakUser() {
     last_name: payload.last_name || '',
     authenticated: true,
     auth_provider: 'keycloak',
+    impersonation: meData?.impersonation ?? null,
   };
 }
 
@@ -456,6 +482,16 @@ export const AuthProvider = ({ children }) => {
     window.location.assign(portalUrl(getPortalLogoutPath()));
   };
 
+  const exitImpersonation = async () => {
+    // Portal owns the platform-wide impersonation audit and cookie lifecycle.
+    await fetch(portalUrl('/impersonate/exit'), {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {});
+    // Reload so the instructor view, nav, and userInfo all re-initialize from scratch
+    window.location.reload();
+  };
+
   const value = {
     user,
     loading,
@@ -463,6 +499,7 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signIn,
     signOut,
+    exitImpersonation,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

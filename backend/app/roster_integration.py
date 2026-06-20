@@ -22,7 +22,9 @@ def _build_headers(
     user_id: str,
     user_email: Optional[str],
     user_name: Optional[str],
-    user_token: Optional[str],
+    impersonator_sub: Optional[str] = None,
+    impersonator_name: Optional[str] = None,
+    user_token: Optional[str] = None,
 ) -> dict[str, str]:
     headers: dict[str, str] = {"Accept": "application/json"}
     if user_token:
@@ -34,6 +36,10 @@ def _build_headers(
             headers["X-Internal-User-Email"] = user_email
         if user_name:
             headers["X-Internal-User-Name"] = user_name
+        if impersonator_sub:
+            headers["X-Internal-Impersonator-Sub"] = impersonator_sub
+        if impersonator_name:
+            headers["X-Internal-Impersonator-Name"] = impersonator_name
     return headers
 
 
@@ -62,6 +68,8 @@ def call_roster(
     user_id: str,
     user_email: Optional[str] = None,
     user_name: Optional[str] = None,
+    impersonator_sub: Optional[str] = None,
+    impersonator_name: Optional[str] = None,
     user_token: Optional[str] = None,
     params: Optional[dict[str, Any]] = None,
     json_body: Optional[dict[str, Any]] = None,
@@ -82,6 +90,8 @@ def call_roster(
         user_id=user_id,
         user_email=user_email,
         user_name=user_name,
+        impersonator_sub=impersonator_sub,
+        impersonator_name=impersonator_name,
         user_token=user_token,
     )
     method_upper = method.upper()

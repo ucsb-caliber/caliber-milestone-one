@@ -45,21 +45,63 @@ const actionButtonStyles = {
   },
 };
 
-/**
- * Generate display QID: slugified title + unique backend qid
- */
 const getQID = (question) => {
-  const suffix = (question.qid || `Q${question.id}`);
-  const qidSuffix = String(suffix);
-  if (question.title) {
-    const slug = question.title.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-    if (slug) return `${slug}-${qidSuffix}`;
-  }
-  return `question-${qidSuffix}`;
+  return String(question.qid || question.assigned_qid || `Q${question.id}`);
 };
+
+const getVersion = (question) => {
+  return question.assigned_version || question.version || 1;
+};
+
+const formatDraftState = (question) => {
+  if (question.is_assignment_snapshot) return 'snapshot';
+  return question.draft_state || (question.is_verified === false ? 'draft' : 'ready');
+};
+
+const formatVisibility = (question) => {
+  if (question.is_assignment_snapshot) return 'snapshot';
+  return question.visibility || 'private';
+};
+
+const formatOrigin = (question) => {
+  if (question.is_assignment_snapshot) return 'assignment';
+  return question.origin || 'manual';
+};
+
+const getSourceParts = (question) => {
+  return [
+    question.source_repo,
+    question.source_path,
+    question.source_commit
+  ].filter(Boolean);
+};
+
+const formatSourceLabel = (question) => {
+  const sourceParts = getSourceParts(question);
+  if (sourceParts.length === 0) return '';
+  const [repo, path, commit] = sourceParts;
+  const shortCommit = commit ? String(commit).slice(0, 8) : '';
+  return [repo, path, shortCommit].filter(Boolean).join(' / ');
+};
+
+const MetaChip = ({ children, title, monospace = false }) => (
+  <span
+    title={title}
+    style={{
+      fontSize: '0.68rem',
+      color: '#374151',
+      background: '#f3f4f6',
+      border: '1px solid #e5e7eb',
+      borderRadius: '4px',
+      padding: '0.05rem 0.3rem',
+      textTransform: monospace ? 'none' : 'capitalize',
+      fontFamily: monospace ? 'monospace' : 'inherit',
+      whiteSpace: 'nowrap'
+    }}
+  >
+    {children}
+  </span>
+);
 
 /**
  * Render user profile icon
@@ -245,6 +287,8 @@ const TableRow = ({
   isDraggable,
 }) => {
   const qid = getQID(question);
+  const sourceLabel = formatSourceLabel(question);
+  const sourceTitle = getSourceParts(question).join('\n');
 
   const handleEdit = () => {
     if (onEdit) {
@@ -290,7 +334,7 @@ const TableRow = ({
       {showQID && (
         <td style={{ padding: '0.75rem 1rem' }}>
           <a
-            href={`#question-${question.id}`}
+            href={`#question-${question.id || question.qid}`}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -315,6 +359,37 @@ const TableRow = ({
           >
             {qid}
           </a>
+          <div style={{ marginTop: '0.3rem', display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+            <MetaChip title="Version" monospace>
+              v{getVersion(question)}
+            </MetaChip>
+            <MetaChip title="Draft state">
+              {formatDraftState(question).replace('_', ' ')}
+            </MetaChip>
+            <MetaChip title="Visibility">
+              {formatVisibility(question).replace('_', ' ')}
+            </MetaChip>
+            <MetaChip title="Origin">
+              {formatOrigin(question).replace('_', ' ')}
+            </MetaChip>
+          </div>
+          {sourceLabel && (
+            <div
+              title={sourceTitle}
+              style={{
+                marginTop: '0.25rem',
+                maxWidth: '220px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                color: '#6b7280',
+                fontFamily: 'monospace',
+                fontSize: '0.68rem'
+              }}
+            >
+              {sourceLabel}
+            </div>
+          )}
         </td>
       )}
       <td style={{ padding: '0.75rem 1rem', color: dashboardPalette.text, fontSize: '0.875rem' }}>

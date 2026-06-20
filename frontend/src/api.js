@@ -3,7 +3,7 @@ import { getValidAccessToken } from './oidcTokens';
 import { triggerAuthRecovery } from './authRecovery';
 
 // API base URL - can be overridden with VITE_API_BASE environment variable
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 const AUTH_USER_STORAGE_KEY = 'caliber-auth-user';
 
 function getStoredAuthUser() {
@@ -485,6 +485,23 @@ export async function getQuestion(id) {
 }
 
 /**
+ * Fetch a single question by stable QID.
+ */
+export async function getQuestionByQid(qid) {
+  const headers = await getAuthHeaders();
+
+  const response = await apiFetch(`${API_BASE}/api/questions/by-qid/${encodeURIComponent(qid)}`, {
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error('Question not found');
+  }
+
+  return await response.json();
+}
+
+/**
  * Generate an unverified draft variant from an existing question.
  */
 export async function generateQuestionVariant(questionId, count = 1) {
@@ -558,8 +575,11 @@ export async function createQuestion(questionData) {
     const headers = await getAuthHeaders();
     
     const formData = new FormData();
+    if (questionData.qid) formData.append('qid', questionData.qid);
+    if (questionData.version) formData.append('version', String(questionData.version));
     formData.append('title', questionData.title);
     formData.append('text', questionData.text);
+    if (questionData.content) formData.append('content', JSON.stringify(questionData.content));
     formData.append('tags', questionData.tags || '');
     formData.append('keywords', questionData.keywords || '');
     formData.append('school', questionData.school || '');
@@ -569,6 +589,14 @@ export async function createQuestion(questionData) {
     formData.append('blooms_taxonomy', questionData.blooms_taxonomy || '');
     formData.append('answer_choices', questionData.answer_choices || '[]');
     formData.append('correct_answer', questionData.correct_answer || '');
+    formData.append('draft_state', questionData.draft_state || (questionData.is_verified === false ? 'draft' : 'ready'));
+    formData.append('visibility', questionData.visibility || 'private');
+    formData.append('origin', questionData.origin || 'manual');
+    formData.append('school_scope', questionData.school_scope || questionData.user_school || questionData.school || '');
+    if (questionData.course_scope) formData.append('course_scope', questionData.course_scope);
+    if (questionData.source_repo) formData.append('source_repo', questionData.source_repo);
+    if (questionData.source_path) formData.append('source_path', questionData.source_path);
+    if (questionData.source_commit) formData.append('source_commit', questionData.source_commit);
     if (questionData.coding_config) {
       formData.append('coding_config', JSON.stringify(questionData.coding_config));
     }
@@ -599,6 +627,27 @@ export async function createQuestion(questionData) {
     }
     throw error;
   }
+}
+
+/**
+ * Create a question through the structured JSON endpoint.
+ */
+export async function createQuestionJson(questionData) {
+  const headers = await getAuthHeaders();
+  headers['Content-Type'] = 'application/json';
+
+  const response = await apiFetch(`${API_BASE}/api/questions/json`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(questionData),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create question');
+  }
+
+  return response.json();
 }
 
 /**
@@ -721,6 +770,100 @@ export async function runCodingQuestion(assignmentId, questionId, payload) {
     }
     throw error;
   }
+}
+
+/**
+ * Update a question by stable QID.
+ */
+export async function updateQuestionByQid(qid, updateData) {
+  const headers = await getAuthHeaders();
+  headers['Content-Type'] = 'application/json';
+
+  const response = await apiFetch(`${API_BASE}/api/questions/by-qid/${encodeURIComponent(qid)}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(updateData),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Update failed');
+  }
+
+  return response.json();
+}
+
+/**
+ * Validate a zipped Caliber question folder without writing changes.
+ */
+export async function dryRunQuestionImport(file, options = {}) {
+  const headers = await getAuthHeaders();
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('conflict_mode', options.conflict_mode || 'create_only');
+
+  const response = await apiFetch(`${API_BASE}/api/question-imports/dry-run`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Question import validation failed');
+  }
+
+  return response.json();
+}
+
+/**
+ * Import a zipped Caliber question folder.
+ */
+export async function importQuestionFolder(file, options = {}) {
+  const headers = await getAuthHeaders();
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('conflict_mode', options.conflict_mode || 'create_only');
+  if (options.source_repo) formData.append('source_repo', options.source_repo);
+  if (options.source_commit) formData.append('source_commit', options.source_commit);
+
+  const response = await apiFetch(`${API_BASE}/api/question-imports`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Question import failed');
+  }
+
+  return response.json();
+}
+
+/**
+ * Export selected questions as a Caliber question-folder zip Blob.
+ */
+export async function exportQuestionFolder(options = {}) {
+  const headers = await getAuthHeaders();
+  headers['Content-Type'] = 'application/json';
+
+  const response = await apiFetch(`${API_BASE}/api/question-exports`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      qids: options.qids || [],
+      assignment_ids: options.assignment_ids || [],
+      include_private: options.include_private !== false,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Question export failed');
+  }
+
+  return response.blob();
 }
 
 /**
@@ -1002,6 +1145,60 @@ export async function getAdminCoursesOverview() {
     }
     throw error;
   }
+}
+
+// ============= Analytics API Functions =============
+
+/**
+ * Send a batch of privacy-preserving analytics events.
+ */
+export async function sendAnalyticsEvents(events, options = {}) {
+  if (!Array.isArray(events) || events.length === 0) {
+    return { accepted: 0, duplicates: 0, rejected: 0 };
+  }
+  const headers = await getAuthHeaders();
+  headers['Content-Type'] = 'application/json';
+  const response = await apiFetch(`${API_BASE}/api/analytics/events`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ events }),
+    keepalive: Boolean(options.keepalive),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || 'Failed to send analytics events');
+  }
+  return response.json();
+}
+
+export async function getCourseAnalytics(courseId) {
+  const headers = await getAuthHeaders();
+  const response = await apiFetch(`${API_BASE}/api/analytics/course/${courseId}`, { headers });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || 'Failed to fetch course analytics');
+  }
+  return response.json();
+}
+
+export async function getAssignmentAnalytics(assignmentId) {
+  const headers = await getAuthHeaders();
+  const response = await apiFetch(`${API_BASE}/api/analytics/assignments/${assignmentId}`, { headers });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || 'Failed to fetch assignment analytics');
+  }
+  return response.json();
+}
+
+export async function getQuestionAnalytics(questionQid) {
+  const headers = await getAuthHeaders();
+  const response = await apiFetch(`${API_BASE}/api/analytics/questions/${encodeURIComponent(questionQid)}`, { headers });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || 'Failed to fetch question analytics');
+  }
+  return response.json();
 }
 
 /**
@@ -1305,6 +1502,36 @@ export async function createAssignment(assignmentData) {
 }
 
 /**
+ * Render an unsaved assignment draft for instructor preview.
+ */
+export async function previewAssignmentDraft(assignmentData) {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await apiFetch(`${API_BASE}/api/assignments/preview`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assignmentData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to preview assignment');
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Get a specific assignment by ID
  */
 export async function getAssignment(assignmentId) {
@@ -1408,6 +1635,78 @@ export async function getAssignmentSubmissionStatus(assignmentId) {
 }
 
 /**
+ * Record metadata-only integrity events for the current student's assignment session.
+ */
+export async function recordAssignmentIntegrityEvents(assignmentId, events) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/integrity-events`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ events: Array.isArray(events) ? events : [] }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to record integrity events');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get instructor-facing integrity summary for an assignment.
+ */
+export async function getAssignmentIntegritySummary(assignmentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/integrity-summary`, {
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch integrity summary');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get instructor-facing integrity detail for one student.
+ */
+export async function getStudentIntegritySummary(assignmentId, studentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/integrity-summary/${encodeURIComponent(studentId)}`, {
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch student integrity summary');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Get grading state for one assignment/student (instructor only)
  */
 export async function getAssignmentGradingState(assignmentId, studentId) {
@@ -1444,6 +1743,29 @@ export async function saveAssignmentGradingState(assignmentId, studentId, payloa
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to save assignment grading');
+    }
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Retry native coding autograding for one assignment/student (instructor only)
+ */
+export async function retryAssignmentAutograde(assignmentId, studentId) {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/grading/${encodeURIComponent(studentId)}/autograde`, {
+      method: 'POST',
+      headers,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to retry autograding');
     }
     return response.json();
   } catch (error) {

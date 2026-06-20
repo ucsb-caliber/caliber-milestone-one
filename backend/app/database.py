@@ -27,7 +27,15 @@ else:
 
 def create_db_and_tables():
     """Create core Caliber persistence tables."""
-    from .models import Question, CodingQuestionPrivate, CodingRun, Assignment, AssignmentProgress
+    from .models import (
+        AnalyticsEvent,
+        Assignment,
+        AssignmentIntegrityEvent,
+        AssignmentProgress,
+        CodingQuestionPrivate,
+        CodingRun,
+        Question,
+    )
 
     SQLModel.metadata.create_all(
         engine,
@@ -37,6 +45,8 @@ def create_db_and_tables():
             CodingRun.__table__,
             Assignment.__table__,
             AssignmentProgress.__table__,
+            AssignmentIntegrityEvent.__table__,
+            AnalyticsEvent.__table__,
         ],
     )
     _ensure_assignment_progress_question_time_column()

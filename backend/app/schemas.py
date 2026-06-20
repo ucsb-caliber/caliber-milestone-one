@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict
+from typing import Any, Optional, List, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -60,8 +60,11 @@ class UserListResponse(BaseModel):
 
 class QuestionCreate(BaseModel):
     """Schema for creating a new question."""
+    qid: Optional[str] = None
+    version: int = 1
     title: str = Field(..., min_length=1)
     text: str
+    content: Optional[dict[str, Any]] = None
     tags: str = ""
     keywords: str = ""
     school: str = ""
@@ -76,13 +79,26 @@ class QuestionCreate(BaseModel):
     source_pdf: Optional[str] = None
     image_url: Optional[str] = None
     is_verified: bool = False
+    draft_state: str = "ready"
+    visibility: str = "private"
+    origin: str = "manual"
+    school_scope: str = ""
+    course_scope: Optional[str] = None
+    source_repo: Optional[str] = None
+    source_path: Optional[str] = None
+    source_commit: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
     coding_config: Optional[dict] = None
 
 
 class QuestionUpdate(BaseModel):
     """Schema for updating a question."""
+    qid: Optional[str] = None
+    version: Optional[int] = None
     title: Optional[str] = None
     text: Optional[str] = None
+    content: Optional[dict[str, Any]] = None
     tags: Optional[str] = None
     keywords: Optional[str] = None
     school: Optional[str] = None
@@ -97,6 +113,16 @@ class QuestionUpdate(BaseModel):
     source_pdf: Optional[str] = None
     image_url: Optional[str] = None
     is_verified: Optional[bool] = None
+    draft_state: Optional[str] = None
+    visibility: Optional[str] = None
+    origin: Optional[str] = None
+    school_scope: Optional[str] = None
+    course_scope: Optional[str] = None
+    source_repo: Optional[str] = None
+    source_path: Optional[str] = None
+    source_commit: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
     coding_config: Optional[dict] = None
 
 
@@ -124,8 +150,10 @@ class QuestionResponse(BaseModel):
     """Schema for question response."""
     id: int
     qid: str
+    version: int = 1
     title: str
     text: str
+    content: str = ""
     tags: str
     keywords: str
     school: str
@@ -140,7 +168,20 @@ class QuestionResponse(BaseModel):
     source_pdf: Optional[str]
     image_url: Optional[str]
     user_id: str
+    owner_user_id: Optional[str] = None
+    draft_state: str = "ready"
+    visibility: str = "private"
+    origin: str = "manual"
+    school_scope: str = ""
+    course_scope: Optional[str] = None
+    source_repo: Optional[str] = None
+    source_path: Optional[str] = None
+    source_commit: Optional[str] = None
+    content_hash: str = ""
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
     is_verified: bool
     coding: Optional[CodingQuestionConfigResponse] = None
 
@@ -188,6 +229,31 @@ class QuestionListResponse(BaseModel):
     """Schema for list of questions."""
     questions: List[QuestionResponse]
     total: int
+
+
+class QuestionImportItem(BaseModel):
+    qid: str
+    path: str
+    action: str
+    message: str = ""
+
+
+class QuestionImportResponse(BaseModel):
+    """Question folder import validation/import summary."""
+    import_id: Optional[str] = None
+    dry_run: bool = True
+    created_count: int = 0
+    updated_count: int = 0
+    skipped_count: int = 0
+    error_count: int = 0
+    items: List[QuestionImportItem] = []
+
+
+class QuestionExportRequest(BaseModel):
+    """Question folder export request."""
+    qids: List[str] = []
+    assignment_ids: List[int] = []
+    include_private: bool = True
 
 
 class AssignmentCreate(BaseModel):
@@ -263,6 +329,17 @@ class AssignmentUpdate(BaseModel):
         return self
 
 
+class AssignmentPreviewRequest(BaseModel):
+    """Draft assignment payload for live instructor preview."""
+    course_id: int
+    title: str = "Untitled Assignment"
+    type: str = "Homework"
+    description: str = ""
+    assignment_questions: List[int] = []
+    preview_student_id: str = "preview-student"
+    assignment_id: Optional[int] = None
+
+
 class AssignmentResponse(BaseModel):
     """Schema for assignment response."""
     id: int
@@ -282,6 +359,7 @@ class AssignmentResponse(BaseModel):
     grade_released_at: Optional[datetime] = None
     all_students_graded: Optional[bool] = None
     assignment_questions: List[int]  # Parsed from JSON string
+    assignment_question_refs: List[dict[str, Any]] = []
     created_at: datetime
     updated_at: datetime
 
@@ -303,6 +381,7 @@ class AssignmentResponse(BaseModel):
         obj,
         instructor_email: Optional[str] = None,
         all_students_graded: Optional[bool] = None,
+        assignment_question_refs: Optional[List[dict[str, Any]]] = None,
     ):
         """Build assignment response while sourcing PII externally."""
         import json
@@ -324,6 +403,7 @@ class AssignmentResponse(BaseModel):
             'grade_released_at': getattr(obj, "grade_released_at", None),
             'all_students_graded': all_students_graded,
             'assignment_questions': json.loads(obj.assignment_questions) if obj.assignment_questions else [],
+            'assignment_question_refs': assignment_question_refs if assignment_question_refs is not None else json.loads(getattr(obj, "assignment_question_refs", "[]") or "[]"),
             'created_at': obj.created_at,
             'updated_at': obj.updated_at,
         }
@@ -409,6 +489,7 @@ class AssignmentProgressResponse(BaseModel):
     assignment_id: int
     student_id: str
     answers: dict = Field(default_factory=dict)
+    variant_data: dict = Field(default_factory=dict)
     question_time_ms: Dict[str, int] = Field(default_factory=dict)
     current_question_index: int = 0
     submitted: bool = False
@@ -428,6 +509,61 @@ class AssignmentProgressUpdate(BaseModel):
     submitted: Optional[bool] = None
 
 
+class AssignmentIntegrityEventCreate(BaseModel):
+    """Metadata-only student integrity event."""
+    event_type: str = Field(..., min_length=1, max_length=64)
+    question_key: Optional[str] = Field(None, max_length=128)
+    part_id: Optional[str] = Field(None, max_length=128)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    client_created_at: Optional[datetime] = None
+
+
+class AssignmentIntegrityEventBatch(BaseModel):
+    """Batch payload for student assignment integrity events."""
+    events: List[AssignmentIntegrityEventCreate] = Field(default_factory=list, max_length=100)
+
+
+class AssignmentIntegrityEventResponse(BaseModel):
+    """Persisted integrity event detail for instructor review."""
+    id: int
+    assignment_id: int
+    student_id: str
+    question_key: Optional[str] = None
+    part_id: Optional[str] = None
+    event_type: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    client_created_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class AssignmentIntegrityStudentSummary(BaseModel):
+    """Instructor-facing integrity summary for one student."""
+    student_id: str
+    risk_score: int = 0
+    risk_level: str = "none"
+    event_count: int = 0
+    paste_count: int = 0
+    copy_count: int = 0
+    cut_count: int = 0
+    focus_away_count: int = 0
+    rapid_input_count: int = 0
+    large_delta_count: int = 0
+    largest_paste_chars: int = 0
+    last_event_at: Optional[datetime] = None
+
+
+class AssignmentIntegritySummaryResponse(BaseModel):
+    """Instructor-facing assignment integrity summary."""
+    assignment_id: int
+    students: List[AssignmentIntegrityStudentSummary] = []
+
+
+class AssignmentIntegrityStudentDetailResponse(AssignmentIntegrityStudentSummary):
+    """Instructor-facing integrity summary plus event detail for one student."""
+    assignment_id: int
+    events: List[AssignmentIntegrityEventResponse] = []
+
+
 class AssignmentStudentSubmissionStatus(BaseModel):
     """Per-student assignment submission timing status for instructors."""
     student_id: str
@@ -439,6 +575,9 @@ class AssignmentStudentSubmissionStatus(BaseModel):
     score_earned: Optional[float] = None
     score_total: Optional[float] = None
     score_percent: Optional[float] = None
+    integrity_risk_score: int = 0
+    integrity_risk_level: str = "none"
+    integrity_event_count: int = 0
 
 
 class AssignmentSubmissionStatusResponse(BaseModel):
@@ -459,6 +598,7 @@ class RubricPartGradeUpdate(BaseModel):
 
 class QuestionGradeUpdate(BaseModel):
     question_id: int
+    question_qid: Optional[str] = None
     parts: List[RubricPartGradeUpdate] = []
     question_comment: Optional[str] = ""
 
@@ -487,6 +627,7 @@ class RubricPartGradeResponse(BaseModel):
 
 class AssignmentQuestionGradeResponse(BaseModel):
     question_id: int
+    question_qid: Optional[str] = None
     question_title: str
     question_text: str = ""
     question_type: str
@@ -499,6 +640,7 @@ class AssignmentQuestionGradeResponse(BaseModel):
     correct_answer: Optional[str] = None
     question_comment: str = ""
     rubric_parts: List[RubricPartGradeResponse] = []
+    autograder_result: Optional[dict[str, Any]] = None
     coding_result: Optional[dict] = None
 
 
@@ -516,6 +658,111 @@ class AssignmentGradingResponse(BaseModel):
     late_penalty_points: float = 0.0
     all_questions_fully_graded: bool
     questions: List[AssignmentQuestionGradeResponse] = []
+
+
+class AnalyticsEventCreate(BaseModel):
+    """Client-submitted behavioral analytics event."""
+    client_event_id: str = Field(..., min_length=8, max_length=160)
+    session_id: str = Field(..., min_length=8, max_length=160)
+    event_name: str = Field(..., min_length=2, max_length=80)
+    course_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    question_id: Optional[int] = None
+    question_qid: Optional[str] = Field(default=None, max_length=160)
+    part_id: Optional[str] = Field(default=None, max_length=160)
+    route: str = Field(default="", max_length=500)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: Optional[datetime] = None
+
+
+class AnalyticsEventBatch(BaseModel):
+    """Batch ingestion payload for analytics events."""
+    events: List[AnalyticsEventCreate] = Field(default_factory=list, max_length=100)
+
+
+class AnalyticsEventIngestResponse(BaseModel):
+    accepted: int
+    duplicates: int = 0
+    rejected: int = 0
+
+
+class AnalyticsOverviewMetric(BaseModel):
+    label: str
+    value: float | int | str | None
+
+
+class AnalyticsAssignmentSummary(BaseModel):
+    assignment_id: int
+    title: str
+    course_id: int
+    enrolled_count: int = 0
+    opened_count: int = 0
+    started_count: int = 0
+    submitted_count: int = 0
+    missing_count: int = 0
+    late_count: int = 0
+    graded_count: int = 0
+    grading_backlog: int = 0
+    average_score_percent: Optional[float] = None
+    median_active_seconds: Optional[float] = None
+
+
+class AnalyticsFunnelStep(BaseModel):
+    label: str
+    count: int
+
+
+class AnalyticsQuestionSummary(BaseModel):
+    question_id: Optional[int] = None
+    question_qid: Optional[str] = None
+    title: str = ""
+    question_type: str = ""
+    views: int = 0
+    unique_students: int = 0
+    avg_active_seconds: Optional[float] = None
+    answer_changes: int = 0
+    skip_rate: Optional[float] = None
+    return_rate: Optional[float] = None
+    average_score_percent: Optional[float] = None
+    median_score_percent: Optional[float] = None
+    zero_score_rate: Optional[float] = None
+    common_wrong_choices: List[dict[str, Any]] = []
+    weakest_rubric_parts: List[dict[str, Any]] = []
+    failed_tests: List[dict[str, Any]] = []
+
+
+class AnalyticsStudentSummary(BaseModel):
+    student_id: str
+    first_opened_at: Optional[datetime] = None
+    last_activity_at: Optional[datetime] = None
+    active_seconds: float = 0
+    questions_viewed: int = 0
+    unanswered_count: int = 0
+    submitted: bool = False
+    timing_status: str = "not_submitted"
+    score_percent: Optional[float] = None
+
+
+class AssignmentAnalyticsResponse(BaseModel):
+    assignment: AnalyticsAssignmentSummary
+    funnel: List[AnalyticsFunnelStep]
+    questions: List[AnalyticsQuestionSummary]
+    students: List[AnalyticsStudentSummary]
+    needs_attention: List[dict[str, Any]] = []
+
+
+class CourseAnalyticsResponse(BaseModel):
+    course_id: int
+    course_name: str = ""
+    overview: List[AnalyticsOverviewMetric]
+    assignments: List[AnalyticsAssignmentSummary]
+    needs_attention: List[dict[str, Any]] = []
+
+
+class QuestionAnalyticsResponse(BaseModel):
+    question_qid: str
+    assignments: List[AnalyticsAssignmentSummary] = []
+    questions: List[AnalyticsQuestionSummary] = []
 
 
 class CodingRunRequest(BaseModel):

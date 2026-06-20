@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatPacificDateTime } from '../utils/datetime';
+import { getAssignmentQuestionCount } from '../utils/assignmentQuestions';
 
 function formatAssignmentDate(dateStr) {
   return formatPacificDateTime(dateStr, { kind: 'schedule' }) || 'Not set';
@@ -112,7 +113,7 @@ export default function AssignmentCard({
             fontSize: '0.82rem',
             color: '#4b5563'
           }}>
-            <div><strong>Questions:</strong> {assignment.assignment_questions?.length || 0}</div>
+            <div><strong>Questions:</strong> {getAssignmentQuestionCount(assignment)}</div>
             <div><strong>Release:</strong> {formatAssignmentDate(assignment.release_date)}</div>
             <div><strong>Due:</strong> {formatAssignmentDate(assignment.due_date_soft)}</div>
             {showSubmitted && (

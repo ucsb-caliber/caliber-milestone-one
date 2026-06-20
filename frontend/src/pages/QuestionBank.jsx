@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import {
   getQuestions,
-  getDraftQuestions,
   getAllQuestions,
   deleteQuestion,
-  updateQuestion,
-  generateQuestionVariant,
   getImageSignedUrl,
   getUserById,
-  getUserInfo
+  getUserInfo,
+  dryRunQuestionImport,
+  importQuestionFolder,
+  exportQuestionFolder,
 } from '../api';
 import { useAuth } from '../AuthContext';
 import QuestionCard from '../components/QuestionCard';
@@ -17,149 +22,84 @@ import QuestionTable from '../components/QuestionTable';
 import QuestionSearchBar from '../components/QuestionSearchBar';
 import StudentPreview from '../components/StudentPreview';
 import { filterQuestionsBySearch } from '../utils/questionSearch';
-import {
-  CourseDashboardErrorBanner,
-  CourseDashboardHeader,
-  CourseDashboardIconButton,
-  CourseDashboardSpinnerState,
-  CourseDashboardPrimaryButton,
-  CourseDashboardSecondaryButton,
-  PageContainer,
-  dashboardPalette,
-  RefreshIcon,
-} from '../components/CourseDashboardUI';
-import { buildHashWithFrom } from '../utils/navigation';
+
+// User Icon Component
+const UserIcon = ({ userInfo, size = 40 }) => {
+  if (!userInfo) return null;
+
+  const getInitials = () => {
+    if (userInfo.initials) return userInfo.initials;
+    if (userInfo.first_name && userInfo.last_name) {
+      return `${userInfo.first_name[0]}${userInfo.last_name[0]}`.toUpperCase();
+    }
+    if (userInfo.email) {
+      return userInfo.email.substring(0, 2).toUpperCase();
+    }
+    return 'U';
+  };
+
+  const getName = () => {
+    if (userInfo.first_name && userInfo.last_name) {
+      return `${userInfo.first_name} ${userInfo.last_name}`;
+    }
+    return userInfo.email || userInfo.user_id;
+  };
+
+  const shape = userInfo.icon_shape || 'circle';
+  const color = userInfo.icon_color || '#4f46e5';
+
+  const getShapeStyles = () => {
+    if (shape === 'circle') {
+      return { borderRadius: '50%' };
+    } else if (shape === 'square') {
+      return { borderRadius: '4px' };
+    } else if (shape === 'hex') {
+      // True hexagon using clip-path
+      return {
+        clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)'
+      };
+    }
+    return { borderRadius: '50%' };
+  };
+
+  return (
+    <div
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        background: color,
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: `${size / 2.5}px`,
+        fontWeight: 'bold',
+        ...getShapeStyles(),
+        flexShrink: 0
+      }}
+      title={getName()}
+      aria-label={`Question created by ${getName()}`}
+      role="img"
+    >
+      {getInitials()}
+    </div>
+  );
+};
+
+// Color palette for keyword bubbles
+const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
 
 // Sort function for newest-first ordering
 const sortByNewest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
 
-const BANK_TABS = {
-  QUESTIONS: 'questions',
-  DRAFTS: 'drafts',
-  ALL: 'all',
-};
-
-const getBankTabFromHash = () => {
-  const rawHash = window.location.hash.slice(1);
-  const [route, query = ''] = rawHash.split('?');
-  if (route !== 'questions') return BANK_TABS.QUESTIONS;
-
-  const params = new URLSearchParams(query);
-  const tab = (params.get('tab') || BANK_TABS.QUESTIONS).toLowerCase();
-  if (tab === BANK_TABS.DRAFTS || tab === BANK_TABS.ALL) {
-    return tab;
-  }
-  return BANK_TABS.QUESTIONS;
-};
-
-const tabsHeaderRowStyle = {
-  display: 'flex',
-  alignItems: 'flex-end',
-  justifyContent: 'space-between',
-  gap: '1rem',
-  borderBottom: `1px solid ${dashboardPalette.border}`,
-  marginBottom: '20px',
-  flexWrap: 'wrap'
-};
-
-const viewToggleRowStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  marginLeft: 'auto',
-  padding: '0.2rem',
-  paddingBottom: '8px',
-  flexShrink: 0,
-  borderRadius: '10px',
-  background: dashboardPalette.surface,
-  gap: '0.2rem'
-};
-
-const getViewToggleButtonStyle = (active) => ({
-  height: '32px',
-  padding: '0 0.7rem',
-  background: active ? dashboardPalette.white : 'transparent',
-  color: active ? dashboardPalette.text : dashboardPalette.muted,
-  border: `1px solid ${active ? dashboardPalette.border : 'transparent'}`,
-  borderRadius: '8px',
-  cursor: 'pointer',
-  fontSize: '0.8rem',
-  fontWeight: active ? 700 : 600,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  lineHeight: 1
-});
-
-const questionBankTabsStyle = {
-  display: 'flex',
-  gap: '2rem',
-  alignItems: 'flex-end',
-  overflowX: 'auto',
-  minWidth: 0,
-  flex: '1 1 420px'
-};
-
-const getQuestionBankTabStyle = (active) => ({
-  padding: '0 0 10px',
-  margin: 0,
-  background: 'transparent',
-  color: active ? dashboardPalette.navy : dashboardPalette.muted,
-  border: 'none',
-  borderBottom: `2px solid ${active ? dashboardPalette.navy : 'transparent'}`,
-  borderRadius: 0,
-  cursor: 'pointer',
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  lineHeight: 1.2,
-  whiteSpace: 'nowrap'
-});
-
-const modalOverlayStyle = {
-  position: 'fixed',
-  inset: '64px 0 0 0',
-  background: 'rgba(10, 31, 53, 0.45)',
-  zIndex: 1200,
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'flex-start',
-  overflowY: 'auto',
-  padding: '1rem'
-};
-
-const modalCardStyle = {
-  background: dashboardPalette.white,
-  borderRadius: '8px',
-  border: `1px solid ${dashboardPalette.border}`,
-  padding: '1.5rem'
-};
-
-const emptyStateStyle = {
-  padding: '1.5rem',
-  background: dashboardPalette.white,
-  border: `1px solid ${dashboardPalette.border}`,
-  borderRadius: '8px',
-  textAlign: 'center',
-  color: dashboardPalette.muted
-};
-
-const setQuestionBankTabInHash = (tab) => {
-  if (tab && tab !== BANK_TABS.QUESTIONS) {
-    window.location.hash = `questions?tab=${tab}`;
-    return;
-  }
-  window.location.hash = 'questions';
-};
-
 export default function QuestionBank() {
   const { user } = useAuth();
   const [myQuestions, setMyQuestions] = useState([]);
-  const [draftQuestions, setDraftQuestions] = useState([]);
   const [allQuestions, setAllQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [myQuestionsCollapsed, setMyQuestionsCollapsed] = useState(false);
-  const [draftQuestionsCollapsed, setDraftQuestionsCollapsed] = useState(false);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState('table'); // 'card' or 'table'
   const [imageUrls, setImageUrls] = useState({}); // Cache for signed URLs
@@ -167,68 +107,27 @@ export default function QuestionBank() {
   const [isTeacher, setIsTeacher] = useState(false); // Track if current user is a teacher
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all'); // 'all', 'keywords', 'tags', 'course', 'text'
+  const [visibilityFilter, setVisibilityFilter] = useState('all');
   const [studentViewQuestion, setStudentViewQuestion] = useState(null);
-  const [activeBankTab, setActiveBankTab] = useState(getBankTabFromHash);
-  const [generationModalOpen, setGenerationModalOpen] = useState(false);
-  const [generationModalQuestion, setGenerationModalQuestion] = useState(null);
-  const [variantLoadingId, setVariantLoadingId] = useState(null);
-  const [pendingVariantCount, setPendingVariantCount] = useState(0);
-  const [approveDraftQuestion, setApproveDraftQuestion] = useState(null);
-  const [approveDraftLoading, setApproveDraftLoading] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importConflictMode, setImportConflictMode] = useState('create_only');
+  const [importSourceRepo, setImportSourceRepo] = useState('');
+  const [importSourceCommit, setImportSourceCommit] = useState('');
+  const [importSummary, setImportSummary] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
 
   const itemsPerPage = 6;
 
   // Filtered questions
   const filteredMyQuestions = filterQuestionsBySearch(myQuestions, searchQuery, searchFilter);
-  const filteredDraftQuestions = filterQuestionsBySearch(draftQuestions, searchQuery, searchFilter);
-  const filteredAllQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
-  const activeQuestions =
-    activeBankTab === BANK_TABS.DRAFTS
-      ? filteredDraftQuestions
-      : activeBankTab === BANK_TABS.ALL
-        ? filteredAllQuestions
-        : filteredMyQuestions;
-
-  const draftGenerationStatus = pendingVariantCount > 0
-    ? `${pendingVariantCount} generating...`
-    : '';
-
-  const hydrateQuestionMetadata = async (questions, replace = false) => {
-    const imageQuestions = questions.filter(q => q.image_url);
-    const urlPromises = imageQuestions.map(async (q) => {
-      const signedUrl = await getImageSignedUrl(q.image_url);
-      return { id: q.id, url: signedUrl };
-    });
-
-    const urls = await Promise.all(urlPromises);
-    const urlMap = {};
-    urls.forEach(({ id, url }) => {
-      if (url) {
-        urlMap[id] = url;
-      }
-    });
-    setImageUrls(prev => (replace ? urlMap : { ...prev, ...urlMap }));
-
-    const uniqueUserIds = [...new Set(questions.map(q => q.user_id).filter(Boolean))];
-    const userPromises = uniqueUserIds.map(async (userId) => {
-      try {
-        const userInfo = await getUserById(userId);
-        return { userId, userInfo };
-      } catch (error) {
-        console.error(`Failed to fetch user ${userId}:`, error);
-        return { userId, userInfo: null };
-      }
-    });
-
-    const users = await Promise.all(userPromises);
-    const userMap = {};
-    users.forEach(({ userId, userInfo }) => {
-      if (userInfo) {
-        userMap[userId] = userInfo;
-      }
-    });
-    setUserInfoCache(prev => (replace ? userMap : { ...prev, ...userMap }));
-  };
+  const filteredAllQuestions = filterQuestionsBySearch(
+    visibilityFilter === 'all' ? allQuestions : allQuestions.filter(q => (q.visibility || 'private') === visibilityFilter),
+    searchQuery,
+    searchFilter
+  );
+  const visibleQuestions = [...filteredMyQuestions, ...filteredAllQuestions];
+  const selectedQuestions = [...myQuestions, ...allQuestions].filter(question => selectedQuestionIds.includes(question.id));
 
   // Fetch current user info to check if they are a teacher
   useEffect(() => {
@@ -246,23 +145,12 @@ export default function QuestionBank() {
     }
   }, [user]);
 
-  useEffect(() => {
-    const syncTabFromHash = () => {
-      setActiveBankTab(getBankTabFromHash());
-    };
-
-    syncTabFromHash();
-    window.addEventListener('hashchange', syncTabFromHash);
-    return () => window.removeEventListener('hashchange', syncTabFromHash);
-  }, []);
-
-  const loadBankData = async () => {
+  const loadQuestions = async () => {
     setLoading(true);
     setError('');
     try {
-      const [myData, draftData, allData] = await Promise.all([
-        getQuestions({ verified_only: true, limit: 1000 }),
-        getDraftQuestions({ limit: 1000 }),
+      const [myData, allData] = await Promise.all([
+        getQuestions({ limit: 1000 }),
         getAllQuestions({ limit: 1000 })
       ]);
 
@@ -271,18 +159,52 @@ export default function QuestionBank() {
         .filter(q => q.is_verified === true)
         .sort(sortByNewest);
 
-      const draftMyQuestions = (draftData.questions || [])
-        .filter(q => q.is_verified === false)
-        .sort(sortByNewest);
-
+      const currentUserId = user?.id || user?.user_id;
       const verifiedAllQuestions = (allData.questions || [])
         .filter(q => q.is_verified === true)
+        .filter(q => !currentUserId || (q.user_id !== currentUserId && q.owner_user_id !== currentUserId))
         .sort(sortByNewest);
 
       setMyQuestions(verifiedMyQuestions);
-      setDraftQuestions(draftMyQuestions);
       setAllQuestions(verifiedAllQuestions);
-      await hydrateQuestionMetadata([...verifiedMyQuestions, ...draftMyQuestions, ...verifiedAllQuestions], true);
+      setSelectedQuestionIds(prev => prev.filter(id => [...verifiedMyQuestions, ...verifiedAllQuestions].some(q => q.id === id)));
+
+      // Generate signed URLs for all questions with images
+      const allQuestionsWithImages = [...verifiedMyQuestions, ...verifiedAllQuestions].filter(q => q.image_url);
+      const urlPromises = allQuestionsWithImages.map(async (q) => {
+        const signedUrl = await getImageSignedUrl(q.image_url);
+        return { id: q.id, url: signedUrl };
+      });
+
+      const urls = await Promise.all(urlPromises);
+      const urlMap = {};
+      urls.forEach(({ id, url }) => {
+        if (url) {
+          urlMap[id] = url;
+        }
+      });
+      setImageUrls(urlMap);
+
+      // Fetch user info for all questions
+      const uniqueUserIds = [...new Set([...verifiedMyQuestions, ...verifiedAllQuestions].map(q => q.user_id))];
+      const userPromises = uniqueUserIds.map(async (userId) => {
+        try {
+          const userInfo = await getUserById(userId);
+          return { userId, userInfo };
+        } catch (error) {
+          console.error(`Failed to fetch user ${userId}:`, error);
+          return { userId, userInfo: null };
+        }
+      });
+
+      const users = await Promise.all(userPromises);
+      const userMap = {};
+      users.forEach(({ userId, userInfo }) => {
+        if (userInfo) {
+          userMap[userId] = userInfo;
+        }
+      });
+      setUserInfoCache(userMap);
     } catch (err) {
       setError(err.message || 'Failed to load questions');
     } finally {
@@ -291,78 +213,88 @@ export default function QuestionBank() {
   };
 
   useEffect(() => {
-    loadBankData();
+    loadQuestions();
   }, []);
-
-  const refreshDraftQuestions = async () => {
-    try {
-      const draftData = await getDraftQuestions({ limit: 1000 });
-      const draftMyQuestions = (draftData.questions || []).sort(sortByNewest);
-      setDraftQuestions(draftMyQuestions);
-      await hydrateQuestionMetadata(draftMyQuestions, false);
-    } catch (err) {
-      console.error('Failed to refresh draft questions:', err);
-    }
-  };
 
   const handleDelete = async (questionId) => {
     try {
       await deleteQuestion(questionId);
       setDeleteConfirm(null);
-      await loadBankData();
+      await loadQuestions();
     } catch (err) {
       setError(err.message || 'Failed to delete question');
     }
   };
 
-  const openApproveDraftModal = (question) => {
-    setApproveDraftQuestion(question);
-  };
-
-  const closeApproveDraftModal = () => {
-    setApproveDraftQuestion(null);
-    setApproveDraftLoading(false);
-  };
-
-  const handleApproveDraft = async () => {
-    if (!approveDraftQuestion) return;
-    setApproveDraftLoading(true);
-    try {
-      await updateQuestion(approveDraftQuestion.id, { is_verified: true });
-      closeApproveDraftModal();
-      await loadBankData();
-    } catch (err) {
-      setError(err.message || 'Failed to approve draft question');
-      setApproveDraftLoading(false);
+  const handleDryRunImport = async () => {
+    if (!importFile) {
+      setError('Choose a Caliber question zip first.');
+      return;
     }
-  };
-
-  const handleGenerateVariant = async (question) => {
-    setVariantLoadingId(question.id);
-    setPendingVariantCount((count) => count + 1);
-    setGenerationModalQuestion(question);
-    setGenerationModalOpen(true);
+    setImportLoading(true);
+    setError('');
     try {
-      await generateQuestionVariant(question.id);
-      await refreshDraftQuestions();
+      const summary = await dryRunQuestionImport(importFile, { conflict_mode: importConflictMode });
+      setImportSummary(summary);
     } catch (err) {
-      setError(err.message || 'Failed to generate question variant');
+      setError(err.message || 'Failed to validate question import');
     } finally {
-      setVariantLoadingId(null);
-      setPendingVariantCount((count) => Math.max(0, count - 1));
+      setImportLoading(false);
     }
   };
 
-  const closeGenerationModal = () => {
-    setGenerationModalOpen(false);
-    setGenerationModalQuestion(null);
-    setVariantLoadingId(null);
+  const handleApplyImport = async () => {
+    if (!importFile) {
+      setError('Choose a Caliber question zip first.');
+      return;
+    }
+    setImportLoading(true);
+    setError('');
+    try {
+      const summary = await importQuestionFolder(importFile, {
+        conflict_mode: importConflictMode,
+        source_repo: importSourceRepo.trim(),
+        source_commit: importSourceCommit.trim(),
+      });
+      setImportSummary(summary);
+      await loadQuestions();
+    } catch (err) {
+      setError(err.message || 'Failed to import questions');
+    } finally {
+      setImportLoading(false);
+    }
   };
 
-  const openBankTab = (tab) => {
-    setActiveBankTab(tab);
-    closeGenerationModal();
-    setQuestionBankTabInHash(tab);
+  const handleExportMine = async () => {
+    await handleExportQuestions(myQuestions, 'caliber-my-questions.zip');
+  };
+
+  const handleExportQuestions = async (questions, filename) => {
+    setImportLoading(true);
+    setError('');
+    try {
+      const blob = await exportQuestionFolder({ qids: questions.map(q => q.qid).filter(Boolean) });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message || 'Failed to export questions');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const toggleQuestionSelection = (questionId) => {
+    setSelectedQuestionIds(prev => (
+      prev.includes(questionId)
+        ? prev.filter(id => id !== questionId)
+        : [...prev, questionId]
+    ));
   };
 
   // Wrapper function to render table view using QuestionTable component
@@ -373,14 +305,11 @@ export default function QuestionBank() {
         userInfoCache={userInfoCache}
         user={user}
         showEditButton={isTeacher}
-        showVariantButton={isTeacher && activeBankTab !== BANK_TABS.DRAFTS}
-        showApproveButton={activeBankTab === BANK_TABS.DRAFTS}
-        showBloomsTaxonomy={false}
-        variantLoadingId={variantLoadingId}
         showUniversity={true}
         onDelete={(id) => setDeleteConfirm(id)}
-        onGenerateVariant={handleGenerateVariant}
-        onApproveDraft={openApproveDraftModal}
+        selectable={isTeacher}
+        selectedQuestionIds={selectedQuestionIds}
+        onToggleQuestion={toggleQuestionSelection}
       />
     );
   };
@@ -395,89 +324,372 @@ export default function QuestionBank() {
         showDeleteButton={showDeleteButton}
         showEditButton={showEditButton}
         showStudentViewButton={true}
-        showVariantButton={isTeacher && activeBankTab !== BANK_TABS.DRAFTS}
-        showApproveButton={activeBankTab === BANK_TABS.DRAFTS}
-        variantLoading={variantLoadingId === question.id}
         onDelete={(id) => setDeleteConfirm(id)}
         onStudentView={(q) => setStudentViewQuestion(q)}
-        onGenerateVariant={handleGenerateVariant}
-        onApproveDraft={openApproveDraftModal}
-        compact={true}
       />
     );
   };
 
   return (
-    <PageContainer maxWidth="1280px">
-      <CourseDashboardHeader
-        title="Question Bank"
-        subtitle="Browse verified questions, draft variants, and shared question content."
-        action={(
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <CourseDashboardPrimaryButton onClick={() => { window.location.hash = buildHashWithFrom('upload-pdf'); }}>
-              Upload Questions by PDF
-            </CourseDashboardPrimaryButton>
-            <CourseDashboardSecondaryButton onClick={() => { window.location.hash = buildHashWithFrom('create-question'); }}>
-              Create Question
-            </CourseDashboardSecondaryButton>
-            <CourseDashboardIconButton
-              onClick={loadBankData}
-              disabled={loading}
-              title={loading ? 'Refreshing questions' : 'Refresh questions'}
-              aria-label={loading ? 'Refreshing questions' : 'Refresh questions'}
-              style={{ opacity: loading ? 0.65 : 1 }}
-            >
-              <span style={{ display: 'inline-flex', transform: loading ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}>
-                <RefreshIcon />
-              </span>
-            </CourseDashboardIconButton>
-          </div>
-        )}
-      />
-
-      <div style={tabsHeaderRowStyle}>
-        <div style={questionBankTabsStyle}>
-          <button
-            onClick={() => openBankTab(BANK_TABS.QUESTIONS)}
-            style={getQuestionBankTabStyle(activeBankTab === BANK_TABS.QUESTIONS)}
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0.25rem 0.5rem 1.75rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          flexWrap: 'wrap',
+          marginBottom: '1.2rem'
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: '2.3rem',
+              fontWeight: '800',
+              color: '#0f172a',
+              letterSpacing: '-0.025em',
+              lineHeight: 1.08
+            }}
           >
-            My Questions
-          </button>
-          <button
-            onClick={() => openBankTab(BANK_TABS.DRAFTS)}
-            style={getQuestionBankTabStyle(activeBankTab === BANK_TABS.DRAFTS)}
-          >
-            My Drafts
-          </button>
-          <button
-            onClick={() => openBankTab(BANK_TABS.ALL)}
-            style={getQuestionBankTabStyle(activeBankTab === BANK_TABS.ALL)}
-          >
-            All Questions
-          </button>
+            Question Bank
+          </h1>
+          <p style={{ margin: '0.45rem 0 0 0', color: '#475569', fontSize: '0.95rem' }}>
+            Search verified prompts quickly and use AI upload to generate new drafts from PDFs.
+          </p>
         </div>
 
-        {!loading && (
-          <div style={viewToggleRowStyle}>
-            <button
-              onClick={() => setViewMode('table')}
-              style={getViewToggleButtonStyle(viewMode === 'table')}
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => window.location.hash = 'upload-pdf'}
+            style={{
+              padding: '0.72rem 1.1rem',
+              background: 'linear-gradient(125deg, #06b6d4 0%, #2563eb 45%, #7c3aed 100%)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: '700',
+              letterSpacing: '0.01em',
+              transition: 'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease',
+              boxShadow: '0 10px 22px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.filter = 'brightness(1.04)';
+              e.currentTarget.style.boxShadow = '0 12px 24px rgba(37,99,235,0.4), inset 0 1px 0 rgba(255,255,255,0.35)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.filter = 'brightness(1)';
+              e.currentTarget.style.boxShadow = '0 10px 22px rgba(37,99,235,0.35), inset 0 1px 0 rgba(255,255,255,0.35)';
+            }}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              Table View
-            </button>
-            <button
-              onClick={() => setViewMode('card')}
-              style={getViewToggleButtonStyle(viewMode === 'card')}
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            Upload Questions by PDF
+          </button>
+
+          <button
+            onClick={() => window.location.hash = 'create-question'}
+            style={{
+              padding: '0.72rem 1rem',
+              background: '#ffffff',
+              color: '#0f172a',
+              border: '1px solid #cbd5e1',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontSize: '0.88rem',
+              fontWeight: '700',
+              transition: 'background-color 0.15s ease',
+              boxShadow: '0 1px 2px rgba(15,23,42,0.08)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffffff'}
+          >
+            Create Question
+          </button>
+
+          <button
+            onClick={loadQuestions}
+            disabled={loading}
+            title={loading ? 'Refreshing questions' : 'Refresh questions'}
+            aria-label={loading ? 'Refreshing questions' : 'Refresh questions'}
+            style={{
+              padding: '0.25rem',
+              width: 'auto',
+              background: 'transparent',
+              color: loading ? '#94a3b8' : '#1d4ed8',
+              border: 'none',
+              borderRadius: '0',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              lineHeight: 0,
+              opacity: loading ? 0.8 : 1,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+              style={{ transform: loading ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}
             >
-              Card View
-            </button>
-          </div>
-        )}
+              <path
+                d="M20 4v6h-6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M4 20v-6h6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M20 10a8 8 0 0 0-14-4L4 10"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M4 14a8 8 0 0 0 14 4l2-4"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {loading && <CourseDashboardSpinnerState style={{ padding: '12px 0' }} />}
+      <QuestionSearchBar
+        searchQuery={searchQuery}
+        searchFilter={searchFilter}
+        onSearchQueryChange={setSearchQuery}
+        onSearchFilterChange={setSearchFilter}
+        onClearSearch={() => setSearchQuery('')}
+        showResultCount={Boolean(searchQuery)}
+        resultCount={filteredMyQuestions.length + filteredAllQuestions.length}
+        containerStyle={{ marginBottom: '1.7rem' }}
+      />
 
-      {error && <CourseDashboardErrorBanner>{error}</CourseDashboardErrorBanner>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Shared bank</span>
+        <select
+          value={visibilityFilter}
+          onChange={(event) => setVisibilityFilter(event.target.value)}
+          style={{
+            padding: '0.45rem 0.65rem',
+            border: '1px solid #cbd5e1',
+            borderRadius: '8px',
+            background: '#fff',
+            color: '#0f172a',
+            fontSize: '0.85rem'
+          }}
+        >
+          <option value="all">All shared</option>
+          <option value="course">Course</option>
+          <option value="school">School</option>
+          <option value="global">Global</option>
+        </select>
+      </div>
+
+      {isTeacher && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(220px, 1fr) 150px minmax(170px, 0.7fr) minmax(130px, 0.5fr) auto auto',
+          gap: '0.75rem',
+          alignItems: 'center',
+          padding: '0.9rem',
+          border: '1px solid #dbe5f1',
+          borderRadius: '8px',
+          background: '#ffffff',
+          marginBottom: '1.2rem',
+          boxShadow: '0 1px 2px rgba(15,23,42,0.05)'
+        }}>
+          <input
+            type="file"
+            accept=".zip,application/zip"
+            onChange={(event) => {
+              setImportFile(event.target.files?.[0] || null);
+              setImportSummary(null);
+            }}
+            style={{ fontSize: '0.85rem', color: '#334155' }}
+          />
+          <select
+            value={importConflictMode}
+            onChange={(event) => setImportConflictMode(event.target.value)}
+            style={{
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#fff',
+              fontSize: '0.85rem',
+              color: '#0f172a'
+            }}
+          >
+            <option value="create_only">Create only</option>
+            <option value="update_draft">Update drafts</option>
+            <option value="new_version">New version</option>
+          </select>
+          <input
+            type="text"
+            value={importSourceRepo}
+            onChange={(event) => setImportSourceRepo(event.target.value)}
+            placeholder="Repo URL or path"
+            style={{
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#fff',
+              fontSize: '0.85rem',
+              color: '#0f172a'
+            }}
+          />
+          <input
+            type="text"
+            value={importSourceCommit}
+            onChange={(event) => setImportSourceCommit(event.target.value)}
+            placeholder="Commit SHA"
+            style={{
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#fff',
+              fontSize: '0.85rem',
+              color: '#0f172a'
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleDryRunImport}
+            disabled={importLoading}
+            style={{
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              background: '#eff6ff',
+              color: '#1d4ed8',
+              cursor: importLoading ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Validate Zip
+          </button>
+          <button
+            type="button"
+            onClick={handleApplyImport}
+            disabled={importLoading}
+            style={{
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #bbf7d0',
+              borderRadius: '8px',
+              background: '#f0fdf4',
+              color: '#166534',
+              cursor: importLoading ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Import
+          </button>
+          <button
+            type="button"
+            onClick={handleExportMine}
+            disabled={importLoading || myQuestions.length === 0}
+            style={{
+              justifySelf: 'start',
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#f8fafc',
+              color: myQuestions.length === 0 ? '#94a3b8' : '#0f172a',
+              cursor: importLoading || myQuestions.length === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Export My Questions
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExportQuestions(visibleQuestions, 'caliber-visible-questions.zip')}
+            disabled={importLoading || visibleQuestions.length === 0}
+            style={{
+              justifySelf: 'start',
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#f8fafc',
+              color: visibleQuestions.length === 0 ? '#94a3b8' : '#0f172a',
+              cursor: importLoading || visibleQuestions.length === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Export Visible
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExportQuestions(selectedQuestions, 'caliber-selected-questions.zip')}
+            disabled={importLoading || selectedQuestions.length === 0}
+            style={{
+              justifySelf: 'start',
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#f8fafc',
+              color: selectedQuestions.length === 0 ? '#94a3b8' : '#0f172a',
+              cursor: importLoading || selectedQuestions.length === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Export Selected ({selectedQuestions.length})
+          </button>
+          {importSummary && (
+            <div style={{ gridColumn: '1 / -1', color: '#334155', fontSize: '0.85rem' }}>
+              {importSummary.dry_run ? 'Validation' : 'Import'}: {importSummary.created_count} create, {importSummary.updated_count} update, {importSummary.skipped_count} skip, {importSummary.error_count} error
+            </div>
+          )}
+        </div>
+      )}
+
+      {loading && <p style={{ color: '#64748b', fontWeight: 600 }}>Loading questions...</p>}
+
+      {error && (
+        <div style={{
+          padding: '1rem',
+          background: '#f8d7da',
+          border: '1px solid #f5c6cb',
+          borderRadius: '4px',
+          color: '#721c24',
+          marginBottom: '1rem'
+        }}>
+          {error}
+        </div>
+      )}
 
       {deleteConfirm && (
         <div style={{
@@ -492,25 +704,39 @@ export default function QuestionBank() {
           justifyContent: 'center',
           zIndex: 1000
         }}>
-          <div style={{ ...modalCardStyle, maxWidth: '400px', width: '90%' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '0.65rem', color: dashboardPalette.navy }}>Confirm Delete</h3>
-            <p style={{ marginTop: 0, color: dashboardPalette.muted }}>Are you sure you want to delete this question? This action cannot be undone.</p>
+          <div style={{
+            background: 'white',
+            padding: '2rem',
+            borderRadius: '8px',
+            maxWidth: '400px',
+            width: '90%'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Confirm Delete</h3>
+            <p>Are you sure you want to delete this question? This action cannot be undone.</p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <CourseDashboardSecondaryButton onClick={() => setDeleteConfirm(null)}>
-                Cancel
-              </CourseDashboardSecondaryButton>
               <button
-                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
                 onClick={() => handleDelete(deleteConfirm)}
                 style={{
-                  height: '40px',
-                  padding: '0 1rem',
-                  background: dashboardPalette.white,
-                  color: dashboardPalette.dangerText,
-                  border: `1px solid ${dashboardPalette.dangerBorder}`,
-                  borderRadius: '8px',
+                  padding: '0.5rem 1rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
                   cursor: 'pointer',
-                  fontWeight: '700'
+                  fontWeight: 'bold'
                 }}
               >
                 Delete
@@ -520,44 +746,19 @@ export default function QuestionBank() {
         </div>
       )}
 
-      {approveDraftQuestion && (
-        <div
-          style={{ ...modalOverlayStyle, inset: 0, alignItems: 'center', zIndex: 1100 }}
-          onClick={closeApproveDraftModal}
-        >
-          <div
-            style={{ ...modalCardStyle, width: 'min(460px, 100%)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0, marginBottom: '0.65rem', color: dashboardPalette.navy }}>
-              Approve Draft
-            </h3>
-            <p style={{ marginTop: 0, marginBottom: '1.25rem', color: dashboardPalette.muted, lineHeight: 1.5 }}>
-              Are you sure you want to approve this draft? This will save the question into our question database.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <CourseDashboardSecondaryButton
-                onClick={closeApproveDraftModal}
-                disabled={approveDraftLoading}
-                style={{ opacity: approveDraftLoading ? 0.6 : 1 }}
-              >
-                Cancel
-              </CourseDashboardSecondaryButton>
-              <CourseDashboardPrimaryButton
-                onClick={handleApproveDraft}
-                disabled={approveDraftLoading}
-                style={{ opacity: approveDraftLoading ? 0.7 : 1 }}
-              >
-                {approveDraftLoading ? 'Approving...' : 'Approve'}
-              </CourseDashboardPrimaryButton>
-            </div>
-          </div>
-        </div>
-      )}
-
       {studentViewQuestion && (
         <div
-          style={modalOverlayStyle}
+          style={{
+            position: 'fixed',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 1200,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            overflowY: 'auto',
+            padding: '1rem'
+          }}
           onClick={() => setStudentViewQuestion(null)}
         >
           <div
@@ -568,9 +769,9 @@ export default function QuestionBank() {
               <div
                 style={{
                   padding: '0.5rem 0.75rem',
-                  border: `1px solid ${dashboardPalette.border}`,
-                  background: dashboardPalette.white,
-                  color: dashboardPalette.text,
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
                   borderRadius: '8px',
                   fontWeight: '600',
                   fontSize: '1rem'
@@ -583,9 +784,9 @@ export default function QuestionBank() {
                 onClick={() => setStudentViewQuestion(null)}
                 style={{
                   padding: '0.5rem 0.75rem',
-                  border: `1px solid ${dashboardPalette.border}`,
-                  background: dashboardPalette.white,
-                  color: dashboardPalette.text,
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
                   borderRadius: '8px',
                   cursor: 'pointer',
                   fontWeight: '600'
@@ -594,7 +795,7 @@ export default function QuestionBank() {
                 Close
               </button>
             </div>
-            <div style={{ border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', overflowY: 'auto', background: dashboardPalette.surface, height: '78vh', maxHeight: '78vh' }}>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflowY: 'auto', background: '#f8fafc', height: '78vh', maxHeight: '78vh' }}>
               <StudentPreview
                 inline={true}
                 isPreviewMode={false}
@@ -611,183 +812,137 @@ export default function QuestionBank() {
         </div>
       )}
 
-      {generationModalOpen && (
-        <div
-          style={{ ...modalOverlayStyle, zIndex: 1250 }}
-          onClick={closeGenerationModal}
-        >
-          <div
-            style={{ ...modalCardStyle, width: 'min(720px, 100%)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-              <div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: dashboardPalette.navy, marginBottom: '0.45rem' }}>
-                  Variant generation started
-                </div>
-                <p style={{ margin: 0, color: dashboardPalette.muted, fontSize: '0.98rem', lineHeight: 1.5 }}>
-                  Variant generation is happening in the background and may take a minute.
-                </p>
-                {generationModalQuestion?.title ? (
-                  <p style={{ margin: '0.75rem 0 0 0', color: dashboardPalette.muted, fontSize: '0.9rem' }}>
-                    Source: {generationModalQuestion.title}
-                  </p>
-                ) : null}
-              </div>
-              <CourseDashboardSecondaryButton onClick={closeGenerationModal}>
-                Close
-              </CourseDashboardSecondaryButton>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
-              <CourseDashboardPrimaryButton
-                onClick={() => {
-                  closeGenerationModal();
-                  openBankTab(BANK_TABS.DRAFTS);
-                }}
-              >
-                My Drafts
-              </CourseDashboardPrimaryButton>
-            </div>
-          </div>
-        </div>
-      )}
-
       {!loading && (
         <>
-          <QuestionSearchBar
-            searchQuery={searchQuery}
-            searchFilter={searchFilter}
-            onSearchQueryChange={setSearchQuery}
-            onSearchFilterChange={setSearchFilter}
-            onClearSearch={() => setSearchQuery('')}
-            showResultCount={Boolean(searchQuery)}
-            resultCount={activeQuestions.length}
-            compact={true}
-            containerStyle={{ marginBottom: '20px' }}
-          />
-
-          {activeBankTab === BANK_TABS.QUESTIONS && (
-            <div style={{ marginBottom: '8px' }}>
-              <CollapsibleSection
-                title={searchQuery ? `My Questions (${filteredMyQuestions.length} of ${myQuestions.length})` : "My Questions"}
-                questions={filteredMyQuestions}
-                isCollapsed={myQuestionsCollapsed}
-                onToggle={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
-                borderColor={dashboardPalette.navy}
-                viewMode={viewMode}
-                itemsPerPage={itemsPerPage}
-                renderTableView={renderTableView}
-                renderQuestionCard={renderQuestionCard}
-                user={user}
-                isTeacher={isTeacher}
-                emptyStateContent={
-                  <div style={emptyStateStyle}>
-                    {searchQuery ? (
-                      <p>No questions match your search in "My Questions".</p>
-                    ) : (
-                      <>
-                        <p>You haven't created any questions yet.</p>
-                        <CourseDashboardPrimaryButton
-                          onClick={() => { window.location.hash = buildHashWithFrom('create-question'); }}
-                          style={{ marginTop: '0.75rem' }}
-                        >
-                          Create Your First Question
-                        </CourseDashboardPrimaryButton>
-                      </>
-                    )}
-                  </div>
-                }
-              />
+          <div style={{ marginBottom: '1rem' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                background: '#f8fafc',
+                border: '1px solid #dbe5f1',
+                borderRadius: '11px',
+                padding: '0.25rem',
+                gap: '0.25rem'
+              }}
+            >
+              <button
+                onClick={() => setViewMode('table')}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  background: viewMode === 'table' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'table' ? '#0f172a' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: viewMode === 'table' ? '700' : '600',
+                  boxShadow: viewMode === 'table' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Table View
+              </button>
+              <button
+                onClick={() => setViewMode('card')}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  background: viewMode === 'card' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'card' ? '#0f172a' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: viewMode === 'card' ? '700' : '600',
+                  boxShadow: viewMode === 'card' ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Card View
+              </button>
             </div>
-          )}
+          </div>
 
-          {activeBankTab === BANK_TABS.DRAFTS && (
-            <div style={{ marginBottom: '8px' }}>
-              <CollapsibleSection
-                title="My Drafts"
-                questions={filteredDraftQuestions}
-                isCollapsed={draftQuestionsCollapsed}
-                onToggle={() => setDraftQuestionsCollapsed(!draftQuestionsCollapsed)}
-                borderColor={dashboardPalette.gold}
-                viewMode={viewMode}
-                itemsPerPage={itemsPerPage}
-                renderTableView={renderTableView}
-                renderQuestionCard={renderQuestionCard}
-                user={user}
-                isTeacher={isTeacher}
-                headerContent={
-                  draftGenerationStatus ? (
-                    <div
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.45rem 0.65rem',
-                        background: dashboardPalette.surface,
-                        border: `1px solid ${dashboardPalette.border}`,
-                        borderRadius: '8px',
-                        color: dashboardPalette.navy,
-                        fontSize: '0.8rem',
-                        fontWeight: 700
-                      }}
-                    >
-                      <span
+          {/* My Questions Section */}
+          <div style={{ marginBottom: '4rem' }}>
+            <CollapsibleSection
+              title={searchQuery ? `My Questions (${filteredMyQuestions.length} of ${myQuestions.length})` : "My Questions"}
+              questions={filteredMyQuestions}
+              isCollapsed={myQuestionsCollapsed}
+              onToggle={() => setMyQuestionsCollapsed(!myQuestionsCollapsed)}
+              borderColor="#007bff"
+              viewMode={viewMode}
+              itemsPerPage={itemsPerPage}
+              renderTableView={renderTableView}
+              renderQuestionCard={renderQuestionCard}
+              user={user}
+              isTeacher={isTeacher}
+              emptyStateContent={
+                <div style={{
+                  padding: '2rem',
+                  background: '#f8f9fa',
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                  color: '#666'
+                }}>
+                  {searchQuery ? (
+                    <p>No questions match your search in "My Questions".</p>
+                  ) : (
+                    <>
+                      <p>You haven't created any questions yet.</p>
+                      <button
+                        onClick={() => window.location.hash = 'create-question'}
                         style={{
-                          width: '16px',
-                          height: '16px',
-                          borderRadius: '50%',
-                          border: `2px solid ${dashboardPalette.navyLight}`,
-                          borderTopColor: dashboardPalette.navy,
-                          animation: 'caliber-spin 0.8s linear infinite',
-                          flexShrink: 0
+                          marginTop: '1rem',
+                          padding: '0.5rem 1rem',
+                          background: '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
                         }}
-                      />
-                      {draftGenerationStatus}
-                    </div>
-                  ) : null
-                }
-                emptyStateContent={
-                  <div style={emptyStateStyle}>
-                    {searchQuery ? (
-                      <p>No drafts match your search in "My Drafts".</p>
-                    ) : (
-                      <p>You do not have any draft questions yet.</p>
-                    )}
-                  </div>
-                }
-              />
-            </div>
-          )}
+                      >
+                        Create Your First Question
+                      </button>
+                    </>
+                  )}
+                </div>
+              }
+            />
+          </div>
 
-          {activeBankTab === BANK_TABS.ALL && (
-            <div style={{ marginBottom: '8px' }}>
-              <CollapsibleSection
-                title={searchQuery ? `All Questions (${filteredAllQuestions.length} of ${allQuestions.length})` : "All Questions"}
-                questions={filteredAllQuestions}
-                isCollapsed={allQuestionsCollapsed}
-                onToggle={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
-                borderColor={dashboardPalette.navyMid}
-                viewMode={viewMode}
-                itemsPerPage={itemsPerPage}
-                renderTableView={renderTableView}
-                renderQuestionCard={renderQuestionCard}
-                user={user}
-                isTeacher={isTeacher}
-                emptyStateContent={
-                  <div style={emptyStateStyle}>
-                    {searchQuery ? (
-                      <p>No questions match your search in "All Questions".</p>
-                    ) : (
-                      <p>No questions found in the system.</p>
-                    )}
-                  </div>
-                }
-              />
-            </div>
-          )}
+          {/* All Questions Section */}
+          <div>
+            <CollapsibleSection
+              title={searchQuery ? `All Questions (${filteredAllQuestions.length} of ${allQuestions.length})` : "All Questions"}
+              questions={filteredAllQuestions}
+              isCollapsed={allQuestionsCollapsed}
+              onToggle={() => setAllQuestionsCollapsed(!allQuestionsCollapsed)}
+              borderColor="#28a745"
+              viewMode={viewMode}
+              itemsPerPage={itemsPerPage}
+              renderTableView={renderTableView}
+              renderQuestionCard={renderQuestionCard}
+              user={user}
+              isTeacher={isTeacher}
+              emptyStateContent={
+                <div style={{
+                  padding: '2rem',
+                  background: '#f8f9fa',
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                  color: '#666'
+                }}>
+                  {searchQuery ? (
+                    <p>No questions match your search in "All Questions".</p>
+                  ) : (
+                    <p>No questions found in the system.</p>
+                  )}
+                </div>
+              }
+            />
+          </div>
         </>
       )}
-    </PageContainer>
+    </div>
   );
 }

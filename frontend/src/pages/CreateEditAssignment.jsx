@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import QuestionTable from '../components/QuestionTable';
 import QuestionSearchBar from '../components/QuestionSearchBar';
+import StudentPreview from '../components/StudentPreview';
 import { getUserById } from '../api';
-import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
+import { createAssignment, getAssignment, updateAssignment, getAllQuestions, previewAssignmentDraft } from '../api';
 import { filterQuestionsBySearch } from '../utils/questionSearch';
 import { parseScheduleDate } from '../utils/datetime';
-import { CourseDashboardBackButton, CourseDashboardSpinnerState, dashboardPalette } from '../components/CourseDashboardUI';
-import useBodyScrollLock from '../hooks/useBodyScrollLock';
-import { buildHashWithFrom, navigateBackWithFallback } from '../utils/navigation';
+import { getAssignmentQuestionIds } from '../utils/assignmentQuestions';
 
 function formatDateForDateTimeLocal(dateStr) {
   const date = parseScheduleDate(dateStr);
@@ -28,8 +27,9 @@ export default function CreateEditAssignment() {
   const [showQuestionPicker, setShowQuestionPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all');
-
-  useBodyScrollLock(showQuestionPicker);
+  const [previewQuestions, setPreviewQuestions] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
 
 
 
@@ -51,25 +51,20 @@ export default function CreateEditAssignment() {
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
     const isNew = hash.includes('/assignment/new');
     const isEdit = hash.includes('/edit');
-    const params = new URLSearchParams(hash.split('?')[1] || '');
 
     return {
       courseId: courseMatch ? parseInt(courseMatch[1]) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null,
       isNew,
-      isEdit,
-      fromHash: params.get('from') || '',
+      isEdit
     };
   };
 
-  const { courseId, assignmentId, isNew, isEdit, fromHash } = parseHash();
-  const currentHash = window.location.hash;
-  const fallbackBackHash = (isEdit || isEditMode) && assignmentId
+  const { courseId, assignmentId, isNew, isEdit } = parseHash();
+  const backHref = isEditMode && assignmentId
     ? `#course/${courseId}/assignment/${assignmentId}/view`
     : `#course/${courseId}`;
-  const handleBack = () => {
-    navigateBackWithFallback(fallbackBackHash, fromHash);
-  };
+  const backLabel = isEditMode ? '← Back' : '← Back to Course';
 
   const fetchAllQuestionsForPicker = async () => {
     const pageSize = 200;
@@ -105,6 +100,25 @@ export default function CreateEditAssignment() {
       return toEpoch(b.created_at) - toEpoch(a.created_at);
     });
   };
+
+  const questionsFromPreviewRefs = (refs = []) => refs
+    .map((ref, index) => {
+      const snapshot = ref?.question_snapshot;
+      if (!snapshot) return null;
+      return {
+        id: ref.id ?? `preview-${index}`,
+        qid: ref.qid || snapshot.qid || `preview-${index}`,
+        version: ref.version || snapshot.version || 1,
+        title: snapshot.title || '',
+        text: snapshot.text || '',
+        content: snapshot.content || '',
+        question_type: snapshot.question_type || '',
+        answer_choices: snapshot.answer_choices || '[]',
+        correct_answer: snapshot.correct_answer || '',
+        image_url: snapshot.image_url || null,
+      };
+    })
+    .filter(Boolean);
 
   // Load data on mount
   useEffect(() => {
@@ -152,7 +166,7 @@ export default function CreateEditAssignment() {
             due_date_soft: formatDateForDateTimeLocal(assignmentData.due_date_soft),
             due_date_hard: formatDateForDateTimeLocal(assignmentData.due_date_hard),
             late_policy_id: assignmentData.late_policy_id || '',
-            assignment_questions: assignmentData.assignment_questions || []
+            assignment_questions: getAssignmentQuestionIds(assignmentData)
           });
         }
       } catch (err) {
@@ -235,7 +249,7 @@ export default function CreateEditAssignment() {
 
       // Navigate to assignment view page
       if (savedAssignmentId) {
-        window.location.hash = buildHashWithFrom(`#course/${courseId}/assignment/${savedAssignmentId}/view`, currentHash);
+        window.location.hash = `#course/${courseId}/assignment/${savedAssignmentId}/view`;
         if (isEditMode) {
           window.location.reload();
         }
@@ -259,129 +273,184 @@ export default function CreateEditAssignment() {
   };
 
   const filteredQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
+  const selectedQuestions = formData.assignment_questions
+    .map(questionId => allQuestions.find(question => Number(question.id) === Number(questionId)))
+    .filter(Boolean);
+
+  useEffect(() => {
+    if (!courseId || !formData.assignment_questions.length) {
+      setPreviewQuestions([]);
+      setPreviewError('');
+      setPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewQuestions(selectedQuestions);
+    setPreviewLoading(true);
+    setPreviewError('');
+
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await previewAssignmentDraft({
+          course_id: courseId,
+          title: formData.title || 'Untitled Assignment',
+          type: formData.type || 'Homework',
+          description: formData.description || '',
+          assignment_questions: formData.assignment_questions,
+          preview_student_id: 'preview-student',
+          assignment_id: isEditMode ? assignmentId : null,
+        });
+        if (cancelled) return;
+        const rendered = questionsFromPreviewRefs(result?.assignment_question_refs || []);
+        setPreviewQuestions(rendered.length ? rendered : selectedQuestions);
+      } catch (err) {
+        if (cancelled) return;
+        setPreviewError(err.message || 'Preview could not be rendered');
+        setPreviewQuestions(selectedQuestions);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [
+    courseId,
+    formData.title,
+    formData.type,
+    formData.description,
+    formData.assignment_questions.join(','),
+    selectedQuestions.length
+  ]);
 
   const styles = {
     container: {
-      maxWidth: '960px',
+      maxWidth: '900px',
       margin: '0 auto',
-      padding: '24px'
+      padding: '2rem'
     },
     backLink: {
       display: 'inline-flex',
       alignItems: 'center',
-      gap: '8px',
-      color: dashboardPalette.navy,
+      gap: '0.5rem',
+      color: '#4f46e5',
       textDecoration: 'none',
       fontSize: '0.875rem',
-      fontWeight: '600',
-      marginBottom: '16px',
+      fontWeight: '500',
+      marginBottom: '1.5rem',
       cursor: 'pointer'
     },
     title: {
-      margin: '0 0 24px 0',
-      fontSize: '1.75rem',
+      margin: '0 0 2rem 0',
+      fontSize: '2rem',
       fontWeight: '700',
-      color: dashboardPalette.navy
+      color: '#111827'
     },
     form: {
-      background: dashboardPalette.white,
-      borderRadius: '8px',
-      padding: '24px',
-      border: `1px solid ${dashboardPalette.border}`
+      background: 'white',
+      borderRadius: '12px',
+      padding: '2rem',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+      border: '1px solid #e5e7eb'
     },
     formGroup: {
-      marginBottom: '16px'
+      marginBottom: '1.5rem'
     },
     label: {
       display: 'block',
-      marginBottom: '8px',
+      marginBottom: '0.5rem',
       fontWeight: '600',
-      color: dashboardPalette.text,
+      color: '#374151',
       fontSize: '0.875rem'
     },
     input: {
       width: '100%',
-      padding: '0 12px',
-      height: '40px',
-      border: `1px solid ${dashboardPalette.border}`,
+      padding: '0.75rem',
+      border: '1px solid #d1d5db',
       borderRadius: '8px',
-      fontSize: '0.95rem',
-      color: dashboardPalette.text,
-      background: dashboardPalette.white,
+      fontSize: '1rem',
       boxSizing: 'border-box'
     },
     textarea: {
       width: '100%',
-      padding: '12px',
-      border: `1px solid ${dashboardPalette.border}`,
+      padding: '0.75rem',
+      border: '1px solid #d1d5db',
       borderRadius: '8px',
-      fontSize: '0.95rem',
+      fontSize: '1rem',
       minHeight: '100px',
       boxSizing: 'border-box',
-      fontFamily: 'inherit',
-      color: dashboardPalette.text,
-      background: dashboardPalette.white
+      fontFamily: 'inherit'
     },
     select: {
       width: '100%',
-      padding: '0 12px',
-      height: '40px',
-      border: `1px solid ${dashboardPalette.border}`,
+      padding: '0.75rem',
+      border: '1px solid #d1d5db',
       borderRadius: '8px',
-      fontSize: '0.95rem',
-      color: dashboardPalette.text,
-      background: dashboardPalette.white,
+      fontSize: '1rem',
       boxSizing: 'border-box'
     },
     buttonGroup: {
       display: 'flex',
-      gap: '12px',
-      marginTop: '24px'
+      gap: '0.75rem',
+      marginTop: '2rem'
     },
     submitBtn: {
-      height: '40px',
-      padding: '0 14px',
-      background: dashboardPalette.navy,
-      color: dashboardPalette.white,
-      border: `1px solid ${dashboardPalette.navy}`,
+      padding: '0.75rem 1.5rem',
+      background: '#4f46e5',
+      color: 'white',
+      border: 'none',
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
       fontWeight: '600'
     },
     cancelBtn: {
-      height: '40px',
-      padding: '0 14px',
-      background: dashboardPalette.white,
-      color: dashboardPalette.text,
-      border: `1px solid ${dashboardPalette.border}`,
+      padding: '0.75rem 1.5rem',
+      background: '#f3f4f6',
+      color: '#374151',
+      border: 'none',
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
       fontWeight: '600'
     },
     error: {
-      background: dashboardPalette.dangerBg,
-      color: dashboardPalette.dangerText,
-      padding: '12px 14px',
+      background: '#fef2f2',
+      color: '#dc2626',
+      padding: '0.75rem 1rem',
       borderRadius: '8px',
-      marginBottom: '16px',
-      border: `1px solid ${dashboardPalette.dangerBorder}`
+      marginBottom: '1rem'
     },
     helpText: {
       fontSize: '0.75rem',
-      color: dashboardPalette.muted,
-      marginTop: '6px'
+      color: '#6b7280',
+      marginTop: '0.25rem'
+    },
+    previewShell: {
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      background: '#f8fafc',
+      minHeight: '420px'
+    },
+    previewMeta: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      gap: '1rem',
+      alignItems: 'center',
+      marginBottom: '0.75rem',
+      color: '#6b7280',
+      fontSize: '0.8rem'
     }
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
-          Back
-        </CourseDashboardBackButton>
-        <CourseDashboardSpinnerState style={{ padding: '24px 0' }} />
+        <p style={{ textAlign: 'center', color: '#6b7280' }}>Loading...</p>
       </div>
     );
   }
@@ -389,9 +458,7 @@ export default function CreateEditAssignment() {
   if (!courseId) {
     return (
       <div style={styles.container}>
-        <CourseDashboardBackButton onClick={() => navigateBackWithFallback('#courses', fromHash)} style={{ marginBottom: '16px' }}>
-          Back
-        </CourseDashboardBackButton>
+        <a href="#courses" style={styles.backLink}>← Back to Courses</a>
         <div style={styles.error}>No course ID specified</div>
       </div>
     );
@@ -399,9 +466,7 @@ export default function CreateEditAssignment() {
 
   return (
     <div style={styles.container}>
-      <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
-        Back
-      </CourseDashboardBackButton>
+      <a href={backHref} style={styles.backLink}>{backLabel}</a>
 
       <h1 style={styles.title}>{isEditMode ? 'Edit Assignment' : 'Create Assignment'}</h1>
 
@@ -411,7 +476,7 @@ export default function CreateEditAssignment() {
         {/* Title */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Title <span style={{ color: dashboardPalette.dangerText }}>*</span>
+            Title <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="text"
@@ -454,7 +519,7 @@ export default function CreateEditAssignment() {
         {/* Release Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Release Date <span style={{ color: dashboardPalette.dangerText }}>*</span>
+            Release Date <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="datetime-local"
@@ -469,7 +534,7 @@ export default function CreateEditAssignment() {
         {/* Due Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Due Date <span style={{ color: dashboardPalette.dangerText }}>*</span>
+            Due Date <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="datetime-local"
@@ -484,7 +549,7 @@ export default function CreateEditAssignment() {
         {/* Late Due Date */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Late Due Date <span style={{ color: dashboardPalette.dangerText }}>*</span>
+            Late Due Date <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="datetime-local"
@@ -499,7 +564,7 @@ export default function CreateEditAssignment() {
         {/* Late Policy */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Late Policy (%) <span style={{ color: dashboardPalette.dangerText }}>*</span>
+            Late Policy (%) <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <select
             value={formData.late_policy_id}
@@ -536,21 +601,43 @@ export default function CreateEditAssignment() {
               type="button"
               onClick={() => setShowQuestionPicker(true)}
               style={{
-                height: '40px',
-                padding: '0 14px',
-                background: dashboardPalette.navy,
-                color: dashboardPalette.white,
-                border: `1px solid ${dashboardPalette.navy}`,
+                padding: '0.5rem 1rem',
+                background: '#4f46e5',
+                color: 'white',
+                border: 'none',
                 borderRadius: '8px',
                 cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: '0.875rem'
+                fontWeight: '600'
               }}
             >
               Add / Edit Questions
             </button>
           </div>
 
+        </div>
+
+        <div style={styles.formGroup}>
+          <div style={styles.previewMeta}>
+            <label style={{ ...styles.label, marginBottom: 0 }}>Live Student Preview</label>
+            <span>{previewLoading ? 'Rendering...' : `${previewQuestions.length || selectedQuestions.length} question${(previewQuestions.length || selectedQuestions.length) === 1 ? '' : 's'}`}</span>
+          </div>
+          {previewError && (
+            <div style={{ ...styles.helpText, color: '#b45309', marginBottom: '0.75rem' }}>
+              {previewError}
+            </div>
+          )}
+          <div style={styles.previewShell}>
+            <StudentPreview
+              inline
+              isPreviewMode={false}
+              showStatusBanner={false}
+              showPrevNextButtons
+              assignmentTitle={formData.title || 'Untitled Assignment'}
+              assignmentType={formData.type || 'Assignment'}
+              questions={previewQuestions.length ? previewQuestions : selectedQuestions}
+              submitButtonText="Submit Preview"
+            />
+          </div>
         </div>
 
         {/* Buttons */}
@@ -565,7 +652,7 @@ export default function CreateEditAssignment() {
           <button
             type="button"
             style={styles.cancelBtn}
-            onClick={handleBack}
+            onClick={() => window.location.hash = `#course/${courseId}`}
             disabled={saving}
           >
             Cancel
@@ -577,17 +664,15 @@ export default function CreateEditAssignment() {
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            background: 'rgba(10, 31, 53, 0.2)',
+            inset: '64px 0 0 0',
+            background: 'rgba(0,0,0,0.4)',
             zIndex: 1000,
-            display: 'flex',
-            overflow: 'hidden',
-            overscrollBehavior: 'contain'
+            display: 'flex'
           }}
         >
           <div
             style={{
-              background: dashboardPalette.surface,
+              background: 'white',
               width: '100%',
               height: '100%',
               display: 'flex',
@@ -599,17 +684,17 @@ export default function CreateEditAssignment() {
             {/* Header */}
             <div
               style={{
-                padding: '20px 24px',
+                padding: '1rem 1.5rem',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 position: 'fixed',
-                top: 0,
+                top: '64px',
                 left: 0,
                 right: 0,
                 zIndex: 1001,
-                background: dashboardPalette.white,
-                borderBottom: `1px solid ${dashboardPalette.border}`
+                background: 'white',
+                borderBottom: '1px solid #e5e7eb'
               }}
             >
               
@@ -628,7 +713,7 @@ export default function CreateEditAssignment() {
                     style={{
                       fontSize: '0.9rem',
                       fontWeight: 500,
-                      color: dashboardPalette.muted,
+                      color: '#6b7280',
                     }}
                   >
                     ({formData.assignment_questions.length} selected)
@@ -639,12 +724,11 @@ export default function CreateEditAssignment() {
               <button
                 onClick={() => setShowQuestionPicker(false)}
                 style={{
-                  height: '40px',
-                  padding: '0 14px',
-                  background: dashboardPalette.navy,
-                  color: dashboardPalette.white,
-                  border: `1px solid ${dashboardPalette.navy}`,
-                  borderRadius: '8px',
+                  padding: '0.5rem 1rem',
+                  background: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
                   cursor: 'pointer',
                   fontWeight: 600,
                 }}
@@ -658,34 +742,28 @@ export default function CreateEditAssignment() {
               style={{
                 flex: 1,
                 overflow: 'auto',
-                overscrollBehavior: 'contain',
-                WebkitOverflowScrolling: 'touch',
-                touchAction: 'pan-y',
-                padding: '88px 24px 32px'
+                padding: '6rem 1rem 1rem'
               }}
             >
-              <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gap: '20px' }}>
-                <QuestionSearchBar
-                  searchQuery={searchQuery}
-                  searchFilter={searchFilter}
-                  onSearchQueryChange={setSearchQuery}
-                  onSearchFilterChange={setSearchFilter}
-                  onClearSearch={() => setSearchQuery('')}
-                  compact
-                />
+              <QuestionSearchBar
+                searchQuery={searchQuery}
+                searchFilter={searchFilter}
+                onSearchQueryChange={setSearchQuery}
+                onSearchFilterChange={setSearchFilter}
+                onClearSearch={() => setSearchQuery('')}
+                compact
+              />
 
-                <QuestionTable
-                  questions={filteredQuestions}
-                  userInfoCache={userInfoCache}
-                  user={user}
-                  selectable
-                  selectedQuestionIds={formData.assignment_questions}
-                  onToggleQuestion={toggleQuestion}
-                  showBloomsTaxonomy={false}
-                  showTags={false}
-                  showActions={false}
-                />
-              </div>
+              <QuestionTable
+                questions={filteredQuestions}
+                userInfoCache={userInfoCache}
+                user={user}
+
+                selectable
+                selectedQuestionIds={formData.assignment_questions}
+                onToggleQuestion={toggleQuestion}
+                showActions={false}
+              />
             </div>
           </div>
         </div>

@@ -4,144 +4,84 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { getQuestionCodingConfig, isCodingQuestion } from '../utils/coding';
-import { dashboardPalette } from './CourseDashboardUI';
 
-const KEYWORD_COLORS = [dashboardPalette.navyLight, '#eaf1f8', '#eef4fa', '#fff3cc', '#f4f7fb'];
-const TAG_COLORS = ['#eef4fa', '#f4f7fb', '#fff3cc', '#eaf1f8', dashboardPalette.navyLight];
+// Color palettes for keyword and tag bubbles
+const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
+const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
-const actionButtonBase = {
-  padding: '0.375rem 0.75rem',
-  borderRadius: '8px',
-  cursor: 'pointer',
-  fontSize: '0.875rem',
-  fontWeight: '600',
-  transition: 'border-color 0.15s ease, background-color 0.15s ease',
+const getQID = (question) => {
+  return String(question.qid || question.assigned_qid || `Q${question.id}`);
 };
 
-const actionButtonStyles = {
-  primary: {
-    ...actionButtonBase,
-    background: dashboardPalette.navy,
-    color: dashboardPalette.white,
-    border: `1px solid ${dashboardPalette.navy}`,
-  },
-  secondary: {
-    ...actionButtonBase,
-    background: dashboardPalette.white,
-    color: dashboardPalette.text,
-    border: `1px solid ${dashboardPalette.border}`,
-  },
-  accent: {
-    ...actionButtonBase,
-    background: dashboardPalette.gold,
-    color: dashboardPalette.navy,
-    border: `1px solid ${dashboardPalette.goldDark}`,
-  },
-  danger: {
-    ...actionButtonBase,
-    background: dashboardPalette.white,
-    color: dashboardPalette.dangerText,
-    border: `1px solid ${dashboardPalette.dangerBorder}`,
-  },
+const getVersion = (question) => {
+  return question.assigned_version || question.version || 1;
 };
 
-const compactMenuButtonStyle = {
-  width: '32px',
-  height: '32px',
-  borderRadius: '8px',
-  border: `1px solid ${dashboardPalette.border}`,
-  background: dashboardPalette.white,
-  color: dashboardPalette.muted,
-  cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '1rem',
-  lineHeight: 1
+const formatDraftState = (question) => {
+  if (question.is_assignment_snapshot) return 'snapshot';
+  return question.draft_state || (question.is_verified === false ? 'draft' : 'ready');
 };
 
-const compactMenuPanelStyle = {
-  position: 'absolute',
-  right: 0,
-  bottom: 'calc(100% + 8px)',
-  minWidth: '180px',
-  background: dashboardPalette.white,
-  border: `1px solid ${dashboardPalette.border}`,
-  borderRadius: '8px',
-  padding: '0.35rem',
-  zIndex: 20
+const formatVisibility = (question) => {
+  if (question.is_assignment_snapshot) return 'snapshot';
+  return question.visibility || 'private';
 };
 
-const compactMenuItemStyle = {
-  width: '100%',
-  padding: '0.5rem 0.65rem',
-  border: 'none',
-  borderRadius: '6px',
-  background: 'transparent',
-  color: dashboardPalette.text,
-  textAlign: 'left',
-  fontSize: '0.82rem',
-  fontWeight: 600,
-  cursor: 'pointer'
+const formatOrigin = (question) => {
+  if (question.is_assignment_snapshot) return 'assignment';
+  return question.origin || 'manual';
 };
 
-const stripMarkdown = (value = '') =>
-  value
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[`*_>#~|-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const truncateText = (value, maxLength) => {
-  if (!value || value.length <= maxLength) return value;
-  return `${value.slice(0, maxLength).trimEnd()}...`;
+const getSourceParts = (question) => {
+  return [
+    question.source_repo,
+    question.source_path,
+    question.source_commit
+  ].filter(Boolean);
 };
 
-const formatRelativeEditTime = (value) => {
-  if (!value) return 'recently';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'recently';
-
-  const diffMs = Date.now() - date.getTime();
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (diffMs < hour) {
-    const minutes = Math.max(1, Math.floor(diffMs / minute));
-    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-  }
-  if (diffMs < day) {
-    const hours = Math.max(1, Math.floor(diffMs / hour));
-    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  }
-  if (diffMs < day * 2) {
-    return 'yesterday';
-  }
-  if (diffMs < day * 7) {
-    const days = Math.max(2, Math.floor(diffMs / day));
-    return `${days} days ago`;
-  }
-
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
-  });
+const formatSourceLabel = (question) => {
+  const sourceParts = getSourceParts(question);
+  if (sourceParts.length === 0) return '';
+  const [repo, path, commit] = sourceParts;
+  const shortCommit = commit ? String(commit).slice(0, 8) : '';
+  return [repo, path, shortCommit].filter(Boolean).join(' / ');
 };
 
-const getCompactBadges = (question, tags, keywords) => {
-  const items = [];
-  if (question.course) items.push(question.course);
-  tags.forEach((tag) => items.push(tag));
-  keywords.forEach((keyword) => items.push(keyword));
-  if (items.length === 0 && question.question_type) items.push(question.question_type);
-  return items
-    .filter(Boolean)
-    .filter((item, index, list) => list.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
-    .slice(0, 3);
+const ProvenanceChip = ({ label, value, title, monospace = false }) => {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <span
+      title={title}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        maxWidth: '100%',
+        background: '#f3f4f6',
+        color: '#374151',
+        border: '1px solid #e5e7eb',
+        borderRadius: '4px',
+        padding: '0.16rem 0.4rem',
+        fontSize: '0.7rem',
+        fontWeight: '600',
+        lineHeight: 1.3,
+        whiteSpace: 'nowrap'
+      }}
+    >
+      <span style={{ color: '#6b7280', fontWeight: '700', textTransform: 'uppercase', fontSize: '0.62rem' }}>
+        {label}
+      </span>
+      <span style={{
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        fontFamily: monospace ? 'monospace' : 'inherit',
+        textTransform: monospace ? 'none' : 'capitalize'
+      }}>
+        {value}
+      </span>
+    </span>
+  );
 };
 
 // User Icon Component
@@ -167,7 +107,7 @@ const UserIcon = ({ userInfo, size = 40 }) => {
   };
 
   const shape = userInfo.icon_shape || 'circle';
-  const color = userInfo.icon_color || dashboardPalette.navy;
+  const color = userInfo.icon_color || '#4f46e5';
 
   const getShapeStyles = () => {
     if (shape === 'circle') {
@@ -193,7 +133,7 @@ const UserIcon = ({ userInfo, size = 40 }) => {
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: `${size / 2.5}px`,
-        fontWeight: 700,
+        fontWeight: 'bold',
         ...getShapeStyles(),
         flexShrink: 0
       }}
@@ -233,16 +173,11 @@ export default function QuestionCard({
   showEditButton = false,
   showRemoveButton = false,
   showStudentViewButton = false,
-  showVariantButton = false,
-  showApproveButton = false,
   actionLoading = false,
-  variantLoading = false,
   onDelete,
   onEdit,
   onRemove,
   onStudentView,
-  onGenerateVariant,
-  onApproveDraft,
   compact = false,
   showUserIcon = true,
   questionNumber,
@@ -284,8 +219,8 @@ export default function QuestionCard({
 
   const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
   const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const menuRef = React.useRef(null);
+  const sourceLabel = formatSourceLabel(question);
+  const sourceTitle = getSourceParts(question).join('\n');
 
   const handleEdit = (e) => {
     if (e) e.stopPropagation();
@@ -297,206 +232,14 @@ export default function QuestionCard({
     }
   };
 
-  React.useEffect(() => {
-    if (!menuOpen) return undefined;
-
-    const handlePointerDown = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, [menuOpen]);
-
-  const hasActions =
-    showStudentViewButton ||
-    showVariantButton ||
-    showApproveButton ||
-    showDeleteButton ||
-    showEditButton ||
-    showRemoveButton;
-
-  const compactTitle = question.title || truncateText(stripMarkdown(question.text || ''), 62) || 'Untitled Question';
-  const compactExcerpt = truncateText(stripMarkdown(question.text || ''), question.title ? 138 : 110);
-  const compactBadges = getCompactBadges(question, tags, keywords);
-  const compactEditedLabel = formatRelativeEditTime(question.updated_at || question.created_at);
-  const compactMenuActions = [
-    showEditButton ? {
-      label: editButtonLabel,
-      disabled: actionLoading,
-      onClick: () => handleEdit(),
-    } : null,
-    showStudentViewButton ? {
-      label: 'Student View',
-      onClick: () => onStudentView?.(question),
-    } : null,
-    showVariantButton && onGenerateVariant ? {
-      label: variantLoading ? 'Generating...' : 'Generate Variant',
-      disabled: actionLoading || variantLoading,
-      onClick: () => onGenerateVariant(question),
-    } : null,
-    showApproveButton && onApproveDraft ? {
-      label: 'Approve',
-      disabled: actionLoading,
-      onClick: () => onApproveDraft(question),
-    } : null,
-    showRemoveButton && onRemove ? {
-      label: 'Remove',
-      disabled: actionLoading,
-      onClick: () => onRemove(question.id),
-      tone: 'danger',
-    } : null,
-    showDeleteButton && onDelete ? {
-      label: 'Delete',
-      disabled: actionLoading,
-      onClick: () => onDelete(question.id),
-      tone: 'danger',
-    } : null,
-  ].filter(Boolean);
-
-  if (compact) {
-    return (
-      <div
-        style={{
-          border: `1px solid ${dashboardPalette.border}`,
-          borderRadius: '8px',
-          padding: '1.25rem 1.25rem 1rem',
-          background: dashboardPalette.white,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          position: 'relative',
-          minHeight: '272px',
-          height: '100%'
-        }}
-      >
-        <div>
-          <h3
-            style={{
-              margin: 0,
-              color: dashboardPalette.navy,
-              fontSize: '1rem',
-              fontWeight: 700,
-              lineHeight: 1.35,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden'
-            }}
-          >
-            {compactTitle}
-          </h3>
-          <p
-            style={{
-              margin: '0.9rem 0 0',
-              color: dashboardPalette.text,
-              fontSize: '0.95rem',
-              lineHeight: 1.55,
-              minHeight: '4.65rem',
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden'
-            }}
-          >
-            {compactExcerpt || 'No description available.'}
-          </p>
-        </div>
-
-        <div style={{ marginTop: '1.25rem' }}>
-          {compactBadges.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-              {compactBadges.map((badge, index) => (
-                <span
-                  key={`${badge}-${index}`}
-                  style={{
-                    background: index % 2 === 0 ? dashboardPalette.surface : '#eef4fa',
-                    color: dashboardPalette.muted,
-                    padding: '0.38rem 0.6rem',
-                    borderRadius: '8px',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    lineHeight: 1,
-                    border: `1px solid ${dashboardPalette.border}`
-                  }}
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div style={{ height: '1rem', marginBottom: '1rem' }} />
-          )}
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '0.75rem',
-              paddingTop: '0.85rem',
-              borderTop: `1px solid ${dashboardPalette.border}`,
-              position: 'relative'
-            }}
-          >
-            <span style={{ color: dashboardPalette.muted, fontSize: '0.88rem', lineHeight: 1.4 }}>
-              Last edited {compactEditedLabel}
-            </span>
-            {hasActions ? (
-              <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setMenuOpen((open) => !open);
-                  }}
-                  style={compactMenuButtonStyle}
-                  aria-label="Open question actions"
-                >
-                  ⋮
-                </button>
-                {menuOpen ? (
-                  <div style={compactMenuPanelStyle}>
-                    {compactMenuActions.map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (item.disabled) return;
-                          setMenuOpen(false);
-                          item.onClick();
-                        }}
-                        disabled={item.disabled}
-                        style={{
-                          ...compactMenuItemStyle,
-                          color: item.tone === 'danger' ? dashboardPalette.dangerText : dashboardPalette.text,
-                          opacity: item.disabled ? 0.6 : 1,
-                          cursor: item.disabled ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       style={{
-        border: `1px solid ${dashboardPalette.border}`,
+        border: '1px solid #ddd',
         borderRadius: '8px',
         padding: compact ? '1rem' : '1.25rem',
-        background: dashboardPalette.white,
+        background: 'white',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
@@ -518,13 +261,16 @@ export default function QuestionCard({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: dashboardPalette.surface,
-            borderBottom: `1px solid ${dashboardPalette.border}`,
+            background: '#f9fafb',
+            borderBottom: '1px solid #e5e7eb',
             fontSize: '1.2rem',
-            color: dashboardPalette.muted,
+            color: '#9ca3af',
+            transition: 'background 0.15s ease',
             userSelect: 'none',
             touchAction: 'none' // Prevent scrolling on touch devices
           }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#f9fafb'}
         >
           <span style={{ letterSpacing: '-2px', fontWeight: 'bold' }}>⋮⋮</span>
         </div>
@@ -545,9 +291,8 @@ export default function QuestionCard({
           left: '1rem',
           fontSize: '0.75rem',
           fontWeight: '600',
-          color: dashboardPalette.muted,
-          background: dashboardPalette.surface,
-          border: `1px solid ${dashboardPalette.border}`,
+          color: '#6b7280',
+          background: '#e5e7eb',
           padding: '0.125rem 0.5rem',
           borderRadius: '4px'
         }}>
@@ -559,46 +304,42 @@ export default function QuestionCard({
       <div style={{
         marginBottom: compact ? '0.75rem' : '1rem',
         paddingBottom: '0.75rem',
-        borderBottom: `1px solid ${dashboardPalette.border}`,
+        borderBottom: '1px solid #eee',
         paddingRight: showUserIcon ? '50px' : '0',
         paddingTop: questionNumber ? '1.5rem' : '0'
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
           {showSchool && question.school && (
             <span style={{
-              background: dashboardPalette.surface,
-              color: dashboardPalette.text,
-              padding: '0.25rem 0.65rem',
-              borderRadius: '6px',
-              border: `1px solid ${dashboardPalette.border}`,
-              fontSize: '0.8rem',
-              fontWeight: 600
+              background: '#6f42c1',
+              color: 'white',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '4px',
+              fontSize: '0.875rem',
+              fontWeight: 'bold'
             }}>
               {question.school}
             </span>
           )}
           {question.course && (
             <span style={{
-              background: dashboardPalette.navyLight,
-              color: dashboardPalette.navy,
-              padding: '0.25rem 0.65rem',
-              borderRadius: '6px',
-              border: `1px solid ${dashboardPalette.border}`,
-              fontSize: '0.8rem',
-              fontWeight: 600
+              background: '#007bff',
+              color: 'white',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '4px',
+              fontSize: '0.875rem',
+              fontWeight: 'bold'
             }}>
               {question.course}
             </span>
           )}
           {showCourseType && question.course_type && (
             <span style={{
-              background: dashboardPalette.surface,
-              color: dashboardPalette.muted,
-              padding: '0.25rem 0.65rem',
-              borderRadius: '6px',
-              border: `1px solid ${dashboardPalette.border}`,
-              fontSize: '0.8rem',
-              fontWeight: 600
+              background: '#17a2b8',
+              color: 'white',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '4px',
+              fontSize: '0.875rem'
             }}>
               {question.course_type}
             </span>
@@ -608,29 +349,42 @@ export default function QuestionCard({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
           {question.question_type && (
             <span style={{
-              background: dashboardPalette.gold,
-              color: dashboardPalette.navy,
-              padding: '0.2rem 0.55rem',
-              borderRadius: '6px',
-              border: `1px solid ${dashboardPalette.goldDark}`,
-              fontSize: '0.75rem',
-              fontWeight: 700
+              background: '#fd7e14',
+              color: 'white',
+              padding: '0.2rem 0.6rem',
+              borderRadius: '4px',
+              fontSize: '0.75rem'
             }}>
-              {question.question_type}
+              {question.question_type.toUpperCase()}
             </span>
           )}
           {question.blooms_taxonomy && (
             <span style={{
-              background: dashboardPalette.surface,
-              color: dashboardPalette.text,
-              padding: '0.2rem 0.55rem',
-              borderRadius: '6px',
-              border: `1px solid ${dashboardPalette.border}`,
-              fontSize: '0.75rem',
-              fontWeight: 600
+              background: '#20c997',
+              color: 'white',
+              padding: '0.2rem 0.6rem',
+              borderRadius: '4px',
+              fontSize: '0.75rem'
             }}>
               Bloom's: {question.blooms_taxonomy}
             </span>
+          )}
+        </div>
+
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.35rem',
+          marginBottom: question.title ? '0.65rem' : '0.5rem',
+          alignItems: 'center'
+        }}>
+          <ProvenanceChip label="QID" value={getQID(question)} title="Question ID" monospace />
+          <ProvenanceChip label="Ver" value={`v${getVersion(question)}`} title="Version" monospace />
+          <ProvenanceChip label="State" value={formatDraftState(question).replace('_', ' ')} title="Draft state" />
+          <ProvenanceChip label="Vis" value={formatVisibility(question).replace('_', ' ')} title="Visibility" />
+          <ProvenanceChip label="Origin" value={formatOrigin(question).replace('_', ' ')} title="Origin" />
+          {sourceLabel && (
+            <ProvenanceChip label="Source" value={sourceLabel} title={sourceTitle} monospace />
           )}
         </div>
 
@@ -638,10 +392,11 @@ export default function QuestionCard({
           <div style={{ marginBottom: '0.9rem', marginTop: '0.35rem' }}>
             <h3 style={{
               margin: 0,
-              fontSize: compact ? '1.1rem' : '1.3rem',
-              fontWeight: 700,
-              color: dashboardPalette.navy,
+              fontSize: compact ? '1.25rem' : '1.5rem',
+              fontWeight: 800,
+              color: '#222',
               lineHeight: '1.35',
+              letterSpacing: '-0.01em'
             }}>
               {question.title}
             </h3>
@@ -650,18 +405,18 @@ export default function QuestionCard({
 
         {showKeywords && keywords.length > 0 && (
           <div style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-            <strong style={{ fontSize: '0.75rem', color: dashboardPalette.muted, marginRight: '0.25rem' }}>Keywords:</strong>
+            <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Keywords:</strong>
             {keywords.map((keyword, index) => (
               <span
                 key={index}
                 style={{
                   background: KEYWORD_COLORS[index % KEYWORD_COLORS.length],
-                  color: dashboardPalette.text,
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '6px',
+                  color: '#333',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '12px',
                   fontSize: '0.7rem',
                   fontWeight: '500',
-                  border: `1px solid ${dashboardPalette.border}`
+                  border: '1px solid rgba(0,0,0,0.1)'
                 }}
               >
                 {keyword}
@@ -671,18 +426,18 @@ export default function QuestionCard({
         )}
         {tags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-            <strong style={{ fontSize: '0.75rem', color: dashboardPalette.muted, marginRight: '0.25rem' }}>Tags:</strong>
+            <strong style={{ fontSize: '0.75rem', color: '#666', marginRight: '0.25rem' }}>Tags:</strong>
             {tags.map((tag, index) => (
               <span
                 key={index}
                 style={{
                   background: TAG_COLORS[index % TAG_COLORS.length],
-                  color: dashboardPalette.text,
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '6px',
+                  color: '#333',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '12px',
                   fontSize: '0.7rem',
                   fontWeight: '500',
-                  border: `1px solid ${dashboardPalette.border}`
+                  border: '1px solid rgba(0,0,0,0.1)'
                 }}
               >
                 {tag}
@@ -704,24 +459,23 @@ export default function QuestionCard({
                   code({ node, inline, className, children, ...props }) {
                     return inline ? (
                       <code style={{
-                        background: dashboardPalette.surface,
+                        background: '#e9ecef',
                         padding: '0.2rem 0.4rem',
                         borderRadius: '3px',
                         fontSize: '0.9em',
-                        fontFamily: 'monospace',
-                        color: dashboardPalette.text
+                        fontFamily: 'monospace'
                       }} {...props}>
                         {children}
                       </code>
                     ) : (
                       <pre style={{
-                        background: dashboardPalette.surface,
-                        color: dashboardPalette.text,
+                        background: '#2d2d2d',
+                        color: '#f8f8f2',
                         padding: '1rem',
-                        borderRadius: '8px',
+                        borderRadius: '4px',
                         overflow: 'auto',
                         fontSize: '0.875rem',
-                        border: `1px solid ${dashboardPalette.border}`,
+                        border: '1px solid #444',
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word'
                       }}>
@@ -732,7 +486,7 @@ export default function QuestionCard({
                     );
                   },
                   p({ children }) {
-                    return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5', color: dashboardPalette.text }}>{children}</p>;
+                    return <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', lineHeight: '1.5' }}>{children}</p>;
                   }
                 }}
               >
@@ -741,7 +495,7 @@ export default function QuestionCard({
             );
           } catch (error) {
             console.error('Error rendering markdown:', error);
-            return <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5', color: dashboardPalette.text }}>{question.text}</p>;
+            return <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5' }}>{question.text}</p>;
           }
         })()}
       </div>
@@ -756,8 +510,8 @@ export default function QuestionCard({
               maxWidth: '100%',
               height: 'auto',
               maxHeight: compact ? '200px' : '300px',
-              border: `1px solid ${dashboardPalette.border}`,
-              borderRadius: '8px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
               objectFit: 'contain'
             }}
           />
@@ -770,13 +524,12 @@ export default function QuestionCard({
         const isMCQ = questionType === 'mcq' || questionType === 'true_false';
         const isFR = questionType === 'fr';
         const isShortAnswer = questionType === 'short_answer';
-        const isCoding = isCodingQuestion(questionType);
 
         // For MCQ/True-False: show answer choices
         if (isMCQ && answerChoices.length > 0) {
           return (
             <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: '700', marginBottom: '0.5rem', color: dashboardPalette.navy }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
                 Answer Choices:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -788,20 +541,19 @@ export default function QuestionCard({
                       key={index}
                       style={{
                         padding: '0.5rem 0.75rem',
-                        borderRadius: '8px',
-                        border: isCorrect ? `1px solid ${dashboardPalette.goldDark}` : `1px solid ${dashboardPalette.border}`,
-                        background: isCorrect ? '#fff9e6' : dashboardPalette.surface,
+                        borderRadius: '4px',
+                        border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
+                        background: isCorrect ? '#d4edda' : '#f8f9fa',
                         fontSize: '0.875rem',
-                        position: 'relative',
-                        color: dashboardPalette.text
+                        position: 'relative'
                       }}
                     >
                       {choiceDisplay}
                       {isCorrect && (
                         <span style={{
                           marginLeft: '0.5rem',
-                          color: dashboardPalette.navy,
-                          fontWeight: 700,
+                          color: '#28a745',
+                          fontWeight: 'bold',
                           fontSize: '0.75rem'
                         }}>
                           ✓ Correct
@@ -826,10 +578,10 @@ export default function QuestionCard({
           return (
             <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.875rem', fontWeight: '700', color: dashboardPalette.navy }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 'bold', color: '#333' }}>
                   Parts & Rubric ({answerChoices.length} parts):
                 </div>
-                <span style={{ fontSize: '0.75rem', color: dashboardPalette.muted, fontWeight: '600' }}>
+                <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: '600' }}>
                   {totalPoints} pts total
                 </span>
               </div>
@@ -842,30 +594,30 @@ export default function QuestionCard({
                       key={index}
                       style={{
                         padding: '0.75rem',
-                        borderRadius: '8px',
-                        border: `1px solid ${dashboardPalette.border}`,
-                        background: dashboardPalette.surface,
+                        borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                        background: '#f7fafc',
                         fontSize: '0.875rem'
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                        <span style={{ fontWeight: '600', color: dashboardPalette.text }}>
+                        <span style={{ fontWeight: '600', color: '#4a5568' }}>
                           {part.part_label || `Part ${index + 1}`}
                         </span>
-                        <span style={{ background: dashboardPalette.white, color: dashboardPalette.navy, padding: '2px 8px', borderRadius: '6px', border: `1px solid ${dashboardPalette.border}`, fontSize: '0.75rem', fontWeight: '600' }}>
+                        <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>
                           {maxPts} pts max
                         </span>
                       </div>
                       {levels.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                           {levels.map((l, i) => (
-                            <div key={i} style={{ fontSize: '0.8rem', color: dashboardPalette.muted, lineHeight: 1.3 }}>
-                              <span style={{ fontWeight: '600', color: dashboardPalette.navy }}>+{l.points || 0}:</span> {l.criteria || '—'}
+                            <div key={i} style={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.3 }}>
+                              <span style={{ fontWeight: '600', color: '#0369a1' }}>+{l.points || 0}:</span> {l.criteria || '—'}
                             </div>
                           ))}
                         </div>
                       ) : part.rubric_text && (
-                        <p style={{ margin: 0, color: dashboardPalette.muted, fontSize: '0.8rem', lineHeight: 1.4 }}>{part.rubric_text}</p>
+                        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.8rem', lineHeight: 1.4 }}>{part.rubric_text}</p>
                       )}
                     </div>
                   );
@@ -875,53 +627,11 @@ export default function QuestionCard({
           );
         }
 
-        if (isCoding) {
-          const codingConfig = getQuestionCodingConfig(question);
-          return (
-            <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <div style={{ fontSize: '0.875rem', fontWeight: '700', color: dashboardPalette.navy }}>
-                  Coding Question
-                </div>
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  <span style={{ background: dashboardPalette.navyLight, color: dashboardPalette.navy, padding: '2px 8px', borderRadius: '6px', border: `1px solid ${dashboardPalette.border}`, fontSize: '0.75rem', fontWeight: '700' }}>C++</span>
-                  <span style={{ background: '#fff9e6', color: dashboardPalette.navy, padding: '2px 8px', borderRadius: '6px', border: `1px solid ${dashboardPalette.goldDark}`, fontSize: '0.75rem', fontWeight: '700' }}>{`${codingConfig.points || 1} pts`}</span>
-                </div>
-              </div>
-              {codingConfig.function_signature && (
-                <div style={{ fontSize: '0.84rem', color: dashboardPalette.text, marginBottom: '0.5rem', fontFamily: 'monospace' }}>
-                  {codingConfig.function_signature}
-                </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                {(codingConfig.visible_tests || []).map((test, index) => (
-                  <div key={`${test.name}-${index}`} style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', background: dashboardPalette.surface, border: `1px solid ${dashboardPalette.border}`, fontSize: '0.82rem' }}>
-                    <div style={{ fontWeight: '700', color: dashboardPalette.text }}>{test.name || `Sample ${index + 1}`}</div>
-                    {test.description && <div style={{ marginTop: '0.2rem', color: dashboardPalette.muted }}>{test.description}</div>}
-                    {(test.input || test.output) && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem', marginTop: '0.45rem' }}>
-                        <div style={{ background: dashboardPalette.white, border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '0.45rem 0.5rem' }}>
-                          <div style={{ color: dashboardPalette.muted, fontSize: '0.7rem', fontWeight: '700', marginBottom: '0.2rem' }}>Input</div>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace', color: dashboardPalette.text }}>{test.input || '—'}</pre>
-                        </div>
-                        <div style={{ background: dashboardPalette.white, border: `1px solid ${dashboardPalette.border}`, borderRadius: '8px', padding: '0.45rem 0.5rem' }}>
-                          <div style={{ color: dashboardPalette.muted, fontSize: '0.7rem', fontWeight: '700', marginBottom: '0.2rem' }}>Expected Output</div>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace', color: dashboardPalette.text }}>{test.output || '—'}</pre>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        }
-
         // Fallback for questions without specific type or old MCQ data
         if (answerChoices.length > 0 && typeof answerChoices[0] === 'string') {
           return (
             <div style={{ marginBottom: compact ? '0.75rem' : '1rem' }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: '700', marginBottom: '0.5rem', color: dashboardPalette.navy }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
                 Answer Choices:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -933,20 +643,19 @@ export default function QuestionCard({
                       key={index}
                       style={{
                         padding: '0.5rem 0.75rem',
-                        borderRadius: '8px',
-                        border: isCorrect ? `1px solid ${dashboardPalette.goldDark}` : `1px solid ${dashboardPalette.border}`,
-                        background: isCorrect ? '#fff9e6' : dashboardPalette.surface,
+                        borderRadius: '4px',
+                        border: isCorrect ? '2px solid #28a745' : '1px solid #ddd',
+                        background: isCorrect ? '#d4edda' : '#f8f9fa',
                         fontSize: '0.875rem',
-                        position: 'relative',
-                        color: dashboardPalette.text
+                        position: 'relative'
                       }}
                     >
                       {choiceDisplay}
                       {isCorrect && (
                         <span style={{
                           marginLeft: '0.5rem',
-                          color: dashboardPalette.navy,
-                          fontWeight: 700,
+                          color: '#28a745',
+                          fontWeight: 'bold',
                           fontSize: '0.75rem'
                         }}>
                           ✓ Correct
@@ -964,45 +673,33 @@ export default function QuestionCard({
       })()}
 
       {/* Action buttons */}
-      {(showStudentViewButton || showVariantButton || showApproveButton || showDeleteButton || showEditButton || showRemoveButton) && (
+      {(showStudentViewButton || showDeleteButton || showEditButton || showRemoveButton) && (
         <div 
           onPointerDown={(e) => e.stopPropagation()}
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}
         >
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div>
             {showStudentViewButton && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   if (onStudentView) onStudentView(question);
                 }}
-                style={actionButtonStyles.secondary}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#0ea5e9',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#0284c7'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0ea5e9'; }}
               >
                 Student View
-              </button>
-            )}
-            {showVariantButton && onGenerateVariant && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onGenerateVariant(question);
-                }}
-                disabled={actionLoading || variantLoading}
-                style={{ ...actionButtonStyles.secondary, color: dashboardPalette.navy, opacity: (actionLoading || variantLoading) ? 0.6 : 1, cursor: (actionLoading || variantLoading) ? 'not-allowed' : 'pointer' }}
-              >
-                {variantLoading ? 'Generating...' : 'Generate Variant'}
-              </button>
-            )}
-            {showApproveButton && onApproveDraft && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onApproveDraft(question);
-                }}
-                disabled={actionLoading}
-                style={{ ...actionButtonStyles.accent, opacity: actionLoading ? 0.6 : 1, cursor: actionLoading ? 'not-allowed' : 'pointer' }}
-              >
-                Approve
               </button>
             )}
           </div>
@@ -1011,7 +708,20 @@ export default function QuestionCard({
               <button
                 onClick={handleEdit}
                 disabled={actionLoading}
-                style={{ ...actionButtonStyles.primary, opacity: actionLoading ? 0.6 : 1, cursor: actionLoading ? 'not-allowed' : 'pointer' }}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  opacity: actionLoading ? 0.6 : 1,
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4338ca'; }}
+                onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#4f46e5'; }}
               >
                 {editButtonLabel}
               </button>
@@ -1023,7 +733,20 @@ export default function QuestionCard({
                   onRemove(question.id);
                 }}
                   disabled={actionLoading}
-                  style={{ ...actionButtonStyles.danger, opacity: actionLoading ? 0.6 : 1, cursor: actionLoading ? 'not-allowed' : 'pointer' }}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    background: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: actionLoading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    opacity: actionLoading ? 0.6 : 1,
+                    transition: 'background-color 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#c82333'; }}
+                  onMouseLeave={(e) => { if (!actionLoading) e.currentTarget.style.backgroundColor = '#dc3545'; }}
               >
                 Remove
               </button>
@@ -1034,7 +757,16 @@ export default function QuestionCard({
                   e.stopPropagation();
                   onDelete(question.id);
                 }}
-                style={actionButtonStyles.danger}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: 'bold'
+                }}
               >
                 Delete
               </button>

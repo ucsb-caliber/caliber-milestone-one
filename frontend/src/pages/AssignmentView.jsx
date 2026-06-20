@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
-import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus, releaseAssignmentGrades } from '../api';
+import { getAssignment, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus, releaseAssignmentGrades, exportQuestionFolder } from '../api';
 import QuestionCard from '../components/QuestionCard';
 import QuestionTable from '../components/QuestionTable';
 import StudentPreview from '../components/StudentPreview';
 import AssignmentGradingStats from '../components/AssignmentGradingStats';
 import { formatPacificDateTime, parseScheduleDate } from '../utils/datetime';
-import { CourseDashboardBackButton, CourseDashboardSpinnerState, dashboardPalette } from '../components/CourseDashboardUI';
-import { buildHashWithFrom, getFromHash, navigateBackWithFallback } from '../utils/navigation';
+import { getAssignmentQuestionCount, loadAssignmentQuestions } from '../utils/assignmentQuestions';
 
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -113,10 +112,6 @@ const DateTimeline = ({ assignment }) => {
   const hardPct = hasDistinctHardDue ? 100 : getPct(hardDue);
   const todayPct = getPct(now);
   const dueLabelsOverlap = hasDistinctHardDue && Math.abs(hardPct - softPct) < 18;
-  const labelBlockBase = {
-    maxWidth: '180px',
-    overflowWrap: 'anywhere',
-  };
 
   const countdownTarget = hardPassed ? null : (softPassed ? hardDue : softDue);
   const countdown = getTimeLeft(countdownTarget);
@@ -148,13 +143,13 @@ const DateTimeline = ({ assignment }) => {
 
   return (
     <div>
-      <div style={{ position: 'relative', padding: '40px 40px 0' }}>
+      <div style={{ position: 'relative', padding: '1rem 4rem 0rem' }}>
         <div style={{
           position: 'relative',
           height: '6px',
-          background: dashboardPalette.border,
+          background: '#e5e7eb',
           borderRadius: '999px',
-          margin: '16px 0 40px'
+          margin: '1.5rem 0 2.5rem'
         }}>
           {/* Filled progress */}
           <div style={{
@@ -164,7 +159,7 @@ const DateTimeline = ({ assignment }) => {
             height: '100%',
             width: `${todayPct}%`,
             borderRadius: '999px',
-            background: dashboardPalette.navy
+            background: '#4f46e5'
           }} />
 
           {/* Soft due marker */}
@@ -176,9 +171,10 @@ const DateTimeline = ({ assignment }) => {
               transform: 'translate(-50%, -50%)',
               width: '10px',
               height: '10px',
-              borderRadius: '8px',
-              background: dashboardPalette.navy,
-              border: `2px solid ${dashboardPalette.white}`
+              borderRadius: '50%',
+              background: '#4f46e5',
+              border: '2px solid white',
+              boxShadow: '0 0 0 1px rgba(79,70,229,0.35)'
             }} />
           )}
 
@@ -191,9 +187,10 @@ const DateTimeline = ({ assignment }) => {
               transform: 'translate(-50%, -50%)',
               width: '10px',
               height: '10px',
-              borderRadius: '8px',
-              background: dashboardPalette.text,
-              border: `2px solid ${dashboardPalette.white}`
+              borderRadius: '50%',
+              background: '#0f172a',
+              border: '2px solid white',
+              boxShadow: '0 0 0 1px rgba(15,23,42,0.35)'
             }} />
           )}
 
@@ -205,21 +202,20 @@ const DateTimeline = ({ assignment }) => {
               bottom: '18px',
               left: '50%',
               transform: 'translateX(-50%)',
-              background: dashboardPalette.white,
-              border: `1px solid ${dashboardPalette.border}`,
+              background: '#f3f4f6',
+              border: '1px solid #e5e7eb',
               borderRadius: '6px',
-              padding: '6px 10px',
+              padding: '0.15rem 0.5rem',
               fontSize: '0.7rem',
               fontWeight: '600',
-              lineHeight: 1.25,
-              color: dashboardPalette.text,
+              color: '#374151',
               whiteSpace: 'nowrap',
               textAlign: 'center'
             }}>
               <div style={{
                 fontSize: '0.75rem',
                 fontWeight: '500',
-                color: hardPassed ? dashboardPalette.dangerText : dashboardPalette.navy
+                color: hardPassed ? '#b91c1c' : (softPassed ? '#b45309' : '#6acc20')
               }}>
                 {countdownLabel}
               </div>
@@ -232,14 +228,15 @@ const DateTimeline = ({ assignment }) => {
                 height: 0,
                 borderLeft: '4px solid transparent',
                 borderRight: '4px solid transparent',
-                borderTop: `5px solid ${dashboardPalette.border}`
+                borderTop: '5px solid #e5e7eb'
               }} />
             </div>
             <div style={{
               width: '14px', height: '14px',
-              borderRadius: '8px',
-              background: dashboardPalette.white,
-              border: `3px solid ${dashboardPalette.navy}`
+              borderRadius: '50%',
+              background: '#4f46e5',
+              border: '3px solid #4f46e5',
+              boxShadow: '0 0 0 3px rgba(79,70,229,0.2)'
             }} />
           </div>
         </div>
@@ -247,21 +244,21 @@ const DateTimeline = ({ assignment }) => {
         {/* Labels row */}
         <div style={{ position: 'relative', height: dueLabelsOverlap ? '108px' : '60px' }}>
           {release && (
-            <div style={{ ...labelBlockBase, position: 'absolute', left: 0, top: '-1.5rem', textAlign: 'left' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: '600', color: dashboardPalette.text, marginBottom: '0.15rem' }}>Release Date</div>
-              <div style={{ whiteSpace: 'pre-line', fontSize: '0.75rem', color: dashboardPalette.muted }}>{formatDate(release)}</div>
+            <div style={{ position: 'absolute', left: '0%', top: '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#111827', marginBottom: '0.15rem' }}>Release Date</div>
+              <div style={{ whiteSpace: 'pre-line', fontSize: '0.75rem', color: '#9ca3af' }}>{formatDate(release)}</div>
             </div>
           )}
           {softDue && (
-            <div style={{ ...labelBlockBase, position: 'absolute', left: `${softPct}%`, top: '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
-              <div style={{ minWidth: 'max-content', fontSize: '0.8rem', fontWeight: '600', color: dashboardPalette.text, marginBottom: '0.15rem' }}>Due Date</div>
-              <div style={{ minWidth: 'max-content', whiteSpace: 'pre-line', fontSize: '0.75rem', color: dashboardPalette.muted }}>{formatDate(softDue)}</div>
+            <div style={{ position: 'absolute', left: `${softPct}%`, top: '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
+              <div style={{ minWidth: 'max-content', fontSize: '0.8rem', fontWeight: '600', color: '#111827', marginBottom: '0.15rem' }}>Due Date</div>
+              <div style={{ minWidth: 'max-content', whiteSpace: 'pre-line', fontSize: '0.75rem', color: '#9ca3af' }}>{formatDate(softDue)}</div>
             </div>
           )}
           {hasDistinctHardDue && (
-            <div style={{ ...labelBlockBase, position: 'absolute', right: 0, top: dueLabelsOverlap ? '2.2rem' : '-1.5rem', textAlign: 'right' }}>
-              <div style={{ minWidth: 'max-content', fontSize: '0.8rem', fontWeight: '600', color: dashboardPalette.text, marginBottom: '0.15rem' }}>Late Submissions Due</div>
-              <div style={{ minWidth: 'max-content', whiteSpace: 'pre-line', fontSize: '0.75rem', color: dashboardPalette.muted }}>{formatDate(hardDue)}</div>
+            <div style={{ position: 'absolute', left: `${hardPct}%`, top: dueLabelsOverlap ? '2.2rem' : '-1.5rem', transform: 'translateX(-50%)', textAlign: 'center' }}>
+              <div style={{ minWidth: 'max-content', fontSize: '0.8rem', fontWeight: '600', color: '#111827', marginBottom: '0.15rem' }}>Late Submissions Due</div>
+              <div style={{ minWidth: 'max-content', whiteSpace: 'pre-line', fontSize: '0.75rem', color: '#9ca3af' }}>{formatDate(hardDue)}</div>
             </div>
           )}
         </div>
@@ -322,20 +319,14 @@ export default function AssignmentView() {
     const hash = window.location.hash;
     const courseMatch = hash.match(/#course\/(\d+)/);
     const assignmentMatch = hash.match(/\/assignment\/(\d+)\/view/);
-    const params = new URLSearchParams(hash.split('?')[1] || '');
-    
+
     return {
       courseId: courseMatch ? parseInt(courseMatch[1]) : null,
-      assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null,
-      fromHash: params.get('from') || '',
+      assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null
     };
   };
 
-  const currentHash = window.location.hash;
-  const { courseId, assignmentId, fromHash } = parseHash();
-  const handleBack = () => {
-    navigateBackWithFallback(courseId ? `#course/${courseId}` : '#courses', fromHash || getFromHash(currentHash));
-  };
+  const { courseId, assignmentId } = parseHash();
 
   const sortedSubmissionStatusRows = useMemo(() => {
     const rows = [...submissionStatusRows];
@@ -375,6 +366,16 @@ export default function AssignmentView() {
         return compareSubmissionStatusRows(a, b);
       }
 
+      if (submissionSort.key === 'integrity') {
+        const rank = { none: 0, review: 1, high: 2 };
+        const aRank = rank[a?.integrity_risk_level] ?? 0;
+        const bRank = rank[b?.integrity_risk_level] ?? 0;
+        if (aRank !== bRank) return (aRank - bRank) * direction;
+        const scoreDiff = Number(a?.integrity_risk_score || 0) - Number(b?.integrity_risk_score || 0);
+        if (scoreDiff !== 0) return scoreDiff * direction;
+        return compareSubmissionStatusRows(a, b);
+      }
+
       return compareSubmissionStatusRows(a, b);
     });
 
@@ -400,6 +401,10 @@ export default function AssignmentView() {
     return result;
   };
 
+  const getCurrentQuestionIds = (list = questions) => (
+    list.map(q => Number(q.id)).filter(id => Number.isInteger(id) && id > 0)
+  );
+
   const handleDragEnd = async (result) => {
     if (!result.destination) return;
     if (result.destination.index === result.source.index) return;
@@ -411,16 +416,16 @@ export default function AssignmentView() {
         result.source.index,
         result.destination.index
       );
-      
+
       setQuestions(reorderedQuestions);
-      
-      const updatedQuestionIds = reorderedQuestions.map(q => q.id);
-      
+
+      const updatedQuestionIds = getCurrentQuestionIds(reorderedQuestions);
+
       const updatedAssignment = await updateAssignment(assignmentId, {
         ...assignment,
         assignment_questions: updatedQuestionIds
       });
-      
+
       setAssignment(updatedAssignment);
     } catch (err) {
       alert('Failed to reorder questions: ' + (err.message || 'Unknown error'));
@@ -444,15 +449,13 @@ export default function AssignmentView() {
         const assignmentData = await getAssignment(assignmentId);
         setAssignment(assignmentData);
 
-        // Load questions for this assignment in a single batch request
-        if (assignmentData.assignment_questions && assignmentData.assignment_questions.length > 0) {
-          console.log('Loading questions:', assignmentData.assignment_questions);
-          const result = await getQuestionsBatch(assignmentData.assignment_questions);
-          console.log('Loaded questions:', result.questions);
-          setQuestions(result.questions);
+        // Load assignment questions from stable refs, falling back to legacy IDs.
+        const assignmentQuestions = await loadAssignmentQuestions(assignmentData);
+        setQuestions(assignmentQuestions);
 
+        if (assignmentQuestions.length > 0) {
           // Fetch user info for all question authors
-          const uniqueUserIds = [...new Set(result.questions.map(q => q.user_id).filter(Boolean))];
+          const uniqueUserIds = [...new Set(assignmentQuestions.map(q => q.user_id).filter(Boolean))];
           const userPromises = uniqueUserIds.map(async (userId) => {
             try {
               const userInfo = await getUserById(userId);
@@ -462,7 +465,7 @@ export default function AssignmentView() {
               return { userId, userInfo: null };
             }
           });
-          
+
           const users = await Promise.all(userPromises);
           const userMap = {};
           users.forEach(({ userId, userInfo }) => {
@@ -471,6 +474,8 @@ export default function AssignmentView() {
             }
           });
           setUserInfoCache(userMap);
+        } else {
+          setUserInfoCache({});
         }
       } catch (err) {
         setError(err.message || 'Failed to load assignment');
@@ -555,21 +560,21 @@ export default function AssignmentView() {
   // Handle removing a question from the assignment
   const handleRemoveQuestion = async (questionId) => {
     if (!assignment || actionLoading) return;
-    
+
     const confirmed = window.confirm('Are you sure you want to remove this question from the assignment?');
     if (!confirmed) return;
 
     setActionLoading(true);
     try {
       // Filter out the question from the assignment
-      const updatedQuestionIds = assignment.assignment_questions.filter(id => id !== questionId);
-      
+      const updatedQuestionIds = getCurrentQuestionIds().filter(id => id !== Number(questionId));
+
       // Update the assignment
       const updatedAssignment = await updateAssignment(assignmentId, {
         ...assignment,
         assignment_questions: updatedQuestionIds
       });
-      
+
       // Update local state
       setAssignment(updatedAssignment);
       setQuestions(questions.filter(q => q.id !== questionId));
@@ -584,16 +589,16 @@ export default function AssignmentView() {
   // If user owns the question, edit directly. Otherwise, create a copy to preserve original.
   const handleEditQuestion = async (question) => {
     if (actionLoading) return;
-    
+
     // Check if user owns this question (their original or a copy they already made)
     const userOwnsQuestion = question.user_id === user?.id;
-    
+
     if (userOwnsQuestion) {
       // User owns this question - edit directly
-      window.location.hash = `edit-question?id=${question.id}&returnTo=${encodeURIComponent(currentHash.replace(/^#/, '') || `course/${courseId}/assignment/${assignmentId}/view`)}`;
+      window.location.hash = `edit-question?id=${question.id}&returnTo=${encodeURIComponent(`#course/${courseId}/assignment/${assignmentId}/view`)}`;
       return;
     }
-    
+
     // User doesn't own this question - need to create a copy
     const confirmed = window.confirm(
       'Editing this question will create a new version to preserve the original in the question bank. Continue?'
@@ -606,6 +611,7 @@ export default function AssignmentView() {
       const copyData = {
         title: question.title ? `${question.title} (Modified)` : 'Untitled (Modified)',
         text: question.text,
+        content: question.content || null,
         tags: question.tags || '',
         keywords: question.keywords || '',
         school: question.school || '',
@@ -621,26 +627,50 @@ export default function AssignmentView() {
 
       // Create the new question (copy)
       const newQuestion = await createQuestion(copyData);
-      
+
       // Update the assignment to replace the old question ID with the new one
-      const updatedQuestionIds = assignment.assignment_questions.map(id => 
-        id === question.id ? newQuestion.id : id
+      const updatedQuestionIds = getCurrentQuestionIds().map(id =>
+        id === Number(question.id) ? newQuestion.id : id
       );
-      
+
       const updatedAssignment = await updateAssignment(assignmentId, {
         ...assignment,
         assignment_questions: updatedQuestionIds
       });
-      
+
       // Update local state with the new question
       setAssignment(updatedAssignment);
       setQuestions(questions.map(q => q.id === question.id ? newQuestion : q));
-      
+
       // Navigate to edit the newly created question
       // Include return URL so user can come back
-      window.location.hash = `edit-question?id=${newQuestion.id}&returnTo=${encodeURIComponent(currentHash.replace(/^#/, '') || `course/${courseId}/assignment/${assignmentId}/view`)}`;
+      window.location.hash = `edit-question?id=${newQuestion.id}&returnTo=${encodeURIComponent(`#course/${courseId}/assignment/${assignmentId}/view`)}`;
     } catch (err) {
       alert('Failed to create question copy: ' + (err.message || 'Unknown error'));
+      setActionLoading(false);
+    }
+  };
+
+  const handleExportAssignmentQuestions = async () => {
+    if (!assignment) return;
+    setActionLoading(true);
+    try {
+      const blob = await exportQuestionFolder({
+        qids: questions.map(question => question.qid || question.assigned_qid).filter(Boolean),
+        assignment_ids: assignment.id ? [assignment.id] : [],
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeTitle = (assignment.title || 'assignment').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'assignment';
+      link.href = url;
+      link.download = `${safeTitle}-caliber-questions.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Failed to export assignment questions: ' + (err.message || 'Unknown error'));
+    } finally {
       setActionLoading(false);
     }
   };
@@ -685,90 +715,96 @@ export default function AssignmentView() {
 
   const getSubmissionPillStyle = (timingStatus) => {
     if (timingStatus === 'on_time') {
-      return { bg: dashboardPalette.surface, color: dashboardPalette.navy, label: 'On Time' };
+      return { bg: '#d1fae5', color: '#065f46', label: 'On Time' };
     }
     if (timingStatus === 'late') {
-      return { bg: dashboardPalette.white, color: dashboardPalette.text, label: 'Late' };
+      return { bg: '#fef3c7', color: '#92400e', label: 'Late' };
     }
-    return { bg: dashboardPalette.dangerBg, color: dashboardPalette.dangerText, label: 'Not Submitted' };
+    return { bg: '#fee2e2', color: '#b91c1c', label: 'Not Submitted' };
   };
 
-  const fallbackQuestionCountPoints = Math.max(0, Number(assignment?.assignment_questions?.length || 0));
+  const getIntegrityPillStyle = (riskLevel) => {
+    if (riskLevel === 'high') {
+      return { bg: '#fee2e2', color: '#991b1b', label: 'High' };
+    }
+    if (riskLevel === 'review') {
+      return { bg: '#fef3c7', color: '#92400e', label: 'Review' };
+    }
+    return { bg: '#e5e7eb', color: '#374151', label: 'No flags' };
+  };
+
+  const fallbackQuestionCountPoints = Math.max(0, Number(getAssignmentQuestionCount(assignment)));
   const effectiveTotalPoints = assignmentTotalPoints > 0 ? assignmentTotalPoints : fallbackQuestionCountPoints;
 
   const getSubmittedGradeStyle = (percent) => {
     const safePercent = Number(percent || 0);
-    if (safePercent >= 99.999) return { bg: dashboardPalette.navy, color: dashboardPalette.white };
-    if (safePercent >= 80) return { bg: dashboardPalette.surface, color: dashboardPalette.navy };
-    if (safePercent >= 70) return { bg: dashboardPalette.white, color: dashboardPalette.text };
-    if (safePercent >= 60) return { bg: '#fff7e2', color: dashboardPalette.text };
-    return { bg: dashboardPalette.dangerBg, color: dashboardPalette.dangerText };
+    if (safePercent >= 99.999) return { bg: '#166534', color: '#ecfdf5' }; // dark green
+    if (safePercent >= 80) return { bg: '#86efac', color: '#14532d' }; // light green
+    if (safePercent >= 70) return { bg: '#fde68a', color: '#92400e' }; // yellow
+    if (safePercent >= 60) return { bg: '#fdba74', color: '#9a3412' }; // orange
+    return { bg: '#fca5a5', color: '#7f1d1d' }; // red
   };
 
   // Get type badge color
   const getTypeBadgeStyle = (type) => {
     const colors = {
-      'Homework': { bg: dashboardPalette.surface, color: dashboardPalette.navy },
-      'Quiz': { bg: '#fff7e2', color: dashboardPalette.text },
-      'Lab': { bg: '#eef4fa', color: dashboardPalette.navyMid },
-      'Exam': { bg: dashboardPalette.dangerBg, color: dashboardPalette.dangerText },
-      'Reading': { bg: '#eef4fa', color: dashboardPalette.navyMid },
-      'Other': { bg: dashboardPalette.white, color: dashboardPalette.muted }
+      'Homework': { bg: '#eef2ff', color: '#4f46e5' },
+      'Quiz': { bg: '#fef3c7', color: '#d97706' },
+      'Lab': { bg: '#d1fae5', color: '#059669' },
+      'Exam': { bg: '#fee2e2', color: '#dc2626' },
+      'Reading': { bg: '#e0e7ff', color: '#4338ca' },
+      'Other': { bg: '#f3f4f6', color: '#6b7280' }
     };
     return colors[type] || colors['Other'];
   };
 
   const styles = {
     container: {
-      maxWidth: '1040px',
+      maxWidth: '1000px',
       margin: '0 auto',
-      padding: '24px'
+      padding: '2rem'
     },
     backButton: {
       display: 'inline-flex',
       alignItems: 'center',
-      gap: '8px',
-      padding: '0 14px',
-      height: '40px',
-      background: dashboardPalette.white,
-      border: `1px solid ${dashboardPalette.border}`,
+      gap: '0.5rem',
+      padding: '0.5rem 1rem',
+      background: '#f3f4f6',
+      border: 'none',
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
-      color: dashboardPalette.text,
-      marginBottom: '16px'
+      color: '#374151',
+      marginBottom: '1.5rem',
+      transition: 'background 0.15s'
     },
     header: {
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      gap: '16px',
-      marginBottom: '24px',
-      flexWrap: 'wrap'
+      marginBottom: '2rem'
     },
     titleSection: {
       flex: 1
     },
     title: {
-      margin: '0 0 12px 0',
-      fontSize: '1.75rem',
+      margin: '0 0 0.75rem 0',
+      fontSize: '2rem',
       fontWeight: '700',
-      color: dashboardPalette.navy
+      color: '#111827'
     },
     typeBadge: {
       display: 'inline-block',
       padding: '0.375rem 0.75rem',
-      borderRadius: '8px',
+      borderRadius: '6px',
       fontSize: '0.875rem',
-      fontWeight: '600',
-      border: `1px solid ${dashboardPalette.border}`
+      fontWeight: '600'
     },
     editButton: {
-      height: '40px',
-      padding: '0 14px',
-      background: dashboardPalette.navy,
-      color: dashboardPalette.white,
-      border: `1px solid ${dashboardPalette.navy}`,
+      padding: '0.75rem 1.5rem',
+      background: '#4f46e5',
+      color: 'white',
+      border: 'none',
       borderRadius: '8px',
       cursor: 'pointer',
       fontSize: '0.875rem',
@@ -779,17 +815,17 @@ export default function AssignmentView() {
       transition: 'background 0.15s'
     },
     section: {
-      background: dashboardPalette.white,
-      borderRadius: '8px',
-      padding: '24px',
-      marginBottom: '24px',
-      border: `1px solid ${dashboardPalette.border}`
+      background: 'white',
+      borderRadius: '12px',
+      padding: '1.5rem',
+      marginBottom: '1.5rem',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
     },
     sectionTitle: {
-      margin: '0 0 16px 0',
-      fontSize: '1.125rem',
+      margin: '0 0 1rem 0',
+      fontSize: '1.25rem',
       fontWeight: '600',
-      color: dashboardPalette.navy,
+      color: '#111827',
       display: 'flex',
       alignItems: 'center',
       gap: '0.5rem'
@@ -800,24 +836,25 @@ export default function AssignmentView() {
       gap: '1rem'
     },
     infoCard: {
-      background: dashboardPalette.surface,
-      padding: '16px',
+      background: '#f9fafb',
+      padding: '1rem',
       borderRadius: '8px'
     },
     infoLabel: {
       fontSize: '0.75rem',
       fontWeight: '600',
-      color: dashboardPalette.muted,
+      color: '#6b7280',
+      textTransform: 'uppercase',
       marginBottom: '0.25rem'
     },
     infoValue: {
       fontSize: '1rem',
-      color: dashboardPalette.text,
+      color: '#111827',
       fontWeight: '500'
     },
     description: {
       fontSize: '1rem',
-      color: dashboardPalette.text,
+      color: '#374151',
       lineHeight: '1.6',
       whiteSpace: 'pre-wrap'
     },
@@ -828,52 +865,53 @@ export default function AssignmentView() {
     },
     emptyState: {
       textAlign: 'center',
-      padding: '32px',
-      background: dashboardPalette.surface,
-      borderRadius: '8px',
-      border: `1px dashed ${dashboardPalette.border}`
+      padding: '3rem',
+      background: '#f9fafb',
+      borderRadius: '12px',
+      border: '2px dashed #d1d5db'
     },
     emptyTitle: {
       margin: '0 0 0.5rem 0',
       fontSize: '1.125rem',
       fontWeight: '600',
-      color: dashboardPalette.text
+      color: '#374151'
     },
     emptyText: {
       margin: 0,
-      color: dashboardPalette.muted
+      color: '#6b7280'
     },
     errorBox: {
-      background: dashboardPalette.dangerBg,
-      color: dashboardPalette.dangerText,
-      padding: '12px 14px',
+      background: '#fee2e2',
+      color: '#dc2626',
+      padding: '1rem',
       borderRadius: '8px',
-      marginBottom: '16px',
-      border: `1px solid ${dashboardPalette.dangerBorder}`
+      marginBottom: '1rem'
     },
     loadingState: {
       textAlign: 'center',
       padding: '4rem',
-      color: dashboardPalette.muted
+      color: '#6b7280'
     },
     submissionTable: {
       width: '100%',
       borderCollapse: 'collapse'
     },
     submissionRow: {
-      borderBottom: `1px solid ${dashboardPalette.border}`
+      borderBottom: '1px solid #f3f4f6'
     },
     submissionCell: {
-      padding: '12px 8px',
+      padding: '0.75rem 0.5rem',
       fontSize: '0.9rem',
-      color: dashboardPalette.text
+      color: '#374151'
     },
     submissionHeaderCell: {
       textAlign: 'left',
-      padding: '8px',
+      padding: '0.5rem',
       fontSize: '0.75rem',
       fontWeight: '700',
-      color: dashboardPalette.muted
+      letterSpacing: '0.03em',
+      textTransform: 'uppercase',
+      color: '#6b7280'
     },
     submissionSortButton: {
       border: 'none',
@@ -882,21 +920,23 @@ export default function AssignmentView() {
       cursor: 'pointer',
       fontSize: '0.75rem',
       fontWeight: '700',
-      color: dashboardPalette.muted,
+      letterSpacing: '0.03em',
+      textTransform: 'uppercase',
+      color: '#6b7280',
       display: 'inline-flex',
       alignItems: 'center',
       gap: '0.35rem'
     },
     submissionSortArrow: {
       fontSize: '0.85rem',
-      color: dashboardPalette.text,
+      color: '#374151',
       lineHeight: 1
     },
     gradeButton: {
-      border: `1px solid ${dashboardPalette.navy}`,
+      border: 'none',
       borderRadius: '8px',
-      background: dashboardPalette.navy,
-      color: dashboardPalette.white,
+      background: '#4f46e5',
+      color: 'white',
       padding: '0.35rem 0.7rem',
       fontSize: '0.78rem',
       fontWeight: '700',
@@ -905,7 +945,7 @@ export default function AssignmentView() {
     autoGradeText: {
       fontSize: '0.84rem',
       fontWeight: '700',
-      color: dashboardPalette.muted
+      color: '#374151'
     }
   };
 
@@ -913,7 +953,7 @@ export default function AssignmentView() {
     return (
       <div style={styles.container}>
         <div style={styles.loadingState}>
-          <CourseDashboardSpinnerState style={{ padding: '8px 0' }} />
+          <p>Loading assignment...</p>
         </div>
       </div>
     );
@@ -922,9 +962,14 @@ export default function AssignmentView() {
   if (error) {
     return (
       <div style={styles.container}>
-        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
-          Back
-        </CourseDashboardBackButton>
+        <button
+          style={styles.backButton}
+          onClick={() => window.location.hash = courseId ? `#course/${courseId}` : '#courses'}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#e5e7eb'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#f3f4f6'}
+        >
+          ← Back to Course
+        </button>
         <div style={styles.errorBox}>{error}</div>
       </div>
     );
@@ -933,9 +978,12 @@ export default function AssignmentView() {
   if (!assignment) {
     return (
       <div style={styles.container}>
-        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
-          Back
-        </CourseDashboardBackButton>
+        <button
+          style={styles.backButton}
+          onClick={() => window.location.hash = courseId ? `#course/${courseId}` : '#courses'}
+        >
+          ← Back to Course
+        </button>
         <div style={styles.errorBox}>Assignment not found</div>
       </div>
     );
@@ -948,9 +996,15 @@ export default function AssignmentView() {
 
   return (
     <div style={styles.container}>
-      <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
-        Back
-      </CourseDashboardBackButton>
+      {/* Back Button */}
+      <button
+        style={styles.backButton}
+        onClick={() => window.location.hash = courseId ? `#course/${courseId}` : '#courses'}
+        onMouseEnter={(e) => e.currentTarget.style.background = '#e5e7eb'}
+        onMouseLeave={(e) => e.currentTarget.style.background = '#f3f4f6'}
+      >
+        ← Back to Course
+      </button>
 
       {/* Header with Title and Edit Button */}
       <div style={styles.header}>
@@ -968,27 +1022,31 @@ export default function AssignmentView() {
           <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             style={{
-              height: '40px',
-              padding: '0 14px',
-              background: dashboardPalette.white,
-              color: dashboardPalette.text,
-              border: `1px solid ${dashboardPalette.border}`,
+              padding: '0.75rem 1.5rem',
+              background: '#10b981',
+              color: 'white',
+              border: 'none',
               borderRadius: '8px',
               cursor: 'pointer',
               fontSize: '0.875rem',
               fontWeight: '600',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem'
+              gap: '0.5rem',
+              transition: 'background 0.15s'
             }}
             onClick={() => setShowPreview(true)}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
           >
             Student Preview
           </button>
           {canEditAssignment && (
             <button
                 style={styles.editButton}
-                onClick={() => { window.location.hash = buildHashWithFrom(`#course/${courseId}/assignment/${assignmentId}/edit`, currentHash); }}
+                onClick={() => window.location.hash = `#course/${courseId}/assignment/${assignmentId}/edit`}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#4338ca'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#4f46e5'}
               >
                 Edit Assignment
               </button>
@@ -1000,7 +1058,7 @@ export default function AssignmentView() {
       {/* Assignment Details */}
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Assignment Details</h2>
-        
+
         <DateTimeline assignment={assignment} />
 
         {assignment.description && (
@@ -1026,12 +1084,12 @@ export default function AssignmentView() {
                   onClick={() => {
                     const firstStudent = [...submissionStatusRows].sort(compareSubmissionStatusRows)[0];
                     if (!firstStudent) return;
-                    window.location.hash = buildHashWithFrom(`#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(firstStudent.student_id)}`, currentHash);
+                    window.location.hash = `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(firstStudent.student_id)}`;
                   }}
                   style={{
-                    background: dashboardPalette.navy,
-                    color: dashboardPalette.white,
-                    border: `1px solid ${dashboardPalette.navy}`,
+                    background: '#2563eb',
+                    color: 'white',
+                    border: 'none',
                     borderRadius: '8px',
                     padding: '0.55rem 0.95rem',
                     cursor: 'pointer',
@@ -1068,15 +1126,15 @@ export default function AssignmentView() {
                   }}
                   disabled={!canReleaseGrades}
                   style={{
-                    background: canReleaseGrades ? dashboardPalette.navy : dashboardPalette.white,
-                    color: canReleaseGrades ? dashboardPalette.white : dashboardPalette.muted,
-                    border: `1px solid ${canReleaseGrades ? dashboardPalette.navy : dashboardPalette.border}`,
+                    background: canReleaseGrades ? 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)' : '#cbd5e1',
+                    color: 'white',
+                    border: 'none',
                     borderRadius: '8px',
                     padding: '0.55rem 0.95rem',
                     cursor: canReleaseGrades ? 'pointer' : 'not-allowed',
                     fontWeight: 700,
                     fontSize: '0.9rem',
-                    opacity: canReleaseGrades ? 1 : 0.75,
+                    opacity: canReleaseGrades ? 1 : 0.8,
                   }}
                 >
                   {releasingGrades ? 'Releasing...' : 'Release Grades'}
@@ -1088,12 +1146,11 @@ export default function AssignmentView() {
             <div style={{
               marginBottom: '0.9rem',
               padding: '0.75rem 0.9rem',
-              background: dashboardPalette.white,
-              color: dashboardPalette.text,
+              background: allStudentsGraded ? '#ecfdf5' : '#eef2ff',
+              color: allStudentsGraded ? '#065f46' : '#3730a3',
               borderRadius: '8px',
               fontSize: '0.85rem',
-              fontWeight: 600,
-              border: `1px solid ${dashboardPalette.border}`
+              fontWeight: 600
             }}>
               {allStudentsGraded
                 ? 'All student submissions are graded. You can now release grades.'
@@ -1104,23 +1161,22 @@ export default function AssignmentView() {
             <div style={{
               marginBottom: '0.9rem',
               padding: '0.75rem 0.9rem',
-              background: dashboardPalette.white,
-              color: dashboardPalette.text,
+              background: '#ecfdf5',
+              color: '#065f46',
               borderRadius: '8px',
               fontSize: '0.85rem',
-              fontWeight: 600,
-              border: `1px solid ${dashboardPalette.border}`
+              fontWeight: 600
             }}>
               Grades have been released for this assignment.
             </div>
           )}
 
           {submissionStatusLoading ? (
-            <CourseDashboardSpinnerState style={{ padding: '8px 0' }} spinnerStyle={{ width: '18px', height: '18px' }} />
+            <p style={{ margin: 0, color: '#6b7280' }}>Loading student statuses...</p>
           ) : submissionStatusError ? (
             <div style={styles.errorBox}>{submissionStatusError}</div>
           ) : submissionStatusRows.length === 0 ? (
-            <p style={{ margin: 0, color: dashboardPalette.muted }}>No enrolled students found.</p>
+            <p style={{ margin: 0, color: '#6b7280' }}>No enrolled students found.</p>
           ) : (
             <table style={styles.submissionTable}>
               <thead>
@@ -1155,11 +1211,18 @@ export default function AssignmentView() {
                       <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('grade')}</span>
                     </button>
                   </th>
+                  <th style={styles.submissionHeaderCell}>
+                    <button type="button" onClick={() => toggleSubmissionSort('integrity')} style={styles.submissionSortButton}>
+                      Integrity
+                      <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('integrity')}</span>
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {sortedSubmissionStatusRows.map((row) => {
                   const pill = getSubmissionPillStyle(row.timing_status);
+                  const integrityPill = getIntegrityPillStyle(row.integrity_risk_level);
                   const canGrade = row.timing_status === 'on_time' || row.timing_status === 'late';
                   const hasSubmittedGrade = Boolean(row.grade_submitted) && row.score_earned != null && row.score_total != null;
                   return (
@@ -1169,7 +1232,6 @@ export default function AssignmentView() {
                         <span style={{
                           background: pill.bg,
                           color: pill.color,
-                          border: `1px solid ${pill.color === dashboardPalette.dangerText ? dashboardPalette.dangerBorder : dashboardPalette.border}`,
                           borderRadius: '999px',
                           padding: '0.2rem 0.55rem',
                           fontSize: '0.78rem',
@@ -1183,7 +1245,14 @@ export default function AssignmentView() {
                       <td style={styles.submissionCell}>
                         {hasSubmittedGrade ? (
                           gradeReleased ? (
-                            <span style={{ fontSize: '0.9rem', fontWeight: '700', color: dashboardPalette.navy }}>
+                            <span style={{
+                              display: 'inline-block',
+                              borderRadius: '999px',
+                              padding: '0.25rem 0.6rem',
+                              fontSize: '0.8rem',
+                              fontWeight: '700',
+                              ...(getSubmittedGradeStyle(row.score_percent))
+                            }}>
                               {`${Math.round(Number(row.score_earned) * 100) / 100} / ${Math.round(Number(row.score_total) * 100) / 100}`}
                             </span>
                           ) : (
@@ -1192,18 +1261,18 @@ export default function AssignmentView() {
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                window.location.hash = buildHashWithFrom(`#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(row.student_id)}`, currentHash);
+                                window.location.hash = `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(row.student_id)}`;
                               }}
                               style={{
-                                display: 'inline',
+                                display: 'inline-block',
                                 border: 'none',
-                                padding: 0,
-                                fontSize: '0.9rem',
+                                borderRadius: '999px',
+                                padding: '0.25rem 0.6rem',
+                                fontSize: '0.8rem',
                                 fontWeight: '700',
                                 cursor: 'pointer',
                                 background: 'transparent',
-                                color: dashboardPalette.navy,
-                                textDecoration: 'none',
+                                ...(getSubmittedGradeStyle(row.score_percent))
                               }}
                               title="Click to edit grade"
                             >
@@ -1217,7 +1286,7 @@ export default function AssignmentView() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              window.location.hash = buildHashWithFrom(`#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(row.student_id)}`, currentHash);
+                              window.location.hash = `#course/${courseId}/assignment/${assignmentId}/grade/${encodeURIComponent(row.student_id)}`;
                             }}
                           >
                             Grade
@@ -1229,6 +1298,21 @@ export default function AssignmentView() {
                               : '—'}
                           </span>
                         )}
+                      </td>
+                      <td style={styles.submissionCell}>
+                        <span
+                          title={`${row.integrity_event_count || 0} integrity events, score ${row.integrity_risk_score || 0}`}
+                          style={{
+                            background: integrityPill.bg,
+                            color: integrityPill.color,
+                            borderRadius: '999px',
+                            padding: '0.2rem 0.55rem',
+                            fontSize: '0.78rem',
+                            fontWeight: '700'
+                          }}
+                        >
+                          {integrityPill.label}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -1242,38 +1326,58 @@ export default function AssignmentView() {
       {/* Questions Section */}
       <div style={styles.section}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600', color: dashboardPalette.navy, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600', color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             Questions ({questions.length})
-            {actionLoading && <span style={{ fontSize: '0.875rem', color: dashboardPalette.muted, marginLeft: '0.5rem' }}>Saving...</span>}
+            {actionLoading && <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>Saving...</span>}
           </h2>
 
-          <div style={{ display: 'flex', background: dashboardPalette.surface, borderRadius: '8px', padding: '4px', gap: '4px' }}>
+          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: '8px', padding: '0.25rem', gap: '0.25rem' }}>
+            {canEditAssignment && (
+              <button
+                onClick={handleExportAssignmentQuestions}
+                disabled={actionLoading || questions.length === 0}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'transparent',
+                  color: questions.length === 0 ? '#9ca3af' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: actionLoading || questions.length === 0 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >Export</button>
+            )}
             <button
               onClick={() => setViewMode('table')}
               style={{
                 padding: '0.5rem 1rem',
-                background: viewMode === 'table' ? dashboardPalette.white : 'transparent',
-                color: viewMode === 'table' ? dashboardPalette.text : dashboardPalette.muted,
+                background: viewMode === 'table' ? 'white' : 'transparent',
+                color: viewMode === 'table' ? '#111827' : '#6b7280',
                 border: 'none', borderRadius: '6px', cursor: 'pointer',
                 fontSize: '0.875rem',
-                fontWeight: 600
+                fontWeight: viewMode === 'table' ? '600' : '500',
+                boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >Table View</button>
             <button
               onClick={() => setViewMode('card')}
               style={{
                 padding: '0.5rem 1rem',
-                background: viewMode === 'card' ? dashboardPalette.white : 'transparent',
-                color: viewMode === 'card' ? dashboardPalette.text : dashboardPalette.muted,
+                background: viewMode === 'card' ? 'white' : 'transparent',
+                color: viewMode === 'card' ? '#111827' : '#6b7280',
                 border: 'none', borderRadius: '6px', cursor: 'pointer',
                 fontSize: '0.875rem',
-                fontWeight: 600
+                fontWeight: viewMode === 'card' ? '600' : '500',
+                boxShadow: viewMode === 'card' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.15s ease'
               }}
             >Card View</button>
           </div>
         </div>
         {questions.length > 0 && (
-          <p style={{ margin: '-0.25rem 0 1rem 0', fontSize: '0.875rem', color: dashboardPalette.muted }}>
+          <p style={{ margin: '-0.25rem 0 1rem 0', fontSize: '0.875rem', color: '#6b7280' }}>
             Drag and drop questions to reorder them in this assignment.
           </p>
         )}
@@ -1295,13 +1399,13 @@ export default function AssignmentView() {
 
               setActionLoading(true);
               try {
-                const updatedQuestionIds = newOrder.map(q => q.id);
-                
+                const updatedQuestionIds = getCurrentQuestionIds(newOrder);
+
                 const updatedAssignment = await updateAssignment(assignmentId, {
                   ...assignment,
                   assignment_questions: updatedQuestionIds
                 });
-                
+
                 setAssignment(updatedAssignment);
               } catch (err) {
                 alert('Failed to reorder questions: ' + (err.message || 'Unknown error'));
@@ -1359,8 +1463,6 @@ export default function AssignmentView() {
                   showQuestionNumber={true}
                   showQID={false}
                   showCourseType={false}
-                  showBloomsTaxonomy={false}
-                  showTags={false}
                   isDraggable={true}  // Add this prop
                 />
               )}

@@ -1,39 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { getAssignment, getQuestionsBatch, getAssignmentProgress, saveAssignmentProgress } from '../api';
+import { getAssignment, getAssignmentProgress, recordAssignmentIntegrityEvents, saveAssignmentProgress } from '../api';
 import StudentPreview from '../components/StudentPreview';
 import StudentGradeReport from '../components/StudentGradeReport';
 import { useAuth } from '../AuthContext';
 import { parseScheduleDate } from '../utils/datetime';
-import {
-  CourseDashboardBackButton,
-  CourseDashboardPrimaryButton,
-  CourseDashboardSecondaryButton,
-  CourseDashboardSpinnerState,
-  dashboardPalette
-} from '../components/CourseDashboardUI';
-
-function buildStudentAssignmentHash({
-  courseId,
-  assignmentId,
-  resubmitRequested = false,
-  readOnlyRequested = false,
-  viewGradeRequested = false,
-  fromHash = ''
-}) {
-  const params = new URLSearchParams();
-  if (resubmitRequested) params.set('resubmit', '1');
-  if (readOnlyRequested) params.set('readonly', '1');
-  if (viewGradeRequested) params.set('view', 'grade');
-  if (fromHash) params.set('from', fromHash);
-  const query = params.toString();
-  return query
-    ? `#student-course/${courseId}/assignment/${assignmentId}?${query}`
-    : `#student-course/${courseId}/assignment/${assignmentId}`;
-}
+import { loadAssignmentQuestions } from '../utils/assignmentQuestions';
+import { flushAnalytics, trackEvent } from '../analytics';
 
 export default function StudentAssignmentPage() {
   const { user } = useAuth();
-  const [hashVersion, setHashVersion] = useState(0);
   const [assignment, setAssignment] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +17,6 @@ export default function StudentAssignmentPage() {
   const [initialQuestionIndex, setInitialQuestionIndex] = useState(0);
   const [initialSubmitted, setInitialSubmitted] = useState(false);
   const [liveAnswers, setLiveAnswers] = useState({});
-  const [liveQuestionTimeMs, setLiveQuestionTimeMs] = useState({});
   const [liveQuestionIndex, setLiveQuestionIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [progressReady, setProgressReady] = useState(false);
@@ -50,19 +24,17 @@ export default function StudentAssignmentPage() {
   const [wasPreviouslySubmitted, setWasPreviouslySubmitted] = useState(false);
   const [readOnlyUnsubmitted, setReadOnlyUnsubmitted] = useState(false);
   const isSubmittingOnExitRef = useRef(false);
-  const latestProgressRef = useRef({ answers: {}, questionIndex: 0, questionTimeMs: {} });
+  const latestProgressRef = useRef({ answers: {}, questionIndex: 0 });
   const skipUnmountSubmitRef = useRef(false);
-  const activeQuestionTimerRef = useRef({ questionId: null, startedAtMs: 0 });
+  const assignmentOpenedRef = useRef(false);
 
-  const parseHash = (hash) => {
+  const parseHash = () => {
+    const hash = window.location.hash;
     const courseMatch = hash.match(/#student-course\/(\d+)/);
     const assignmentMatch = hash.match(/\/assignment\/(\d+)/);
-    const queryIndex = hash.indexOf('?');
-    const params = new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : '');
-    const resubmitRequested = params.get('resubmit') === '1';
-    const readOnlyRequested = params.get('readonly') === '1';
-    const viewGradeRequested = params.get('view') === 'grade';
-    const fromHash = params.get('from') || '';
+    const resubmitRequested = hash.includes("resubmit=1");
+    const readOnlyRequested = hash.includes("readonly=1");
+    const viewGradeRequested = hash.includes("view=grade");
 
     return {
       courseId: courseMatch ? parseInt(courseMatch[1], 10) : null,
@@ -70,20 +42,10 @@ export default function StudentAssignmentPage() {
       resubmitRequested,
       readOnlyRequested,
       viewGradeRequested,
-      fromHash,
     };
   };
 
-  useEffect(() => {
-    const handleHashChange = () => {
-      setHashVersion((value) => value + 1);
-    };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  const currentHash = React.useMemo(() => window.location.hash, [hashVersion]);
-  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested, fromHash } = parseHash(currentHash);
+  const { courseId, assignmentId, resubmitRequested, readOnlyRequested, viewGradeRequested } = parseHash();
   const hardDueDate = parseScheduleDate(assignment?.due_date_hard);
   const isSubmissionClosed = Boolean(hardDueDate && Date.now() > hardDueDate.getTime());
 
@@ -99,9 +61,21 @@ export default function StudentAssignmentPage() {
         setProgressReady(false);
         const assignmentData = await getAssignment(assignmentId);
         setAssignment(assignmentData);
+        if (!assignmentOpenedRef.current) {
+          assignmentOpenedRef.current = true;
+          trackEvent('assignment_opened', {
+            course_id: courseId,
+            assignment_id: assignmentId,
+            metadata: {
+              is_resubmit: Boolean(resubmitRequested),
+              hard_due_passed: Boolean(parseScheduleDate(assignmentData?.due_date_hard) && Date.now() > parseScheduleDate(assignmentData?.due_date_hard).getTime()),
+            },
+          });
+        }
 
         const instructorPreview = user?.id === assignmentData.instructor_id;
         setIsInstructorPreview(instructorPreview);
+        let loadedSubmittedForAnalytics = false;
 
         if (instructorPreview) {
           setInitialAnswers({});
@@ -110,19 +84,18 @@ export default function StudentAssignmentPage() {
           setWasPreviouslySubmitted(false);
           setReadOnlyUnsubmitted(false);
           setLiveAnswers({});
-          setLiveQuestionTimeMs({});
           setLiveQuestionIndex(0);
           setProgressReady(false);
         } else {
           const progressData = await getAssignmentProgress(assignmentId);
           const loadedAnswers = progressData?.answers || {};
-          const loadedQuestionTimeMs = progressData?.question_time_ms || {};
           const loadedIndex = progressData?.current_question_index || 0;
           const hasPriorSubmission = Boolean(progressData?.submitted || progressData?.submitted_at);
           const hardDue = parseScheduleDate(assignmentData?.due_date_hard);
           const canResubmitBeforeHardDue = !hardDue || Date.now() <= hardDue.getTime();
           const allowResubmitMode = hasPriorSubmission && resubmitRequested && canResubmitBeforeHardDue;
           const loadedSubmitted = hasPriorSubmission && !allowResubmitMode;
+          loadedSubmittedForAnalytics = loadedSubmitted;
           const hardDuePassed = Boolean(hardDue && Date.now() > hardDue.getTime());
           const forceReadOnlyUnsubmitted = !hasPriorSubmission && (readOnlyRequested || hardDuePassed);
           const shouldStartOnFirstQuestion = hasPriorSubmission || forceReadOnlyUnsubmitted;
@@ -134,18 +107,26 @@ export default function StudentAssignmentPage() {
           setInitialSubmitted(loadedSubmitted);
           setReadOnlyUnsubmitted(forceReadOnlyUnsubmitted);
           setLiveAnswers(loadedAnswers);
-          setLiveQuestionTimeMs(loadedQuestionTimeMs);
           setLiveQuestionIndex(initialIndexForSession);
           setProgressReady(true);
         }
 
-        if (assignmentData.assignment_questions && assignmentData.assignment_questions.length > 0) {
-          const result = await getQuestionsBatch(assignmentData.assignment_questions);
-          setQuestions(result.questions || []);
-        } else {
-          setQuestions([]);
-        }
+        const loadedQuestions = await loadAssignmentQuestions(assignmentData);
+        setQuestions(loadedQuestions);
+        trackEvent('assignment_loaded', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: {
+            question_count: loadedQuestions.length,
+            submitted: Boolean(loadedSubmittedForAnalytics),
+          },
+        });
       } catch (err) {
+        trackEvent('api_error_seen', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: { error: 'load_assignment_failed' },
+        });
         setError(err.message || 'Failed to load assignment');
       } finally {
         setLoading(false);
@@ -157,71 +138,48 @@ export default function StudentAssignmentPage() {
 
   const isReadOnlyView = initialSubmitted || readOnlyUnsubmitted || isSubmissionClosed;
 
-  const getQuestionTimeSnapshot = useCallback(() => {
-    const baseTimes = { ...(liveQuestionTimeMs || {}) };
-    const active = activeQuestionTimerRef.current;
-    if (active?.questionId != null && active.startedAtMs > 0) {
-      const elapsedMs = Math.max(0, Date.now() - active.startedAtMs);
-      baseTimes[String(active.questionId)] = Math.max(0, Number(baseTimes[String(active.questionId)] || 0) + elapsedMs);
-    }
-    return baseTimes;
-  }, [liveQuestionTimeMs]);
-
-  useEffect(() => {
-    if (!progressReady || !questions.length || isInstructorPreview || isReadOnlyView || isSubmissionClosed) {
-      activeQuestionTimerRef.current = { questionId: null, startedAtMs: 0 };
-      return;
-    }
-
-    const activeQuestion = questions[liveQuestionIndex];
-    if (!activeQuestion?.id) {
-      activeQuestionTimerRef.current = { questionId: null, startedAtMs: 0 };
-      return;
-    }
-
-    const now = Date.now();
-    const nextQuestionId = String(activeQuestion.id);
-    const current = activeQuestionTimerRef.current;
-    if (current?.questionId != null && current.startedAtMs > 0 && String(current.questionId) !== nextQuestionId) {
-      const elapsedMs = Math.max(0, now - current.startedAtMs);
-      if (elapsedMs > 0) {
-        setLiveQuestionTimeMs((prev) => {
-          const next = { ...(prev || {}) };
-          const prevMs = Math.max(0, Number(next[String(current.questionId)] || 0));
-          next[String(current.questionId)] = prevMs + elapsedMs;
-          return next;
-        });
-      }
-    }
-
-    if (String(current?.questionId) !== nextQuestionId) {
-      activeQuestionTimerRef.current = { questionId: nextQuestionId, startedAtMs: now };
-    }
-  }, [progressReady, questions, liveQuestionIndex, isInstructorPreview, isReadOnlyView, isSubmissionClosed]);
-
   useEffect(() => {
     latestProgressRef.current = {
       answers: liveAnswers || {},
-      questionIndex: liveQuestionIndex || 0,
-      questionTimeMs: getQuestionTimeSnapshot(),
+      questionIndex: liveQuestionIndex || 0
     };
-  }, [liveAnswers, liveQuestionIndex, getQuestionTimeSnapshot]);
+  }, [liveAnswers, liveQuestionIndex]);
 
   useEffect(() => {
     if (!assignmentId || !progressReady || isInstructorPreview || isReadOnlyView || resubmitRequested || isSubmissionClosed) return;
     const timer = setTimeout(async () => {
       try {
+        trackEvent('assignment_autosave_started', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: {
+            answered_count: Object.keys(liveAnswers || {}).length,
+            question_index: liveQuestionIndex || 0,
+          },
+        });
         await saveAssignmentProgress(assignmentId, {
           answers: liveAnswers,
-          question_time_ms: getQuestionTimeSnapshot(),
           current_question_index: liveQuestionIndex
         });
+        trackEvent('assignment_autosave_succeeded', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: {
+            answered_count: Object.keys(liveAnswers || {}).length,
+            question_index: liveQuestionIndex || 0,
+          },
+        });
       } catch (err) {
+        trackEvent('assignment_autosave_failed', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: { error: 'autosave_failed' },
+        });
         console.error('Autosave failed:', err);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested, isSubmissionClosed, getQuestionTimeSnapshot]);
+  }, [assignmentId, isReadOnlyView, progressReady, isInstructorPreview, liveAnswers, liveQuestionIndex, resubmitRequested, isSubmissionClosed]);
 
   const saveDraftOnExit = useCallback(async () => {
     if (isInstructorPreview || !assignmentId || !progressReady || isSubmittingOnExitRef.current) {
@@ -231,7 +189,6 @@ export default function StudentAssignmentPage() {
     try {
       const savedProgress = await saveAssignmentProgress(assignmentId, {
         answers: latestProgressRef.current.answers || {},
-        question_time_ms: latestProgressRef.current.questionTimeMs || {},
         current_question_index: latestProgressRef.current.questionIndex || 0
       });
       return savedProgress;
@@ -251,13 +208,30 @@ export default function StudentAssignmentPage() {
     }
 
     setSubmitting(true);
+    trackEvent('assignment_submit_clicked', {
+      course_id: courseId,
+      assignment_id: assignmentId,
+      metadata: {
+        is_resubmit: Boolean(wasPreviouslySubmitted),
+        answered_count: Object.keys(latestProgressRef.current.answers || {}).length,
+        question_index: latestProgressRef.current.questionIndex || 0,
+      },
+    });
     try {
       const savedProgress = await saveAssignmentProgress(assignmentId, {
         answers: latestProgressRef.current.answers || {},
-        question_time_ms: latestProgressRef.current.questionTimeMs || {},
         current_question_index: latestProgressRef.current.questionIndex || 0,
         submitted: true
       });
+      trackEvent('assignment_submit_succeeded', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: {
+          is_resubmit: Boolean(wasPreviouslySubmitted),
+          submitted: true,
+        },
+      });
+      await flushAnalytics({ keepalive: true, dropOnFailure: true });
 
       skipUnmountSubmitRef.current = true;
       if (courseId) {
@@ -273,6 +247,11 @@ export default function StudentAssignmentPage() {
         window.location.hash = '#student-courses';
       }
     } catch (err) {
+      trackEvent('assignment_submit_failed', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: { error: 'submit_failed', is_resubmit: Boolean(wasPreviouslySubmitted) },
+      });
       console.error('Submit failed:', err);
       setError(err.message || 'Failed to submit assignment');
     } finally {
@@ -290,18 +269,32 @@ export default function StudentAssignmentPage() {
     }
   }, [courseId]);
 
-  const fallbackBackHash = courseId ? `#student-course/${courseId}` : '#student-courses';
-  const gradeViewFallbackHash = assignmentId && courseId
-    ? buildStudentAssignmentHash({ courseId, assignmentId, readOnlyRequested, fromHash: fallbackBackHash })
-    : fallbackBackHash;
-
-  const navigateBack = useCallback(async ({ saveDraft = false, fallbackHash = fallbackBackHash } = {}) => {
-    skipUnmountSubmitRef.current = true;
-    if (saveDraft) {
-      await saveDraftOnExit();
+  useEffect(() => {
+    if (resubmitRequested && assignmentId && courseId) {
+      trackEvent('assignment_resubmit_started', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: { is_resubmit: true },
+      });
     }
-    window.location.hash = fromHash || fallbackHash;
-  }, [fallbackBackHash, fromHash, saveDraftOnExit]);
+  }, [assignmentId, courseId, resubmitRequested]);
+
+  useEffect(() => {
+    if (isReadOnlyView && assignmentId) {
+      trackEvent('assignment_closed_viewed', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: { hard_due_passed: Boolean(isSubmissionClosed), submitted: Boolean(initialSubmitted) },
+      });
+    }
+  }, [assignmentId, courseId, initialSubmitted, isReadOnlyView, isSubmissionClosed]);
+
+  const recordIntegrityEvents = useCallback(async (events) => {
+    if (!assignmentId || isInstructorPreview || isReadOnlyView || !Array.isArray(events) || events.length === 0) {
+      return;
+    }
+    await recordAssignmentIntegrityEvents(assignmentId, events);
+  }, [assignmentId, isInstructorPreview, isReadOnlyView]);
 
   useEffect(() => () => {
     if (
@@ -317,7 +310,6 @@ export default function StudentAssignmentPage() {
     isSubmittingOnExitRef.current = true;
     void saveAssignmentProgress(assignmentId, {
       answers: latestProgressRef.current.answers || {},
-      question_time_ms: latestProgressRef.current.questionTimeMs || {},
       current_question_index: latestProgressRef.current.questionIndex || 0
     }).catch((err) => {
       console.error('Unmount save failed:', err);
@@ -330,37 +322,41 @@ export default function StudentAssignmentPage() {
     container: {
       maxWidth: '1000px',
       margin: '0 auto',
-      padding: '24px'
+      padding: '2rem'
     },
-    topBarActions: {
-      display: 'flex',
+    backButton: {
+      display: 'inline-flex',
       alignItems: 'center',
-      gap: '8px',
-      flexWrap: 'wrap'
+      gap: '0.5rem',
+      padding: '0.5rem 1rem',
+      background: '#f3f4f6',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '0.875rem',
+      color: '#374151',
+      marginBottom: '1.5rem',
+      transition: 'background 0.15s'
     },
     errorBox: {
-      background: dashboardPalette.dangerBg,
-      color: dashboardPalette.dangerText,
-      padding: '12px 14px',
+      background: '#fee2e2',
+      color: '#dc2626',
+      padding: '1rem',
       borderRadius: '8px',
-      marginBottom: '16px',
-      border: `1px solid ${dashboardPalette.dangerBorder}`
+      marginBottom: '1rem'
     },
     loadingState: {
       textAlign: 'center',
-      padding: '32px 0',
-      color: dashboardPalette.muted
+      padding: '4rem',
+      color: '#6b7280'
     }
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <CourseDashboardBackButton onClick={() => { void navigateBack(); }} style={{ marginBottom: '16px' }}>
-          Back
-        </CourseDashboardBackButton>
         <div style={styles.loadingState}>
-          <CourseDashboardSpinnerState style={{ padding: '8px 0' }} />
+          <p>Loading assignment...</p>
         </div>
       </div>
     );
@@ -369,9 +365,20 @@ export default function StudentAssignmentPage() {
   if (error) {
     return (
       <div style={styles.container}>
-        <CourseDashboardBackButton onClick={() => { void navigateBack(); }} style={{ marginBottom: '16px' }}>
-          Back
-        </CourseDashboardBackButton>
+        <button
+          style={styles.backButton}
+          onClick={() => {
+            window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#e5e7eb';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#f3f4f6';
+          }}
+        >
+          ← Back to Course
+        </button>
         <div style={styles.errorBox}>{error}</div>
       </div>
     );
@@ -380,9 +387,14 @@ export default function StudentAssignmentPage() {
   if (!assignment) {
     return (
       <div style={styles.container}>
-        <CourseDashboardBackButton onClick={() => { void navigateBack(); }} style={{ marginBottom: '16px' }}>
-          Back
-        </CourseDashboardBackButton>
+        <button
+          style={styles.backButton}
+          onClick={() => {
+            window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
+          }}
+        >
+          ← Back to Course
+        </button>
         <div style={styles.errorBox}>Assignment not found</div>
       </div>
     );
@@ -398,7 +410,10 @@ export default function StudentAssignmentPage() {
         courseId={courseId}
         assignmentTitle={assignment.title}
         onBack={() => {
-          void navigateBack({ fallbackHash: gradeViewFallbackHash });
+          const base = `#student-course/${courseId}/assignment/${assignmentId}`;
+          const params = new URLSearchParams();
+          if (readOnlyRequested) params.set('readonly', '1');
+          window.location.hash = params.toString() ? `${base}?${params}` : base;
         }}
       />
     );
@@ -408,37 +423,32 @@ export default function StudentAssignmentPage() {
     <>
       {gradeReleased && !isInstructorPreview && (
         <div style={{
-          maxWidth: '1000px', margin: '0 auto 16px auto', padding: '12px 16px',
-          background: dashboardPalette.white,
-          border: `1px solid ${dashboardPalette.border}`,
-          borderRadius: '8px',
+          maxWidth: '1000px', margin: '0 auto 1rem auto', padding: '0.75rem 1.25rem',
+          background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+          border: '1px solid #6ee7b7',
+          borderRadius: '12px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '12px',
+          gap: '0.75rem',
         }}>
-          <span style={{ fontWeight: 600, color: dashboardPalette.text, fontSize: '0.95rem' }}>
+          <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.95rem' }}>
             Grades have been released for this assignment.
           </span>
           <button
             type="button"
             onClick={() => {
-              window.location.hash = buildStudentAssignmentHash({
-                courseId,
-                assignmentId,
-                readOnlyRequested,
-                viewGradeRequested: true,
-                fromHash: currentHash
-              });
+              const base = `#student-course/${courseId}/assignment/${assignmentId}`;
+              const sep = window.location.hash.includes('?') ? '&' : '?';
+              window.location.hash = `${base}${sep}view=grade`;
             }}
             style={{
-              border: `1px solid ${dashboardPalette.navy}`,
+              border: 'none',
               borderRadius: '8px',
-              background: dashboardPalette.navy,
-              color: dashboardPalette.white,
-              padding: '0 14px',
-              height: '38px',
+              background: '#059669',
+              color: 'white',
+              padding: '0.45rem 0.9rem',
               cursor: 'pointer',
               fontWeight: 600,
               fontSize: '0.875rem',
@@ -448,41 +458,29 @@ export default function StudentAssignmentPage() {
           </button>
         </div>
       )}
-      <StudentPreview
-        assignmentId={assignmentId}
-        questions={questions}
-        assignmentTitle={assignment.title}
-        assignmentType={assignment.type}
+    <StudentPreview
+      questions={questions}
+      courseId={courseId}
+      assignmentId={assignmentId}
+      assignmentTitle={assignment.title}
+      assignmentType={assignment.type}
       isPreviewMode={false}
       showCorrectAnswers={false}
-      closeButtonText="Back"
-      assignmentBannerLeading={
-        <CourseDashboardBackButton
-          onClick={() => {
-            void navigateBack({ saveDraft: !isReadOnlyView });
-          }}
-        >
-          Back
-        </CourseDashboardBackButton>
-      }
-      assignmentBannerActions={
-        !isReadOnlyView ? (
-          <div style={styles.topBarActions}>
-            {resubmitRequested ? (
-              <CourseDashboardSecondaryButton onClick={cancelResubmission}>
-                Cancel
-              </CourseDashboardSecondaryButton>
-            ) : null}
-            <CourseDashboardPrimaryButton onClick={submitAssignment} disabled={submitting}>
-              {submitting
-                ? (resubmitRequested ? 'Resubmitting...' : 'Submitting...')
-                : (resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment')}
-            </CourseDashboardPrimaryButton>
-          </div>
-        ) : null
-      }
+      closeButtonText={isReadOnlyView ? 'Back to Course' : (resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment')}
+      secondaryActionText={!isReadOnlyView && resubmitRequested ? 'Cancel' : ''}
+      onSecondaryAction={!isReadOnlyView && resubmitRequested ? cancelResubmission : null}
       onClose={async () => {
-        await navigateBack({ saveDraft: !isReadOnlyView });
+        skipUnmountSubmitRef.current = true;
+        if (isReadOnlyView) {
+          window.location.hash = courseId ? `#student-course/${courseId}` : '#student-courses';
+          return;
+        }
+        await saveDraftOnExit();
+        if (courseId) {
+          window.location.hash = `#student-course/${courseId}`;
+        } else {
+          window.location.hash = '#student-courses';
+        }
       }}
       initialAnswers={initialAnswers}
       initialQuestionIndex={initialQuestionIndex}
@@ -498,6 +496,7 @@ export default function StudentAssignmentPage() {
       onSubmit={submitAssignment}
       isSubmitting={submitting}
       submitButtonText={resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment'}
+      onIntegrityEventBatch={recordIntegrityEvents}
     />
     </>
   );

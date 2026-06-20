@@ -1,5 +1,10 @@
+import base64
+import hashlib
+import hmac
+import json
 import logging
 import os
+import time
 from contextvars import ContextVar
 from collections.abc import Sequence
 from typing import Any, Optional
@@ -31,7 +36,48 @@ _oidc_jwks_client = None
 _current_user_id: ContextVar[Optional[str]] = ContextVar("current_user_id", default=None)
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
 _current_user_name: ContextVar[Optional[str]] = ContextVar("current_user_name", default=None)
+_current_impersonator_sub: ContextVar[Optional[str]] = ContextVar("current_impersonator_sub", default=None)
+_current_impersonator_name: ContextVar[Optional[str]] = ContextVar("current_impersonator_name", default=None)
 _current_user_token: ContextVar[Optional[str]] = ContextVar("current_user_token", default=None)
+
+_PLATFORM_IMPERSONATE_COOKIE = "platform_impersonate"
+_PLATFORM_IMPERSONATE_SECRET = os.getenv("PLATFORM_IMPERSONATE_SECRET", "")
+_IS_PRODUCTION = os.getenv("ENV", "").lower() in ("production", "prod")
+if _IS_PRODUCTION and not _PLATFORM_IMPERSONATE_SECRET:
+    raise RuntimeError("PLATFORM_IMPERSONATE_SECRET must be set in production")
+
+
+def _imp_b64url_decode(s: str) -> bytes:
+    pad = 4 - len(s) % 4
+    return base64.urlsafe_b64decode(s + "=" * (pad % 4))
+
+
+def _get_imp_secret() -> str:
+    if _PLATFORM_IMPERSONATE_SECRET:
+        return _PLATFORM_IMPERSONATE_SECRET
+    if _IS_PRODUCTION:
+        raise RuntimeError("PLATFORM_IMPERSONATE_SECRET must be set in production")
+    return "dev-impersonate-secret-change-me"
+
+
+def _imp_sign(encoded: str) -> str:
+    digest = hmac.new(_get_imp_secret().encode("utf-8"), encoded.encode("utf-8"), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def _verify_impersonation_cookie(value: Optional[str]) -> Optional[dict[str, Any]]:
+    if not value:
+        return None
+    try:
+        encoded, sig = value.rsplit(".", 1)
+        if not hmac.compare_digest(sig, _imp_sign(encoded)):
+            return None
+        payload = json.loads(_imp_b64url_decode(encoded).decode("utf-8"))
+        if payload.get("exp", 0) < time.time():
+            return None
+        return payload
+    except Exception:
+        return None
 
 
 def _audience_matches(claims: dict[str, Any], expected: str | None) -> bool:
@@ -70,11 +116,15 @@ def _set_current_user_context(
     email: Optional[str],
     full_name: Optional[str],
     token: Optional[str],
+    impersonator_sub: Optional[str] = None,
+    impersonator_name: Optional[str] = None,
 ) -> None:
     _current_user_id.set(user_id)
     _current_user_email.set(email)
     _current_user_name.set(full_name)
     _current_user_token.set(token)
+    _current_impersonator_sub.set(impersonator_sub)
+    _current_impersonator_name.set(impersonator_name)
 
 
 def _extract_request_token(
@@ -135,6 +185,20 @@ def resolve_request_user_context(
         if raise_on_error:
             raise
         return None
+
+    imp = _verify_impersonation_cookie(request.cookies.get(_PLATFORM_IMPERSONATE_COOKIE))
+    if imp and imp.get("impersonator_sub") == user_id:
+        target_sub = imp.get("target_sub")
+        if target_sub:
+            _set_current_user_context(
+                user_id=str(target_sub),
+                email=None,
+                full_name=imp.get("target_name"),
+                token=token,
+                impersonator_sub=user_id,
+                impersonator_name=full_name,
+            )
+            return str(target_sub), None, imp.get("target_name"), token
 
     _set_current_user_context(
         user_id=user_id,
@@ -251,7 +315,7 @@ async def get_optional_user(
     """
     Optional authentication - returns user ID if authenticated, None otherwise.
     Useful for endpoints that work differently for authenticated vs anonymous users.
-    
+
     Checks both Bearer token and cookie authentication, same as get_current_user.
     """
     resolved = resolve_request_user_context(
@@ -272,6 +336,14 @@ def get_current_user_email() -> Optional[str]:
 
 def get_current_user_name() -> Optional[str]:
     return _current_user_name.get()
+
+
+def get_impersonator_sub() -> Optional[str]:
+    return _current_impersonator_sub.get()
+
+
+def get_impersonator_name() -> Optional[str]:
+    return _current_impersonator_name.get()
 
 
 def get_current_user_token() -> Optional[str]:
