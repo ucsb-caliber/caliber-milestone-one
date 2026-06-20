@@ -57,6 +57,71 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function EmptyRouteFallback({ page, user }) {
+  if (!user) {
+    return <Auth />;
+  }
+
+  return (
+    <div style={{
+      maxWidth: 720,
+      margin: '3rem auto',
+      padding: '1.5rem',
+      border: '1px solid #e5e7eb',
+      borderRadius: 8,
+      background: '#fff',
+      color: '#1f2937'
+    }}>
+      <h2 style={{ marginTop: 0 }}>Caliber is loading this view</h2>
+      <p style={{ color: '#6b7280', lineHeight: 1.5 }}>
+        We could not open the requested route <code>#{page}</code> yet. Use the navigation above,
+        or return to your courses.
+      </p>
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <a href="#student-courses" style={{ color: '#4f46e5', fontWeight: 700 }}>Student courses</a>
+        <a href="#courses" style={{ color: '#4f46e5', fontWeight: 700 }}>Instructor courses</a>
+      </div>
+    </div>
+  );
+}
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Caliber render failed:', error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{
+        maxWidth: 760,
+        margin: '4rem auto',
+        padding: '1.5rem',
+        border: '1px solid #fecaca',
+        borderRadius: 8,
+        background: '#fff7f7',
+        color: '#7f1d1d',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <h1 style={{ marginTop: 0 }}>Caliber could not open this view</h1>
+        <p style={{ color: '#991b1b' }}>
+          Try returning to the course list. The page will show more once the API finishes loading.
+        </p>
+        <a href="#student-courses" style={{ color: '#4f46e5', fontWeight: 700 }}>Go to courses</a>
+      </div>
+    );
+  }
+}
+
 // Simple router using hash-based navigation
 function App() {
   const normalizeHashRoute = (route) => {
@@ -200,6 +265,22 @@ function App() {
   };
 
   const needsOnboarding = user && userInfo && !userInfo.profile_complete;
+  const routeMatched =
+    page === 'logged-out' ||
+    page === 'profile' ||
+    page === 'student-courses' ||
+    page.startsWith('student-course/') ||
+    (isInstructorOrAdmin && (
+      page === 'upload-pdf' ||
+      page === 'questions' ||
+      page === 'create-question' ||
+      page === 'edit-question' ||
+      page === 'verify' ||
+      page === 'courses' ||
+      page === 'analytics' ||
+      page.startsWith('course/') ||
+      page.includes('/assignment/')
+    ));
 
   React.useEffect(() => {
     if (!user || loading || checkingProfile || !userInfo || needsOnboarding) return;
@@ -428,6 +509,9 @@ function App() {
                 <CreateEditAssignment />
               </ProtectedRoute>
             )}
+            {!routeMatched && (
+              <EmptyRouteFallback page={page} user={user} />
+            )}
           </>
         )}
       </main>
@@ -445,6 +529,8 @@ function AppWrapper() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <AppWrapper />
+    <AppErrorBoundary>
+      <AppWrapper />
+    </AppErrorBoundary>
   </React.StrictMode>
 )
