@@ -10,10 +10,28 @@
         margin: 0;
         padding: 0;
       }
+      .boot-fallback {
+        max-width: 640px;
+        margin: 4rem auto;
+        padding: 1.5rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        color: #1f2937;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      .boot-fallback p {
+        color: #6b7280;
+        line-height: 1.5;
+      }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-fallback">
+        <h1>Opening Caliber</h1>
+        <p>If this message stays on screen, refresh the page. Caliber may still be starting or loading the latest app bundle.</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

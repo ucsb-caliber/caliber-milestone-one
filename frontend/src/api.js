@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { requireSupabaseClient } from './supabaseClient';
 import { getValidAccessToken } from './oidcTokens';
 import { triggerAuthRecovery } from './authRecovery';
 
@@ -122,7 +122,8 @@ export async function uploadPDFToStorage(file) {
     const fileName = createStoragePathForUser(fileExt);
 
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const storageClient = requireSupabaseClient();
+    const { data, error } = await storageClient.storage
       .from('question-pdfs')
       .upload(fileName, file, {
         cacheControl: '3600',
@@ -272,7 +273,8 @@ export async function uploadImage(file) {
     const fileName = `${getCurrentAuthUserId()}/${Date.now()}.${fileExt}`;
 
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const storageClient = requireSupabaseClient();
+    const { data, error } = await storageClient.storage
       .from('question-images')
       .upload(fileName, file, {
         cacheControl: '3600',
@@ -305,7 +307,8 @@ export async function getImageSignedUrl(imagePath) {
 
     // Generate a signed URL that expires in 1 hour
     // This ensures only currently authenticated users can access images
-    const { data, error } = await supabase.storage
+    const storageClient = requireSupabaseClient();
+    const { data, error } = await storageClient.storage
       .from('question-images')
       .createSignedUrl(imagePath, 3600); // 1 hour in seconds
 
@@ -336,7 +339,8 @@ export async function getPDFSignedUrl(pdfPath) {
 
     // Generate a signed URL that expires in 1 hour
     // This ensures only currently authenticated users can access PDFs
-    const { data, error } = await supabase.storage
+    const storageClient = requireSupabaseClient();
+    const { data, error } = await storageClient.storage
       .from('question-pdfs')
       .createSignedUrl(pdfPath, 3600); // 1 hour in seconds
 
