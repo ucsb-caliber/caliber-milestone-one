@@ -17,13 +17,20 @@ const OIDC_SCOPES = (import.meta.env.VITE_OIDC_SCOPES || 'openid profile email')
 const OIDC_STATE_STORAGE_KEY = 'caliber-oidc-state';
 const OIDC_PKCE_VERIFIER_STORAGE_KEY = 'caliber-oidc-pkce-verifier';
 const OIDC_POST_LOGIN_HASH_STORAGE_KEY = 'caliber-oidc-post-login-hash';
+const OIDC_LOGIN_STARTED_AT_STORAGE_KEY = 'caliber-oidc-login-started-at';
+const OIDC_LOGIN_ERROR_STORAGE_KEY = 'caliber-oidc-login-error';
+const OIDC_FORCE_LOGIN_STORAGE_KEY = 'caliber-oidc-force-login';
+const OIDC_LOGIN_RETRY_WINDOW_MS = 15 * 1000;
+const DEFAULT_POST_LOGIN_HASH = '#post-login-default';
+
+let oidcCallbackExchangePromise = null;
 
 function portalUrl(path) {
   return PORTAL_BASE_URL ? `${PORTAL_BASE_URL}${path}` : path;
 }
 
 function getPortalLoginPath() {
-  return '/login?next=%2Fcaliber%2F%23student-courses';
+  return '/login?next=%2Fcaliber%2F%23post-login-default';
 }
 
 function getPortalLogoutPath() {
@@ -65,10 +72,37 @@ async function pkceChallengeFromVerifier(verifier) {
 function clearOidcRequestState() {
   sessionStorage.removeItem(OIDC_STATE_STORAGE_KEY);
   sessionStorage.removeItem(OIDC_PKCE_VERIFIER_STORAGE_KEY);
+  sessionStorage.removeItem(OIDC_LOGIN_STARTED_AT_STORAGE_KEY);
+}
+
+function clearOidcLoginError() {
+  sessionStorage.removeItem(OIDC_LOGIN_ERROR_STORAGE_KEY);
+}
+
+function markOidcLoginError(message) {
+  sessionStorage.setItem(OIDC_LOGIN_ERROR_STORAGE_KEY, message || 'OIDC sign in failed');
+}
+
+export function getOidcLoginError() {
+  return sessionStorage.getItem(OIDC_LOGIN_ERROR_STORAGE_KEY) || '';
+}
+
+export function clearOidcLoginStateForRetry() {
+  clearOidcTokens();
+  clearOidcRequestState();
+  clearOidcLoginError();
+  sessionStorage.removeItem(OIDC_FORCE_LOGIN_STORAGE_KEY);
+  localStorage.removeItem(OIDC_FORCE_LOGIN_STORAGE_KEY);
+}
+
+function directLoginRecentlyStarted() {
+  const startedAt = Number(sessionStorage.getItem(OIDC_LOGIN_STARTED_AT_STORAGE_KEY) || 0);
+  return Boolean(startedAt && Date.now() - startedAt < OIDC_LOGIN_RETRY_WINDOW_MS);
 }
 
 async function startDirectOidcLogin() {
   if (!isDirectOidcEnabled()) return;
+  if (directLoginRecentlyStarted()) return;
 
   const state = randomUrlSafeString(24);
   const verifier = randomUrlSafeString(64);
@@ -76,6 +110,14 @@ async function startDirectOidcLogin() {
 
   sessionStorage.setItem(OIDC_STATE_STORAGE_KEY, state);
   sessionStorage.setItem(OIDC_PKCE_VERIFIER_STORAGE_KEY, verifier);
+  sessionStorage.setItem(OIDC_LOGIN_STARTED_AT_STORAGE_KEY, String(Date.now()));
+  clearOidcLoginError();
+
+  const forceLogin =
+    sessionStorage.getItem(OIDC_FORCE_LOGIN_STORAGE_KEY) === '1' ||
+    localStorage.getItem(OIDC_FORCE_LOGIN_STORAGE_KEY) === '1';
+  sessionStorage.removeItem(OIDC_FORCE_LOGIN_STORAGE_KEY);
+  localStorage.removeItem(OIDC_FORCE_LOGIN_STORAGE_KEY);
 
   const params = new URLSearchParams({
     client_id: OIDC_CLIENT_ID,
@@ -86,6 +128,10 @@ async function startDirectOidcLogin() {
     code_challenge: challenge,
     code_challenge_method: 'S256',
   });
+  if (forceLogin) {
+    params.set('prompt', 'login');
+    params.set('max_age', '0');
+  }
 
   window.location.assign(`${OIDC_ISSUER}/protocol/openid-connect/auth?${params.toString()}`);
 }
@@ -98,7 +144,9 @@ async function handleDirectOidcCallbackIfPresent() {
   if (error) {
     clearOidcTokens();
     clearOidcRequestState();
-    throw new Error(params.get('error_description') || error);
+    const message = params.get('error_description') || error;
+    markOidcLoginError(message);
+    throw new Error(message);
   }
 
   const code = params.get('code');
@@ -110,51 +158,64 @@ async function handleDirectOidcCallbackIfPresent() {
   if (!expectedState || !verifier || state !== expectedState) {
     clearOidcTokens();
     clearOidcRequestState();
+    markOidcLoginError('Invalid OIDC callback state');
     throw new Error('Invalid OIDC callback state');
   }
 
-  const tokenPayload = new URLSearchParams({
-    grant_type: 'authorization_code',
-    client_id: OIDC_CLIENT_ID,
-    code,
-    redirect_uri: getOidcRedirectUri(),
-    code_verifier: verifier,
-  });
+  if (!oidcCallbackExchangePromise) {
+    oidcCallbackExchangePromise = (async () => {
+      const tokenPayload = new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: OIDC_CLIENT_ID,
+        code,
+        redirect_uri: getOidcRedirectUri(),
+        code_verifier: verifier,
+      });
 
-  const response = await fetch(`${OIDC_ISSUER}/protocol/openid-connect/token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: tokenPayload.toString(),
-  });
+      const response = await fetch(`${OIDC_ISSUER}/protocol/openid-connect/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: tokenPayload.toString(),
+      });
 
-  if (!response.ok) {
-    clearOidcTokens();
-    clearOidcRequestState();
-    throw new Error('OIDC code exchange failed');
+      if (!response.ok) {
+        const text = await response.text();
+        clearOidcTokens();
+        clearOidcRequestState();
+        const message = `OIDC code exchange failed (${response.status})${text ? `: ${text}` : ''}`;
+        markOidcLoginError(message);
+        throw new Error(message);
+      }
+
+      const tokenData = await response.json();
+      storeOidcTokens({
+        ...tokenData,
+        expires_at: Math.floor(Date.now() / 1000) + Number(tokenData.expires_in || 0),
+      });
+
+      clearOidcRequestState();
+      clearOidcLoginError();
+
+      const cleanedUrl = new URL(window.location.href);
+      ['code', 'state', 'session_state', 'iss', 'error', 'error_description'].forEach((key) => {
+        cleanedUrl.searchParams.delete(key);
+      });
+      const cleanPath = `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}`;
+      window.history.replaceState({}, '', cleanPath);
+
+      const postLoginHash = sessionStorage.getItem(OIDC_POST_LOGIN_HASH_STORAGE_KEY);
+      sessionStorage.removeItem(OIDC_POST_LOGIN_HASH_STORAGE_KEY);
+      if (postLoginHash && window.location.hash !== postLoginHash) {
+        window.location.hash = postLoginHash;
+      }
+    })().finally(() => {
+      oidcCallbackExchangePromise = null;
+    });
   }
 
-  const tokenData = await response.json();
-  storeOidcTokens({
-    ...tokenData,
-    expires_at: Math.floor(Date.now() / 1000) + Number(tokenData.expires_in || 0),
-  });
-
-  clearOidcRequestState();
-
-  const cleanedUrl = new URL(window.location.href);
-  ['code', 'state', 'session_state', 'iss', 'error', 'error_description'].forEach((key) => {
-    cleanedUrl.searchParams.delete(key);
-  });
-  const cleanPath = `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}`;
-  window.history.replaceState({}, '', cleanPath);
-
-  const postLoginHash = sessionStorage.getItem(OIDC_POST_LOGIN_HASH_STORAGE_KEY);
-  sessionStorage.removeItem(OIDC_POST_LOGIN_HASH_STORAGE_KEY);
-  if (postLoginHash && window.location.hash !== postLoginHash) {
-    window.location.hash = postLoginHash;
-  }
+  await oidcCallbackExchangePromise;
 }
 
 // Helper function to check if test mode is enabled
@@ -365,7 +426,7 @@ export const AuthProvider = ({ children }) => {
     if (isDirectOidcEnabled()) {
       sessionStorage.setItem(
         OIDC_POST_LOGIN_HASH_STORAGE_KEY,
-        window.location.hash || '#student-courses',
+        window.location.hash || DEFAULT_POST_LOGIN_HASH,
       );
       await startDirectOidcLogin();
       return;
@@ -383,6 +444,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('test-mode');
       setUser(null);
       storeAuthUser(null);
+      window.location.assign(getOidcPostLogoutRedirectUri());
       return;
     }
 
@@ -392,12 +454,21 @@ export const AuthProvider = ({ children }) => {
       storeAuthUser(null);
       clearOidcTokens();
       clearOidcRequestState();
+      clearOidcLoginError();
+      localStorage.setItem(OIDC_FORCE_LOGIN_STORAGE_KEY, '1');
       sessionStorage.removeItem(OIDC_POST_LOGIN_HASH_STORAGE_KEY);
+
+      const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      if (isLocalDev) {
+        window.location.assign(getOidcPostLogoutRedirectUri());
+        return;
+      }
 
       const params = new URLSearchParams({
         client_id: OIDC_CLIENT_ID,
         post_logout_redirect_uri: getOidcPostLogoutRedirectUri(),
       });
+      params.set('redirect_uri', getOidcPostLogoutRedirectUri());
       if (tokens?.id_token) {
         params.set('id_token_hint', tokens.id_token);
       }

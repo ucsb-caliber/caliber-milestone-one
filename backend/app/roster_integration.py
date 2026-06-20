@@ -24,8 +24,11 @@ def _build_headers(
     user_name: Optional[str],
     impersonator_sub: Optional[str] = None,
     impersonator_name: Optional[str] = None,
+    user_token: Optional[str] = None,
 ) -> dict[str, str]:
     headers: dict[str, str] = {"Accept": "application/json"}
+    if user_token:
+        headers["Authorization"] = f"Bearer {user_token}"
     if ROSTER_INTERNAL_SECRET:
         headers["X-Internal-Secret"] = ROSTER_INTERNAL_SECRET
         headers["X-Internal-User-Sub"] = user_id
@@ -67,6 +70,7 @@ def call_roster(
     user_name: Optional[str] = None,
     impersonator_sub: Optional[str] = None,
     impersonator_name: Optional[str] = None,
+    user_token: Optional[str] = None,
     params: Optional[dict[str, Any]] = None,
     json_body: Optional[dict[str, Any]] = None,
 ) -> Any:
@@ -88,10 +92,12 @@ def call_roster(
         user_name=user_name,
         impersonator_sub=impersonator_sub,
         impersonator_name=impersonator_name,
+        user_token=user_token,
     )
+    method_upper = method.upper()
     try:
         response = requests.request(
-            method=method.upper(),
+            method=method_upper,
             url=url,
             headers=headers,
             params=params,
@@ -103,6 +109,12 @@ def call_roster(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Roster service unavailable: {exc}",
         ) from exc
+
+    if response.status_code == status.HTTP_401_UNAUTHORIZED:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Roster service rejected Caliber internal credentials",
+        )
 
     if response.status_code >= 400:
         raise HTTPException(
@@ -121,7 +133,13 @@ def call_roster(
         ) from exc
 
 
-def fetch_research_id(user_id: str) -> Optional[str]:
+def fetch_research_id(
+    user_id: str,
+    *,
+    user_email: Optional[str] = None,
+    user_name: Optional[str] = None,
+    user_token: Optional[str] = None,
+) -> Optional[str]:
     """Fetch the anonymous research_id for a student from the roster service.
 
     Only returns a research_id if the student has explicitly consented to
@@ -132,7 +150,14 @@ def fetch_research_id(user_id: str) -> Optional[str]:
     if not roster_management_enabled() or not ROSTER_INTERNAL_SECRET:
         return None
     try:
-        result = call_roster("GET", f"/api/users/{user_id}", user_id=user_id)
+        result = call_roster(
+            "GET",
+            f"/api/users/{user_id}",
+            user_id=user_id,
+            user_email=user_email,
+            user_name=user_name,
+            user_token=user_token,
+        )
         if isinstance(result, dict):
             research_consent = result.get("research_consent")
             # Only tag data with a research_id when the student explicitly consented.

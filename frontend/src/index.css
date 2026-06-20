@@ -121,5 +121,29 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  .sidebar-nav-link,
+  .sidebar-nav-link:visited,
+  .sidebar-nav-link:focus,
+  .sidebar-nav-link:active {
+    outline: none;
+    box-shadow: none;
+    text-decoration: none;
+  }
+
+  .sidebar-nav-link[data-active="false"],
+  .sidebar-nav-link[data-active="false"]:visited {
+    border-left-color: transparent;
+  }
+
+  .sidebar-nav-link[data-active="true"],
+  .sidebar-nav-link[data-active="true"]:visited {
+    border-left-color: #FEBC11;
+  }
 }
 
+@keyframes caliber-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

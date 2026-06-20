@@ -20,23 +20,25 @@ load_dotenv()
 # OIDC / Keycloak configuration
 OIDC_ISSUER = (os.getenv("OIDC_ISSUER") or "").rstrip("/")
 OIDC_JWKS_URL = (os.getenv("OIDC_JWKS_URL") or "").strip()
-# CALIBER_OIDC_AUDIENCE should be set in the deployment environment (e.g. "portal").
-# Falls back to the legacy OIDC_AUDIENCE variable for backward compatibility.
+# Optional audience validation. Set CALIBER_OIDC_AUDIENCE or the legacy
+# OIDC_AUDIENCE when the backend should enforce a specific token audience.
 OIDC_AUDIENCE = (
     os.getenv("CALIBER_OIDC_AUDIENCE")
     or os.getenv("OIDC_AUDIENCE")
-    or "portal"
-).strip()
+    or ""
+).strip() or None
 # Optional local-dev bypass for frontend test-mode. Disabled by default and
 # only honored when OIDC validation is not configured for this backend.
 TEST_TOKEN_ALLOWED = os.getenv("TEST_TOKEN_ALLOWED", "false").lower() in ("1", "true", "yes")
 TEST_TOKEN_USER_ID = os.getenv("TEST_TOKEN_USER_ID", "test-user-1")
 
 _oidc_jwks_client = None
+_current_user_id: ContextVar[Optional[str]] = ContextVar("current_user_id", default=None)
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
 _current_user_name: ContextVar[Optional[str]] = ContextVar("current_user_name", default=None)
 _current_impersonator_sub: ContextVar[Optional[str]] = ContextVar("current_impersonator_sub", default=None)
 _current_impersonator_name: ContextVar[Optional[str]] = ContextVar("current_impersonator_name", default=None)
+_current_user_token: ContextVar[Optional[str]] = ContextVar("current_user_token", default=None)
 
 _PLATFORM_IMPERSONATE_COOKIE = "platform_impersonate"
 _PLATFORM_IMPERSONATE_SECRET = os.getenv("PLATFORM_IMPERSONATE_SECRET", "")
@@ -106,6 +108,105 @@ def _is_local_test_token_enabled() -> bool:
 
 # Security scheme for Bearer token (optional to allow cookie auth)
 security = HTTPBearer(auto_error=False)
+
+
+def _set_current_user_context(
+    *,
+    user_id: Optional[str],
+    email: Optional[str],
+    full_name: Optional[str],
+    token: Optional[str],
+    impersonator_sub: Optional[str] = None,
+    impersonator_name: Optional[str] = None,
+) -> None:
+    _current_user_id.set(user_id)
+    _current_user_email.set(email)
+    _current_user_name.set(full_name)
+    _current_user_token.set(token)
+    _current_impersonator_sub.set(impersonator_sub)
+    _current_impersonator_name.set(impersonator_name)
+
+
+def _extract_request_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Optional[str]:
+    token = None
+
+    if credentials:
+        token = credentials.credentials
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    return token.strip() if token else None
+
+
+def resolve_request_user_context(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+    *,
+    raise_on_error: bool,
+) -> Optional[tuple[str, Optional[str], Optional[str], str]]:
+    token = _extract_request_token(request, credentials)
+    if not token:
+        _set_current_user_context(
+            user_id=None,
+            email=None,
+            full_name=None,
+            token=None,
+        )
+        if raise_on_error:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return None
+
+    if _is_local_test_token_enabled() and token == "test-token-1":
+        _set_current_user_context(
+            user_id=TEST_TOKEN_USER_ID,
+            email=None,
+            full_name=None,
+            token=token,
+        )
+        return TEST_TOKEN_USER_ID, None, None, token
+
+    try:
+        user_id, email, full_name = verify_jwt_token(token)
+    except HTTPException:
+        _set_current_user_context(
+            user_id=None,
+            email=None,
+            full_name=None,
+            token=None,
+        )
+        if raise_on_error:
+            raise
+        return None
+
+    imp = _verify_impersonation_cookie(request.cookies.get(_PLATFORM_IMPERSONATE_COOKIE))
+    if imp and imp.get("impersonator_sub") == user_id:
+        target_sub = imp.get("target_sub")
+        if target_sub:
+            _set_current_user_context(
+                user_id=str(target_sub),
+                email=None,
+                full_name=imp.get("target_name"),
+                token=token,
+                impersonator_sub=user_id,
+                impersonator_name=full_name,
+            )
+            return str(target_sub), None, imp.get("target_name"), token
+
+    _set_current_user_context(
+        user_id=user_id,
+        email=email,
+        full_name=full_name,
+        token=token,
+    )
+    return user_id, email, full_name, token
 
 
 def _decode_keycloak_token(token: str) -> tuple[str, Optional[str], Optional[str]]:
@@ -198,68 +299,13 @@ async def get_current_user(
     Raises:
         HTTPException: If no valid token is found or token is invalid
     """
-    token = None
-    
-    # Try to get token from Authorization header first
-    if credentials:
-        token = credentials.credentials
-    
-    # If not in header, try to get from cookie
-    if not token:
-        # Try to get the access_token from cookies
-        token = request.cookies.get("access_token")
-    
-    if not token:
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_impersonator_sub.set(None)
-        _current_impersonator_name.set(None)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Only allow the fixed test token in explicit local-dev mode.
-    if _is_local_test_token_enabled() and token.strip() == "test-token-1":
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_impersonator_sub.set(None)
-        _current_impersonator_name.set(None)
-        return TEST_TOKEN_USER_ID
-
-    # Verify the token using the common verification function
-    try:
-        user_id, email, full_name = verify_jwt_token(token)
-    except HTTPException:
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_impersonator_sub.set(None)
-        _current_impersonator_name.set(None)
-        raise
-
-    # Apply platform-wide impersonation overlay (portal sets this cookie)
-    imp = _verify_impersonation_cookie(request.cookies.get(_PLATFORM_IMPERSONATE_COOKIE))
-    if imp and imp.get("impersonator_sub") == user_id:
-        target_sub = imp.get("target_sub")
-        if not target_sub:
-            # Cookie verified but malformed — reject overlay, proceed as normal user
-            _current_user_email.set(email)
-            _current_user_name.set(full_name)
-            _current_impersonator_sub.set(None)
-            _current_impersonator_name.set(None)
-            return user_id
-        _current_impersonator_sub.set(user_id)
-        _current_impersonator_name.set(full_name)
-        _current_user_email.set(None)
-        _current_user_name.set(imp.get("target_name"))
-        return str(target_sub)
-
-    _current_user_email.set(email)
-    _current_user_name.set(full_name)
-    _current_impersonator_sub.set(None)
-    _current_impersonator_name.set(None)
-    return user_id
+    resolved = resolve_request_user_context(
+        request,
+        credentials,
+        raise_on_error=True,
+    )
+    assert resolved is not None
+    return resolved[0]
 
 
 async def get_optional_user(
@@ -272,52 +318,16 @@ async def get_optional_user(
 
     Checks both Bearer token and cookie authentication, same as get_current_user.
     """
-    token = None
+    resolved = resolve_request_user_context(
+        request,
+        credentials,
+        raise_on_error=False,
+    )
+    return resolved[0] if resolved else None
 
-    if credentials:
-        token = credentials.credentials
 
-    if not token:
-        token = request.cookies.get("access_token")
-
-    if not token:
-        # MED-4: reset all ContextVars on every early-return path to prevent stale state leaking
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_impersonator_sub.set(None)
-        _current_impersonator_name.set(None)
-        return None
-
-    if _is_local_test_token_enabled() and token.strip() == "test-token-1":
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_impersonator_sub.set(None)
-        _current_impersonator_name.set(None)
-        return TEST_TOKEN_USER_ID
-
-    try:
-        user_id, email, full_name = verify_jwt_token(token)
-        imp = _verify_impersonation_cookie(request.cookies.get(_PLATFORM_IMPERSONATE_COOKIE))
-        if imp and imp.get("impersonator_sub") == user_id:
-            target_sub = imp.get("target_sub")
-            if target_sub:
-                _current_impersonator_sub.set(user_id)
-                _current_impersonator_name.set(full_name)
-                _current_user_email.set(None)
-                _current_user_name.set(imp.get("target_name"))
-                return str(target_sub)
-        _current_user_email.set(email)
-        _current_user_name.set(full_name)
-        _current_impersonator_sub.set(None)
-        _current_impersonator_name.set(None)
-        return user_id
-    except Exception:
-        # MED-4: reset on exception path too
-        _current_user_email.set(None)
-        _current_user_name.set(None)
-        _current_impersonator_sub.set(None)
-        _current_impersonator_name.set(None)
-        return None
+def get_current_user_id() -> Optional[str]:
+    return _current_user_id.get()
 
 
 def get_current_user_email() -> Optional[str]:
@@ -334,3 +344,7 @@ def get_impersonator_sub() -> Optional[str]:
 
 def get_impersonator_name() -> Optional[str]:
     return _current_impersonator_name.get()
+
+
+def get_current_user_token() -> Optional[str]:
+    return _current_user_token.get()

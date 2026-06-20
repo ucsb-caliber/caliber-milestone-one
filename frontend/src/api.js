@@ -47,6 +47,14 @@ async function getAuthHeaders() {
       'Authorization': 'Bearer test-token-1',
     };
   }
+
+  const accessToken = await getValidAccessToken();
+  if (accessToken) {
+    return {
+      'Authorization': `Bearer ${accessToken}`,
+    };
+  }
+
   // Prefer same-origin cookie/session auth by default.
   return {};
 }
@@ -388,6 +396,41 @@ export async function getQuestions(filters = {}) {
 }
 
 /**
+ * Fetch the current user's draft questions.
+ */
+export async function getDraftQuestions(filters = {}) {
+  try {
+    const headers = await getAuthHeaders();
+
+    const params = new URLSearchParams();
+    if (filters.skip !== undefined) params.append('skip', String(filters.skip));
+    if (filters.limit !== undefined) params.append('limit', String(filters.limit));
+
+    const url = `${API_BASE}/api/questions/drafts${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await apiFetch(url, { headers });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to fetch draft questions';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Fetch all questions from all users
  */
 export async function getAllQuestions(filters = {}) {
@@ -459,6 +502,46 @@ export async function getQuestionByQid(qid) {
 }
 
 /**
+ * Generate an unverified draft variant from an existing question.
+ */
+export async function generateQuestionVariant(questionId, count = 1) {
+  try {
+    const headers = await getAuthHeaders();
+    const params = new URLSearchParams();
+    if (count !== undefined && count !== null) {
+      params.append('count', String(count));
+    }
+
+    const response = await apiFetch(
+      `${API_BASE}/api/questions/${questionId}/variants${params.toString() ? `?${params.toString()}` : ''}`,
+      {
+        method: 'POST',
+        headers,
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to generate variant';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
  * Fetch multiple questions by IDs in a single request (more efficient than individual calls)
  */
 export async function getQuestionsBatch(questionIds) {
@@ -514,6 +597,9 @@ export async function createQuestion(questionData) {
     if (questionData.source_repo) formData.append('source_repo', questionData.source_repo);
     if (questionData.source_path) formData.append('source_path', questionData.source_path);
     if (questionData.source_commit) formData.append('source_commit', questionData.source_commit);
+    if (questionData.coding_config) {
+      formData.append('coding_config', JSON.stringify(questionData.coding_config));
+    }
 
 
     if (questionData.source_pdf) {
@@ -657,6 +743,31 @@ export async function updateQuestion(id, updateData) {
     return response.json();
   } catch (error) {
     console.error("Update error:", error);
+    throw error;
+  }
+}
+
+export async function runCodingQuestion(assignmentId, questionId, payload) {
+  try {
+    const headers = await getAuthHeaders();
+    headers['Content-Type'] = 'application/json';
+
+    const response = await apiFetch(`${API_BASE}/api/assignments/${assignmentId}/questions/${questionId}/coding/run`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to run coding question');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
     throw error;
   }
 }
@@ -1104,6 +1215,44 @@ export async function getCourse(courseId) {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to fetch course');
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Make sure the backend server is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get instructor analytics for one course.
+ */
+export async function getInstructorAnalytics(courseId, { assignmentId = null, dateRange = '30d' } = {}) {
+  try {
+    const headers = await getAuthHeaders();
+    const params = new URLSearchParams();
+    params.append('course_id', String(courseId));
+    params.append('date_range', String(dateRange || '30d'));
+    if (assignmentId != null && assignmentId !== '') {
+      params.append('assignment_id', String(assignmentId));
+    }
+
+    const response = await apiFetch(`${API_BASE}/api/instructor/analytics?${params.toString()}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to fetch instructor analytics';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();

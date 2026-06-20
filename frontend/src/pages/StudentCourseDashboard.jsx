@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getCourse, getAllUsers, getAssignmentProgress } from '../api';
 import { formatPacificDateTime, parseScheduleDate, parseUtcTimestamp } from '../utils/datetime';
+import { CourseDashboardBackButton, CourseDashboardSpinnerState, dashboardPalette } from '../components/CourseDashboardUI';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -226,76 +227,83 @@ export default function StudentCourseDashboard() {
     container: {
       maxWidth: '1180px',
       margin: '0 auto',
-      padding: '2rem'
-    },
-    backLink: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '0.5rem',
-      color: '#4f46e5',
-      textDecoration: 'none',
-      fontSize: '0.875rem',
-      fontWeight: '500',
-      marginBottom: '1.5rem',
-      cursor: 'pointer'
+      padding: '24px'
     },
     header: {
-      marginBottom: '2rem'
+      marginBottom: '24px'
     },
     title: {
       margin: 0,
-      fontSize: '2rem',
+      fontSize: '1.75rem',
       fontWeight: '700',
-      color: '#111827'
+      color: dashboardPalette.navy
     },
     subtitle: {
-      margin: '0.5rem 0 0 0',
-      fontSize: '1rem',
-      color: '#6b7280'
+      margin: '8px 0 0 0',
+      fontSize: '0.95rem',
+      color: dashboardPalette.muted
     },
     section: {
-      background: 'white',
-      borderRadius: '14px',
-      padding: '1.25rem',
-      marginBottom: '1.1rem',
-      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)',
-      border: '1px solid #e5e7eb'
+      background: dashboardPalette.white,
+      borderRadius: '8px',
+      padding: '24px',
+      marginBottom: '24px',
+      border: `1px solid ${dashboardPalette.border}`
     },
     sectionTitle: {
-      margin: '0 0 1rem 0',
+      margin: '0 0 16px 0',
       fontSize: '1.125rem',
       fontWeight: '600',
-      color: '#111827'
+      color: dashboardPalette.navy
     },
     infoRow: {
       display: 'flex',
-      padding: '0.75rem 0',
-      borderBottom: '1px solid #f3f4f6'
+      padding: '12px 0',
+      borderBottom: `1px solid ${dashboardPalette.border}`
     },
     infoLabel: {
       width: '140px',
       fontWeight: '600',
-      color: '#374151'
+      color: dashboardPalette.text
     },
     infoValue: {
-      color: '#6b7280'
+      color: dashboardPalette.muted
     },
     cardGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-      gap: '1.2rem'
+      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+      gap: '14px'
     },
     timelineCard: {
-      border: '1px solid #dbeafe',
-      background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
-      borderRadius: '16px',
-      padding: '1.2rem',
+      border: `1px solid ${dashboardPalette.border}`,
+      background: dashboardPalette.white,
+      borderRadius: '8px',
+      padding: '14px',
       cursor: 'pointer',
-      transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
       display: 'flex',
       flexDirection: 'column',
-      height: '235px',
+      minHeight: '228px',
       position: 'relative'
+    },
+    cardAccent: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: '3px',
+      borderTopLeftRadius: '8px',
+      borderTopRightRadius: '8px',
+    },
+    cardTopRow: {
+      marginBottom: '10px'
+    },
+    cardMetaRow: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: '8px',
+      minWidth: 0,
+      minHeight: '48px'
     },
     sectionHeaderButton: {
       width: '100%',
@@ -305,74 +313,109 @@ export default function StudentCourseDashboard() {
       justifyContent: 'space-between',
       alignItems: 'center',
       padding: 0,
-      margin: '0 0 0.65rem 0',
+      margin: '0 0 12px 0',
       cursor: 'pointer'
     },
     sectionHeaderTitle: {
       margin: 0,
       fontSize: '0.95rem',
       fontWeight: 700,
-      color: '#0f172a'
+      color: dashboardPalette.text
     },
     sectionHeaderArrow: {
-      color: '#64748b',
+      color: dashboardPalette.muted,
       fontSize: '0.95rem',
       fontWeight: 700,
       lineHeight: 1
     },
     cardHeader: {
       display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      gap: '0.8rem'
+      flexDirection: 'column',
+      gap: '6px',
+      minWidth: 0,
+      flex: 1
     },
     cardTitle: {
       margin: 0,
-      fontSize: '1.05rem',
+      fontSize: '1rem',
       fontWeight: 700,
-      color: '#0f172a',
+      color: dashboardPalette.text,
       lineHeight: 1.3,
       display: '-webkit-box',
       WebkitLineClamp: 2,
       WebkitBoxOrient: 'vertical',
       overflow: 'hidden'
     },
+    cardSubtitle: {
+      margin: 0,
+      fontSize: '0.78rem',
+      color: dashboardPalette.muted,
+      lineHeight: 1.4
+    },
     tagRow: {
-      marginTop: '0.5rem',
       display: 'flex',
-      alignItems: 'center',
-      gap: '0.4rem',
-      flexWrap: 'wrap'
+      alignItems: 'flex-start',
+      gap: '5px',
+      flexWrap: 'wrap',
+      minWidth: 0,
+      overflow: 'visible',
+      minHeight: '48px',
+      alignContent: 'flex-start'
     },
     typeTag: {
-      fontSize: '0.72rem',
+      fontSize: '0.68rem',
       fontWeight: 600,
-      color: '#1d4ed8',
-      background: '#dbeafe',
+      color: dashboardPalette.navy,
+      background: dashboardPalette.surface,
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '999px',
-      padding: '0.16rem 0.46rem'
+      padding: '2px 7px',
+      whiteSpace: 'nowrap'
     },
-    dueLabel: {
-      fontSize: '0.74rem',
+    statusPill: {
+      fontSize: '0.68rem',
       fontWeight: 700,
-      color: '#64748b',
-      textTransform: 'uppercase',
-      letterSpacing: '0.02em',
-      marginTop: '0.9rem',
-      marginBottom: '0.2rem'
+      borderRadius: '999px',
+      padding: '2px 7px',
+      whiteSpace: 'nowrap'
     },
-    dueValue: {
-      fontSize: '0.88rem',
-      color: '#1f2937',
-      fontWeight: 600
+    cardBody: {
+      display: 'grid',
+      gap: '8px',
+      marginTop: '10px'
+    },
+    metaList: {
+      display: 'grid',
+      gap: '6px'
+    },
+    metaRow: {
+      display: 'grid',
+      gridTemplateColumns: '72px minmax(0, 1fr)',
+      gap: '10px',
+      alignItems: 'start',
+      paddingTop: '6px',
+      borderTop: `1px solid ${dashboardPalette.border}`
+    },
+    metaLabel: {
+      fontSize: '0.68rem',
+      fontWeight: 700,
+      color: dashboardPalette.muted,
+      textTransform: 'uppercase',
+      letterSpacing: '0.02em'
+    },
+    metaValue: {
+      fontSize: '0.8rem',
+      fontWeight: 600,
+      color: dashboardPalette.text,
+      lineHeight: 1.35
     },
     infoButton: {
-      width: '24px',
-      height: '24px',
+      width: '22px',
+      height: '22px',
       borderRadius: '999px',
-      border: '1px solid #cbd5e1',
-      background: 'white',
-      color: '#475569',
+      border: `1px solid ${dashboardPalette.border}`,
+      background: dashboardPalette.white,
+      color: dashboardPalette.muted,
       fontSize: '0.78rem',
       fontWeight: 700,
       cursor: 'pointer',
@@ -386,10 +429,9 @@ export default function StudentCourseDashboard() {
       top: '32px',
       right: 0,
       width: 'min(300px, 78vw)',
-      background: 'white',
-      border: '1px solid #dbeafe',
-      borderRadius: '10px',
-      boxShadow: '0 12px 24px rgba(15, 23, 42, 0.16)',
+      background: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: '8px',
       padding: '0.7rem 0.78rem',
       zIndex: 5
     },
@@ -402,64 +444,67 @@ export default function StudentCourseDashboard() {
       fontSize: '0.78rem'
     },
     infoPopoverLabel: {
-      color: '#475569',
+      color: dashboardPalette.muted,
       fontWeight: 700
     },
     infoPopoverValue: {
-      color: '#111827',
+      color: dashboardPalette.text,
       lineHeight: 1.35
     },
     emptyState: {
-      background: '#f9fafb',
-      borderRadius: '12px',
-      padding: '3rem',
+      background: dashboardPalette.surface,
+      borderRadius: '8px',
+      padding: '32px',
       textAlign: 'center',
-      border: '2px dashed #d1d5db'
+      border: `1px dashed ${dashboardPalette.border}`
     },
     error: {
-      padding: '1rem',
+      padding: '12px 14px',
       borderRadius: '8px',
-      background: '#fee2e2',
-      color: '#dc2626'
+      background: dashboardPalette.dangerBg,
+      color: dashboardPalette.dangerText,
+      border: `1px solid ${dashboardPalette.dangerBorder}`
     },
     actionButtons: {
       display: 'flex',
-      gap: '0.5rem',
+      gap: '8px',
       flexWrap: 'wrap',
-      marginTop: 'auto'
+      marginTop: 'auto',
+      paddingTop: '12px',
+      borderTop: `1px solid ${dashboardPalette.border}`
     },
     startButton: {
-      border: 'none',
+      border: `1px solid ${dashboardPalette.navy}`,
       borderRadius: '8px',
-      background: '#2563eb',
-      color: 'white',
-      padding: '0.45rem 0.75rem',
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white,
+      padding: '0 11px',
+      height: '32px',
       cursor: 'pointer',
       fontWeight: 600,
-      fontSize: '0.75rem',
-      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+      fontSize: '0.74rem',
     },
     editButton: {
-      border: 'none',
+      border: `1px solid ${dashboardPalette.navy}`,
       borderRadius: '8px',
-      background: '#2563eb',
-      color: 'white',
-      padding: '0.45rem 0.75rem',
+      background: dashboardPalette.navy,
+      color: dashboardPalette.white,
+      padding: '0 11px',
+      height: '32px',
       cursor: 'pointer',
       fontWeight: 600,
-      fontSize: '0.75rem',
-      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+      fontSize: '0.74rem',
     },
     viewButton: {
-      border: 'none',
+      border: `1px solid ${dashboardPalette.border}`,
       borderRadius: '8px',
-      background: '#1f2937',
-      color: 'white',
-      padding: '0.45rem 0.75rem',
+      background: dashboardPalette.white,
+      color: dashboardPalette.text,
+      padding: '0 11px',
+      height: '32px',
       cursor: 'pointer',
       fontWeight: 600,
-      fontSize: '0.75rem',
-      transition: 'all 0.2s ease'
+      fontSize: '0.74rem',
     }
   };
 
@@ -501,6 +546,7 @@ export default function StudentCourseDashboard() {
     const params = new URLSearchParams();
     if (resubmit) params.set('resubmit', '1');
     if (readOnly) params.set('readonly', '1');
+    params.set('from', window.location.hash || `#student-course/${courseId}`);
     const query = params.toString();
     window.location.hash = query
       ? `#student-course/${courseId}/assignment/${assignmentId}?${query}`
@@ -524,10 +570,17 @@ export default function StudentCourseDashboard() {
     openAssignment(assignment.id, false);
   };
 
+  const handleBack = () => {
+    window.location.hash = '#student-courses';
+  };
+
   if (loading) {
     return (
       <div style={styles.container}>
-        <p style={{ textAlign: 'center', color: '#6b7280' }}>Loading course...</p>
+        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
+        <CourseDashboardSpinnerState style={{ padding: '24px 0' }} />
       </div>
     );
   }
@@ -535,7 +588,9 @@ export default function StudentCourseDashboard() {
   if (error) {
     return (
       <div style={styles.container}>
-        <a href="#student-courses" style={styles.backLink}>← Back to Course Dashboard</a>
+        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
         <div style={styles.error}>{error}</div>
       </div>
     );
@@ -544,7 +599,9 @@ export default function StudentCourseDashboard() {
   if (!course) {
     return (
       <div style={styles.container}>
-        <a href="#student-courses" style={styles.backLink}>← Back to Course Dashboard</a>
+        <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+          Back
+        </CourseDashboardBackButton>
         <p>Course not found</p>
       </div>
     );
@@ -552,7 +609,9 @@ export default function StudentCourseDashboard() {
 
   return (
     <div style={styles.container}>
-      <a href="#student-courses" style={styles.backLink}>← Back to Course Dashboard</a>
+      <CourseDashboardBackButton onClick={handleBack} style={{ marginBottom: '16px' }}>
+        Back
+      </CourseDashboardBackButton>
 
       <div style={styles.header}>
         <h1 style={styles.title}>{course.course_name}</h1>
@@ -581,8 +640,8 @@ export default function StudentCourseDashboard() {
         </div>
         {releasedAssignments.length === 0 ? (
           <div style={styles.emptyState}>
-            <h3 style={{ margin: '0 0 0.5rem 0', color: '#374151' }}>No Released Assignments</h3>
-            <p style={{ margin: 0, color: '#6b7280' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', color: dashboardPalette.text }}>No Released Assignments</h3>
+            <p style={{ margin: 0, color: dashboardPalette.muted }}>
               There are no assignments released for this course yet.
             </p>
           </div>
@@ -604,7 +663,7 @@ export default function StudentCourseDashboard() {
                   </span>
                 </button>
                 {collapsedSections[section.key] ? null : section.items.length === 0 ? (
-                  <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>{section.emptyLabel}</p>
+                  <p style={{ margin: 0, color: dashboardPalette.muted, fontSize: '0.875rem' }}>{section.emptyLabel}</p>
                 ) : (
                   <div style={styles.cardGrid}>
                     {section.items.map((item) => {
@@ -642,20 +701,11 @@ export default function StudentCourseDashboard() {
                         nowMs >= softDueMs;
 
                       if (submittedLateBeforeHardDue) {
-                        cardStatusStyle = {
-                          background: '#fffdf2',
-                          borderColor: '#fde68a',
-                        };
+                        cardStatusStyle = {};
                       } else if (progress.submitted) {
-                        cardStatusStyle = {
-                          background: '#f5fdf8',
-                          borderColor: '#a7f3d0',
-                        };
+                        cardStatusStyle = {};
                       } else if (unsubmittedPastDue) {
-                        cardStatusStyle = {
-                          background: '#fff5f5',
-                          borderColor: '#fecaca',
-                        };
+                        cardStatusStyle = {};
                       }
 
                       let submissionBadge = null;
@@ -682,6 +732,20 @@ export default function StudentCourseDashboard() {
                       }
 
                       const isInfoOpen = activeInfoAssignmentId === item.assignment.id;
+                      const cardAccentColor = submittedLateBeforeHardDue
+                        ? '#eab308'
+                        : progress.submitted
+                          ? '#22c55e'
+                          : unsubmittedPastDue
+                            ? '#ef4444'
+                            : dashboardPalette.navy;
+                      const availabilityLabel = item.isClosed
+                        ? 'Closed assignment'
+                        : item.isLate
+                          ? 'Late submissions still accepted'
+                          : progress.submitted
+                            ? 'Submitted and available to review'
+                            : 'Ready to start';
 
                       return (
                         <div
@@ -689,76 +753,102 @@ export default function StudentCourseDashboard() {
                           style={{ ...styles.timelineCard, ...cardStatusStyle }}
                           onClick={() => handleAssignmentClick(item.assignment, progress)}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'translateY(-2px)';
-                            e.currentTarget.style.boxShadow = '0 10px 20px rgba(15, 23, 42, 0.10)';
+                            e.currentTarget.style.borderColor = cardAccentColor;
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'translateY(0)';
-                            e.currentTarget.style.boxShadow = 'none';
+                            e.currentTarget.style.borderColor = dashboardPalette.border;
                           }}
                         >
-                          <div style={styles.cardHeader}>
-                            <div style={{ minWidth: 0 }}>
-                              <h3 style={styles.cardTitle}>{item.assignment.title}</h3>
-                              <div style={styles.tagRow}>
-                                <span style={styles.typeTag}>{item.assignment.type}</span>
-                                {submissionBadge && (
-                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: submissionBadge.color, background: submissionBadge.background, borderRadius: '999px', padding: '0.16rem 0.46rem' }}>
-                                    {submissionBadge.label}
-                                  </span>
-                                )}
-                                {item.assignment.grade_released && (
-                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46', background: '#d1fae5', borderRadius: '999px', padding: '0.16rem 0.46rem' }}>
-                                    Grades released
-                                  </span>
-                                )}
+                          <div style={{ ...styles.cardAccent, background: cardAccentColor }} />
+                          <div style={styles.cardTopRow}>
+                            <div style={styles.cardHeader}>
+                              <div style={styles.cardMetaRow}>
+                                <div style={styles.tagRow}>
+                                  <span style={styles.typeTag}>{item.assignment.type}</span>
+                                  {submissionBadge && (
+                                    <span style={{ ...styles.statusPill, color: submissionBadge.color, background: submissionBadge.background }}>
+                                      {submissionBadge.label}
+                                    </span>
+                                  )}
+                                  {item.assignment.grade_released && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const params = new URLSearchParams();
+                                        params.set('view', 'grade');
+                                        params.set('from', window.location.hash || `#student-course/${courseId}`);
+                                        window.location.hash = `#student-course/${courseId}/assignment/${item.assignment.id}?${params.toString()}`;
+                                      }}
+                                      style={{ ...styles.statusPill, color: dashboardPalette.navy, background: dashboardPalette.surface, border: `1px solid ${dashboardPalette.border}`, cursor: 'pointer' }}
+                                    >
+                                      Grades released
+                                    </button>
+                                  )}
+                                </div>
+                                <div style={{ position: 'relative', flexShrink: 0 }}>
+                                  <button
+                                    style={styles.infoButton}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveInfoAssignmentId(isInfoOpen ? null : item.assignment.id);
+                                    }}
+                                    title="Assignment timing details"
+                                  >
+                                    i
+                                  </button>
+                                  {isInfoOpen && (
+                                    <div
+                                      style={styles.infoPopover}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div style={styles.infoPopoverRow}>
+                                        <span style={styles.infoPopoverLabel}>Release</span>
+                                        <span style={styles.infoPopoverValue}>{formatDateObject(item.releaseDate)}</span>
+                                      </div>
+                                      <div style={styles.infoPopoverRow}>
+                                        <span style={styles.infoPopoverLabel}>Due</span>
+                                        <span style={styles.infoPopoverValue}>{formatDateObject(item.softDueDate || item.dueDate)}</span>
+                                      </div>
+                                      <div style={styles.infoPopoverRow}>
+                                        <span style={styles.infoPopoverLabel}>Late Due</span>
+                                        <span style={styles.infoPopoverValue}>{formatDateObject(item.hardDueDate)}</span>
+                                      </div>
+                                      <div style={{ ...styles.infoPopoverRow, marginBottom: 0 }}>
+                                        <span style={styles.infoPopoverLabel}>Remaining</span>
+                                        <span style={styles.infoPopoverValue}>{getRemainingInfoLabel(item)}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
+                              <h3 style={styles.cardTitle}>{item.assignment.title}</h3>
+                              <p style={styles.cardSubtitle}>
+                                {availabilityLabel}
+                              </p>
                             </div>
+                          </div>
 
-                            <div style={{ position: 'relative', flexShrink: 0 }}>
-                              <button
-                                style={styles.infoButton}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveInfoAssignmentId(isInfoOpen ? null : item.assignment.id);
-                                }}
-                                title="Assignment timing details"
-                              >
-                                i
-                              </button>
-                              {isInfoOpen && (
-                                <div
-                                  style={styles.infoPopover}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <div style={styles.infoPopoverRow}>
-                                    <span style={styles.infoPopoverLabel}>Release</span>
-                                    <span style={styles.infoPopoverValue}>{formatDateObject(item.releaseDate)}</span>
-                                  </div>
-                                  <div style={styles.infoPopoverRow}>
-                                    <span style={styles.infoPopoverLabel}>Due</span>
-                                    <span style={styles.infoPopoverValue}>{formatDateObject(item.softDueDate || item.dueDate)}</span>
-                                  </div>
-                                  <div style={styles.infoPopoverRow}>
-                                    <span style={styles.infoPopoverLabel}>Late Due</span>
-                                    <span style={styles.infoPopoverValue}>{formatDateObject(item.hardDueDate)}</span>
-                                  </div>
-                                  <div style={{ ...styles.infoPopoverRow, marginBottom: 0 }}>
-                                    <span style={styles.infoPopoverLabel}>Remaining</span>
-                                    <span style={styles.infoPopoverValue}>{getRemainingInfoLabel(item)}</span>
+                          <div style={styles.cardBody}>
+                            <div style={styles.metaList}>
+                              <div style={{ ...styles.metaRow, borderTop: 'none', paddingTop: 0 }}>
+                                <div style={styles.metaLabel}>Due</div>
+                                <div style={styles.metaValue}>{formatDueSummary(item.softDueDate || item.dueDate)}</div>
+                              </div>
+                              <div style={styles.metaRow}>
+                                <div style={styles.metaLabel}>Late Due</div>
+                                <div style={styles.metaValue}>{formatDueSummary(item.hardDueDate)}</div>
+                              </div>
+                              {item.assignment.grade_released && progress.score_earned != null && progress.score_total != null && (
+                                <div style={styles.metaRow}>
+                                  <div style={styles.metaLabel}>Score</div>
+                                  <div style={styles.metaValue}>
+                                    {Math.round(Number(progress.score_earned) * 100) / 100} / {Math.round(Number(progress.score_total) * 100) / 100}
                                   </div>
                                 </div>
                               )}
                             </div>
                           </div>
-
-                          <div style={styles.dueLabel}>Due Date</div>
-                          <div style={styles.dueValue}>{formatDueSummary(item.softDueDate || item.dueDate)}</div>
-                          {item.assignment.grade_released && progress.score_earned != null && progress.score_total != null && (
-                            <div style={{ marginTop: '0.35rem', fontSize: '0.8rem', fontWeight: 700, color: '#1e40af' }}>
-                              Score: {Math.round(Number(progress.score_earned) * 100) / 100} / {Math.round(Number(progress.score_total) * 100) / 100}
-                            </div>
-                          )}
 
                           <div style={styles.actionButtons}>
                             {canStart && (
@@ -769,14 +859,10 @@ export default function StudentCourseDashboard() {
                                   handleAssignmentClick(item.assignment, progress);
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = '#1d4ed8';
-                                  e.currentTarget.style.transform = 'translateY(-1px)';
-                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(37, 99, 235, 0.25)';
+                                  e.currentTarget.style.background = dashboardPalette.navyMid;
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = '#2563eb';
-                                  e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.boxShadow = 'none';
+                                  e.currentTarget.style.background = dashboardPalette.navy;
                                 }}
                               >
                                 Start
@@ -791,39 +877,13 @@ export default function StudentCourseDashboard() {
                                   openAssignment(item.assignment.id, false, !progress.submitted);
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = '#111827';
-                                  e.currentTarget.style.transform = 'translateY(-1px)';
-                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(15, 23, 42, 0.25)';
+                                  e.currentTarget.style.background = dashboardPalette.surface;
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = '#1f2937';
-                                  e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.boxShadow = 'none';
+                                  e.currentTarget.style.background = dashboardPalette.white;
                                 }}
                               >
                                 View
-                              </button>
-                            )}
-
-                            {item.assignment.grade_released && (
-                              <button
-                                style={{ ...styles.viewButton, background: '#059669', color: 'white' }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.location.hash = `#student-course/${courseId}/assignment/${item.assignment.id}?view=grade`;
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = '#047857';
-                                  e.currentTarget.style.transform = 'translateY(-1px)';
-                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(5, 150, 105, 0.25)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = '#059669';
-                                  e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.boxShadow = 'none';
-                                }}
-                              >
-                                View grade
                               </button>
                             )}
 
@@ -835,14 +895,10 @@ export default function StudentCourseDashboard() {
                                   handleAssignmentClick(item.assignment, progress);
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = '#1d4ed8';
-                                  e.currentTarget.style.transform = 'translateY(-1px)';
-                                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(37, 99, 235, 0.25)';
+                                  e.currentTarget.style.background = dashboardPalette.navyMid;
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = '#2563eb';
-                                  e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.boxShadow = 'none';
+                                  e.currentTarget.style.background = dashboardPalette.navy;
                                 }}
                               >
                                 Edit
@@ -855,7 +911,7 @@ export default function StudentCourseDashboard() {
                   </div>
                 )}
                 {sectionIndex < 1 && (
-                  <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '0.85rem 0 1rem 0' }} />
+                  <hr style={{ border: 0, borderTop: `1px solid ${dashboardPalette.border}`, margin: '12px 0 16px 0' }} />
                 )}
               </div>
             ))}
@@ -877,20 +933,20 @@ export default function StudentCourseDashboard() {
           zIndex: 1000
         }}>
           <div style={{
-            background: 'white',
+            background: dashboardPalette.white,
             width: 'min(520px, 92vw)',
-            borderRadius: '12px',
-            padding: '1.25rem',
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
+            borderRadius: '8px',
+            padding: '20px',
+            border: `1px solid ${dashboardPalette.border}`
           }}>
-            <h3 style={{ margin: '0 0 0.75rem 0', color: '#111827' }}>
+            <h3 style={{ margin: '0 0 0.75rem 0', color: dashboardPalette.text }}>
               {resubmitAllowed ? 'Re-submit this assignment?' : 'Assignment already submitted'}
             </h3>
-            <p style={{ margin: '0 0 0.5rem 0', color: '#374151', lineHeight: 1.45 }}>
+            <p style={{ margin: '0 0 0.5rem 0', color: dashboardPalette.text, lineHeight: 1.45 }}>
               You already submitted <strong>{resubmitModalAssignment.title}</strong> on{' '}
               <strong>{formatTimestamp(resubmitModalTimestamp)}</strong>.
             </p>
-            <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.9rem' }}>
+            <p style={{ margin: '0 0 1rem 0', color: dashboardPalette.muted, fontSize: '0.9rem' }}>
               {resubmitAllowed
                 ? 'You can submit again because the late due date has not passed yet.'
                 : 'This assignment is read-only because the late due date has passed.'}
@@ -904,11 +960,12 @@ export default function StudentCourseDashboard() {
               <button
                 onClick={() => setResubmitModalAssignment(null)}
                 style={{
-                  border: 'none',
+                  border: `1px solid ${dashboardPalette.border}`,
                   borderRadius: '8px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  padding: '0.5rem 0.85rem',
+                  background: dashboardPalette.white,
+                  color: dashboardPalette.text,
+                  padding: '0 12px',
+                  height: '36px',
                   cursor: 'pointer',
                   fontWeight: 600
                 }}
@@ -923,11 +980,12 @@ export default function StudentCourseDashboard() {
                     openAssignment(id, true);
                   }}
                   style={{
-                    border: 'none',
+                    border: `1px solid ${dashboardPalette.navy}`,
                     borderRadius: '8px',
-                    background: '#2563eb',
-                    color: 'white',
-                    padding: '0.5rem 0.85rem',
+                    background: dashboardPalette.navy,
+                    color: dashboardPalette.white,
+                    padding: '0 12px',
+                    height: '36px',
                     cursor: 'pointer',
                     fontWeight: 600
                   }}
@@ -955,16 +1013,16 @@ export default function StudentCourseDashboard() {
           zIndex: 1100
         }}>
           <div style={{
-            background: 'white',
+            background: dashboardPalette.white,
             width: 'min(460px, 92vw)',
-            borderRadius: '12px',
-            padding: '1.1rem 1.2rem',
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
+            borderRadius: '8px',
+            padding: '20px',
+            border: `1px solid ${dashboardPalette.border}`
           }}>
-            <h3 style={{ margin: '0 0 0.6rem 0', color: '#111827' }}>
+            <h3 style={{ margin: '0 0 0.6rem 0', color: dashboardPalette.text }}>
               {submissionNotice.assignmentTitle} {submissionNotice.type}
             </h3>
-            <p style={{ margin: '0 0 0.95rem 0', color: '#374151', lineHeight: 1.45 }}>
+            <p style={{ margin: '0 0 0.95rem 0', color: dashboardPalette.text, lineHeight: 1.45 }}>
               {submissionNotice.assignmentTitle} {submissionNotice.type} at{' '}
               <strong>{formatTimestamp(submissionNotice.submittedAt)}</strong>.
             </p>
@@ -972,11 +1030,12 @@ export default function StudentCourseDashboard() {
               <button
                 onClick={() => setSubmissionNotice(null)}
                 style={{
-                  border: 'none',
+                  border: `1px solid ${dashboardPalette.navy}`,
                   borderRadius: '8px',
-                  background: '#2563eb',
-                  color: 'white',
-                  padding: '0.5rem 0.9rem',
+                  background: dashboardPalette.navy,
+                  color: dashboardPalette.white,
+                  padding: '0 12px',
+                  height: '36px',
                   cursor: 'pointer',
                   fontWeight: 600
                 }}

@@ -47,6 +47,35 @@ class Question(SQLModel, table=True):
     is_verified: bool = Field(default=False)  # Whether question in database is verified
 
 
+class CodingQuestionPrivate(SQLModel, table=True):
+    """Private coding-question grading config that must never be sent to students."""
+    __tablename__ = "coding_question_private"
+
+    question_id: int = Field(foreign_key="question.id", primary_key=True)
+    hidden_tests: str = Field(sa_column=Column(TEXT), default="[]")  # JSON array of hidden test cases
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CodingRun(SQLModel, table=True):
+    """Execution history for visible runs and final hidden-test grading passes."""
+    __tablename__ = "coding_run"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    assignment_id: Optional[int] = Field(default=None, index=True)
+    question_id: int = Field(foreign_key="question.id", index=True)
+    student_id: str = Field(index=True)
+    language: str = Field(default="cpp")
+    source_code: str = Field(sa_column=Column(TEXT))
+    status: str = Field(default="queued")
+    verdict: str = Field(default="")
+    compile_output: str = Field(sa_column=Column(TEXT), default="")
+    runtime_output: str = Field(sa_column=Column(TEXT), default="")
+    result_json: str = Field(sa_column=Column(TEXT), default="{}")
+    is_submit_run: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Assignment(SQLModel, table=True):
     """Assignment model for course assignments."""
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -83,6 +112,7 @@ class AssignmentProgress(SQLModel, table=True):
     student_id: str = Field(index=True)
     research_id: Optional[str] = Field(default=None, index=True)
     answers: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id
+    question_time_ms: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id with cumulative view time in ms
     grading_data: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question id with rubric-part scores/comments
     variant_data: str = Field(sa_column=Column(TEXT), default="{}")  # JSON object keyed by question qid with generated randomization values
     current_question_index: int = Field(default=0)
