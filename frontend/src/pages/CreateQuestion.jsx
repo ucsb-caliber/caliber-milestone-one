@@ -761,10 +761,10 @@ export default function CreateQuestion() {
                       type="button"
                       onClick={() => setViewMode('edit')}
                       style={{ ...
-                        styles.secondaryBtn, 
-                        padding: '4px 12px', 
-                        border: 'none', 
-                        background: viewMode === 'edit' ? 'white' : 'transparent', 
+                        styles.secondaryBtn,
+                        padding: '4px 12px',
+                        border: 'none',
+                        background: viewMode === 'edit' ? 'white' : 'transparent',
                         boxShadow: viewMode === 'edit' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
                        }}>
                       Edit
@@ -773,11 +773,11 @@ export default function CreateQuestion() {
                       type="button"
                       onClick={() => setViewMode('preview')}
                       style={{ ...
-                        styles.secondaryBtn, 
+                        styles.secondaryBtn,
                         padding: '4px 12px',
-                        border: 'none', 
-                        background: viewMode === 'preview' ? 'white' : 'transparent', 
-                        boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                        border: 'none',
+                        background: viewMode === 'preview' ? 'white' : 'transparent',
+                        boxShadow: viewMode === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
                         }}>
                       Preview
                     </button>
@@ -785,11 +785,11 @@ export default function CreateQuestion() {
                       type="button"
                       onClick={() => setViewMode('split')}
                       style={{ ...
-                      styles.secondaryBtn, 
-                      padding: '4px 12px', 
-                      border: 'none', 
-                      background: viewMode === 'split' ? 'white' : 'transparent', 
-                      boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' 
+                      styles.secondaryBtn,
+                      padding: '4px 12px',
+                      border: 'none',
+                      background: viewMode === 'split' ? 'white' : 'transparent',
+                      boxShadow: viewMode === 'split' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
                       }}>
                       Student View
                     </button>
@@ -799,11 +799,11 @@ export default function CreateQuestion() {
 
               {viewMode === 'preview' ? (
                 <div style={{ ...
-                styles.input, 
-                minHeight: '300px', 
-                padding: '12px', 
-                border: '1px solid #edf2f7', 
-                borderRadius: '8px', 
+                styles.input,
+                minHeight: '300px',
+                padding: '12px',
+                border: '1px solid #edf2f7',
+                borderRadius: '8px',
                 overflow: 'auto' }}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -811,31 +811,31 @@ export default function CreateQuestion() {
                     components={{
                       code({ node, inline, className, children, ...props }) {
                         return inline ? (
-                          <code style={{ 
-                            background: '#e9ecef', 
-                            padding: '0.2rem 0.4rem', 
-                            borderRadius: '3px', 
-                            fontSize: '0.9em', 
-                            fontFamily: 'monospace' 
-                          }} 
+                          <code style={{
+                            background: '#e9ecef',
+                            padding: '0.2rem 0.4rem',
+                            borderRadius: '3px',
+                            fontSize: '0.9em',
+                            fontFamily: 'monospace'
+                          }}
                             {...props}>{children}</code>
                         ) : (
-                          <pre style={{ 
-                            background: '#2d2d2d', 
-                            color: '#f8f8f2', 
-                            padding: '1rem', 
+                          <pre style={{
+                            background: '#2d2d2d',
+                            color: '#f8f8f2',
+                            padding: '1rem',
                             borderRadius: '4px',
-                             overflow: 'auto', 
-                             fontSize: '0.875rem' 
+                             overflow: 'auto',
+                             fontSize: '0.875rem'
                             }}>
                             <code className={className} {...props}>{children}</code>
                           </pre>
                         );
                       },
-                      p({ children }) { return <p 
-                        style={{ 
-                          margin: '0 0 0.5rem 0', 
-                          fontSize: '1rem', 
+                      p({ children }) { return <p
+                        style={{
+                          margin: '0 0 0.5rem 0',
+                          fontSize: '1rem',
                           lineHeight: '1.5'
                          }}>
                           {children}</p>; }
@@ -852,11 +852,11 @@ export default function CreateQuestion() {
                   onKeyDown={handleTextareaKeyDown}
                   placeholder="Supports Markdown & LaTeX: $E=mc^2$"
                   style={{ ...
-                    styles.input, 
-                    minHeight: '300px', 
-                    padding: '12px', 
-                    fontFamily: 'monospace', 
-                    lineHeight: '1.5' 
+                    styles.input,
+                    minHeight: '300px',
+                    padding: '12px',
+                    fontFamily: 'monospace',
+                    lineHeight: '1.5'
                   }}
                 />
               )}
@@ -869,19 +869,19 @@ export default function CreateQuestion() {
                   {isTrueFalse() ? 'Select the correct answer' : 'Answer Choices (Select the correct one)'}
                 </label>
                 {isTrueFalse() ? (
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    gap: '12px' 
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
                     }}>
                     {['True', 'False'].map((choice) => (
                       <div key={choice} style={styles.choiceRow}>
                         <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice} onChange={() => setCorrectAnswer(choice)} />
-                        <span style={{ 
-                          flex: 1, 
-                          padding: '12px', 
-                          fontSize: '16px', 
-                          color: '#1a202c' 
+                        <span style={{
+                          flex: 1,
+                          padding: '12px',
+                          fontSize: '16px',
+                          color: '#1a202c'
                           }}>{choice}</span>
                       </div>
                     ))}
@@ -893,20 +893,20 @@ export default function CreateQuestion() {
                         <input type="radio" name="correct-choice" style={styles.radio} checked={formData.correct_answer === choice && choice !== ''} onChange={() => setCorrectAnswer(choice)} />
                         <input type="text" value={choice} placeholder={`Option ${index + 1}`} style={styles.input} onChange={(e) => handleAnswerChange(index, e.target.value)} />
                         {formData.answer_choices.length > 2 && (
-                          <button type="button" style={{ 
-                            border: 'none', 
-                            background: 'none', 
-                            color: '#e53e3e', 
-                            cursor: 'pointer' 
+                          <button type="button" style={{
+                            border: 'none',
+                            background: 'none',
+                            color: '#e53e3e',
+                            cursor: 'pointer'
                           }} onClick={() => removeAnswerChoice(index)}>✕</button>
                         )}
                       </div>
                     ))}
                     <button type="button" style={{ ...
                       styles.secondaryBtn,
-                      width: '100%', 
-                      marginTop: '12px', 
-                      borderStyle: 'dashed' 
+                      width: '100%',
+                      marginTop: '12px',
+                      borderStyle: 'dashed'
                       }} onClick={addAnswerChoice}>+ Add Another Option</button>
                   </>
                 )}
@@ -918,25 +918,25 @@ export default function CreateQuestion() {
               <div style={styles.card}>
                 {isFreeResponse() && (
                   <div style={{
-                    padding: '12px 16px', 
+                    padding: '12px 16px',
                     background: '#eff6ff',
-                     border: '1px solid #bfdbfe', 
-                     borderRadius: '8px', 
-                     marginBottom: '20px' 
+                     border: '1px solid #bfdbfe',
+                     borderRadius: '8px',
+                     marginBottom: '20px'
                      }}>
-                    <div style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '600', 
-                      color: '#1e40af', 
-                      marginBottom: '6px' 
+                    <div style={{
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: '#1e40af',
+                      marginBottom: '6px'
                       }}>
                         📋 Parts vs Rubric</div>
-                    <ul style={{ 
-                      margin: 0, 
-                      paddingLeft: '20px', 
-                      fontSize: '13px', 
-                      color: '#1e3a8a', 
-                      lineHeight: 1.6 
+                    <ul style={{
+                      margin: 0,
+                      paddingLeft: '20px',
+                      fontSize: '13px',
+                      color: '#1e3a8a',
+                      lineHeight: 1.6
                       }}>
                       <li><strong>Parts</strong> = Sub-questions.</li>
                       <li><strong>Rubric</strong> = Grading criteria per part.</li>
@@ -944,32 +944,32 @@ export default function CreateQuestion() {
                   </div>
                 )}
 
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  marginBottom: '16px' 
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '16px'
                   }}>
                   <label style={styles.label}>{isFreeResponse() ? 'Question Parts' : 'Grading Rubric'}</label>
-                  <span style={{ 
-                    fontSize: '14px', 
-                    color: '#6b7280' 
+                  <span style={{
+                    fontSize: '14px',
+                    color: '#6b7280'
                     }}>Total: {formData.rubric_parts.reduce((sum, p) => sum + getPartTotalPoints(p), 0)} points</span>
                 </div>
 
                 {formData.rubric_parts.map((part, partIndex) => (
-                  <div key={partIndex} style={{ 
-                    background: '#f8fafc', 
-                    border: '1px solid #e2e8f0', 
-                    borderRadius: '8px', 
-                    padding: '16px', 
-                    marginBottom: '16px' 
+                  <div key={partIndex} style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '16px'
                     }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
-                      marginBottom: '12px' 
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '12px'
                       }}>
                       {isFreeResponse() ? (
                         <input type="text" value={part.part_label} onChange={(e) => updatePartLabel(partIndex, e.target.value)} style={{ ...styles.input, width: '140px', fontWeight: '600', background: 'white' }} placeholder="Part A" />
@@ -977,39 +977,39 @@ export default function CreateQuestion() {
                         <span style={{ fontWeight: '600', color: '#374151' }}>Grading levels</span>
                       )}
                       {isFreeResponse() && formData.rubric_parts.length > 1 && (
-                        <button type="button" style={{ 
-                          border: 'none', 
-                          background: '#fee2e2', 
-                          color: '#dc2626', 
-                          cursor: 'pointer', 
-                          padding: '6px 12px', 
-                          borderRadius: '6px', 
-                          fontSize: '13px' 
+                        <button type="button" style={{
+                          border: 'none',
+                          background: '#fee2e2',
+                          color: '#dc2626',
+                          cursor: 'pointer',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '13px'
                         }} onClick={() => removePart(partIndex)}>Remove Part</button>
                       )}
                     </div>
 
-                    <div style={{ 
-                      marginTop: '12px', 
-                      paddingTop: '12px', 
-                      borderTop: '1px solid #e2e8f0' 
+                    <div style={{
+                      marginTop: '12px',
+                      paddingTop: '12px',
+                      borderTop: '1px solid #e2e8f0'
                       }}>
                       {part.rubric_levels.map((level, levelIndex) => (
-                        <div key={levelIndex} style={{ 
-                          display: 'flex', 
-                          alignItems: 'flex-start', 
-                          gap: '12px', 
-                          marginBottom: '10px', 
-                          background: 'white', 
-                          padding: '10px 12px', 
-                          borderRadius: '6px', 
-                          border: '1px solid #e2e8f0' 
+                        <div key={levelIndex} style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '12px',
+                          marginBottom: '10px',
+                          background: 'white',
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #e2e8f0'
                           }}>
-                          <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '6px', 
-                            flexShrink: 0 
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            flexShrink: 0
                             }}>
                             <span style={{ fontWeight: '600' }}>+</span>
                             <input type="number" value={level.points} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'points', e.target.value)} style={{ ...styles.input, width: '56px', textAlign: 'center' }} min="0" />
@@ -1017,20 +1017,20 @@ export default function CreateQuestion() {
                           </div>
                           <input type="text" value={level.criteria} onChange={(e) => updateRubricLevel(partIndex, levelIndex, 'criteria', e.target.value)} placeholder="Criteria..." style={{ ...styles.input, flex: 1 }} />
                           {part.rubric_levels.length > 1 && (
-                            <button type="button" style={{ 
-                              border: 'none', 
-                              background: 'none', 
-                              color: '#94a3b8', 
+                            <button type="button" style={{
+                              border: 'none',
+                              background: 'none',
+                              color: '#94a3b8',
                               cursor: 'pointer'
                             }} onClick={() => removeRubricLevel(partIndex, levelIndex)}>✕</button>
                           )}
                         </div>
                       ))}
                       <button type="button" style={{ ...
-                        styles.secondaryBtn, 
+                        styles.secondaryBtn,
                         padding: '8px 14px',
-                        fontSize: '13px', 
-                        borderStyle: 'dashed' 
+                        fontSize: '13px',
+                        borderStyle: 'dashed'
                         }} onClick={() => addRubricLevel(partIndex)}>+ Add level</button>
                     </div>
                   </div>
@@ -1039,11 +1039,11 @@ export default function CreateQuestion() {
                 {isFreeResponse() && (
                   <button type="button" style={{ ...
                   styles.secondaryBtn,
-                  width: '100%', 
-                  borderStyle: 'dashed', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
+                  width: '100%',
+                  borderStyle: 'dashed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   gap: '8px'
                   }} onClick={addPart}>
                     <span style={{ fontSize: '18px' }}>+</span> Add Another Part
@@ -1068,30 +1068,30 @@ export default function CreateQuestion() {
           </div>
 
           {/* Sidebar / Split View (Right Column) */}
-          <aside style={{ 
+          <aside style={{
             position: 'sticky',
             top: '20px' }}>
             {viewMode === 'split' ? (
               /* --- SPLIT VIEW PREVIEW --- */
               <div style={styles.card}>
-                <div style={{ 
-                  display: 'flex', 
+                <div style={{
+                  display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'center', 
-                  marginBottom: '16px' 
+                  alignItems: 'center',
+                  marginBottom: '16px'
                   }}>
-                  <h3 style={{ 
-                    margin: 0, 
-                    fontSize: '14px', 
-                    color: '#64748b', 
-                    textTransform: 'uppercase' 
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '14px',
+                    color: '#64748b',
+                    textTransform: 'uppercase'
                     }}>Student View</h3>
                 </div>
-                <div style={{ 
-                  border: '1px solid #edf2f7', 
-                  borderRadius: '8px', 
-                  background: '#f8fafc', 
-                  overflow: 'hidden' 
+                <div style={{
+                  border: '1px solid #edf2f7',
+                  borderRadius: '8px',
+                  background: '#f8fafc',
+                  overflow: 'hidden'
                   }}>
                   <StudentPreview
                     inline={true}

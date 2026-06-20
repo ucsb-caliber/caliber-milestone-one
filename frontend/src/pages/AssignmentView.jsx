@@ -319,7 +319,7 @@ export default function AssignmentView() {
     const hash = window.location.hash;
     const courseMatch = hash.match(/#course\/(\d+)/);
     const assignmentMatch = hash.match(/\/assignment\/(\d+)\/view/);
-    
+
     return {
       courseId: courseMatch ? parseInt(courseMatch[1]) : null,
       assignmentId: assignmentMatch ? parseInt(assignmentMatch[1]) : null
@@ -416,16 +416,16 @@ export default function AssignmentView() {
         result.source.index,
         result.destination.index
       );
-      
+
       setQuestions(reorderedQuestions);
-      
+
       const updatedQuestionIds = getCurrentQuestionIds(reorderedQuestions);
-      
+
       const updatedAssignment = await updateAssignment(assignmentId, {
         ...assignment,
         assignment_questions: updatedQuestionIds
       });
-      
+
       setAssignment(updatedAssignment);
     } catch (err) {
       alert('Failed to reorder questions: ' + (err.message || 'Unknown error'));
@@ -465,7 +465,7 @@ export default function AssignmentView() {
               return { userId, userInfo: null };
             }
           });
-          
+
           const users = await Promise.all(userPromises);
           const userMap = {};
           users.forEach(({ userId, userInfo }) => {
@@ -560,7 +560,7 @@ export default function AssignmentView() {
   // Handle removing a question from the assignment
   const handleRemoveQuestion = async (questionId) => {
     if (!assignment || actionLoading) return;
-    
+
     const confirmed = window.confirm('Are you sure you want to remove this question from the assignment?');
     if (!confirmed) return;
 
@@ -568,13 +568,13 @@ export default function AssignmentView() {
     try {
       // Filter out the question from the assignment
       const updatedQuestionIds = getCurrentQuestionIds().filter(id => id !== Number(questionId));
-      
+
       // Update the assignment
       const updatedAssignment = await updateAssignment(assignmentId, {
         ...assignment,
         assignment_questions: updatedQuestionIds
       });
-      
+
       // Update local state
       setAssignment(updatedAssignment);
       setQuestions(questions.filter(q => q.id !== questionId));
@@ -589,16 +589,16 @@ export default function AssignmentView() {
   // If user owns the question, edit directly. Otherwise, create a copy to preserve original.
   const handleEditQuestion = async (question) => {
     if (actionLoading) return;
-    
+
     // Check if user owns this question (their original or a copy they already made)
     const userOwnsQuestion = question.user_id === user?.id;
-    
+
     if (userOwnsQuestion) {
       // User owns this question - edit directly
       window.location.hash = `edit-question?id=${question.id}&returnTo=${encodeURIComponent(`#course/${courseId}/assignment/${assignmentId}/view`)}`;
       return;
     }
-    
+
     // User doesn't own this question - need to create a copy
     const confirmed = window.confirm(
       'Editing this question will create a new version to preserve the original in the question bank. Continue?'
@@ -637,11 +637,11 @@ export default function AssignmentView() {
         ...assignment,
         assignment_questions: updatedQuestionIds
       });
-      
+
       // Update local state with the new question
       setAssignment(updatedAssignment);
       setQuestions(questions.map(q => q.id === question.id ? newQuestion : q));
-      
+
       // Navigate to edit the newly created question
       // Include return URL so user can come back
       window.location.hash = `edit-question?id=${newQuestion.id}&returnTo=${encodeURIComponent(`#course/${courseId}/assignment/${assignmentId}/view`)}`;
@@ -962,7 +962,7 @@ export default function AssignmentView() {
   if (error) {
     return (
       <div style={styles.container}>
-        <button 
+        <button
           style={styles.backButton}
           onClick={() => window.location.hash = courseId ? `#course/${courseId}` : '#courses'}
           onMouseEnter={(e) => e.currentTarget.style.background = '#e5e7eb'}
@@ -978,7 +978,7 @@ export default function AssignmentView() {
   if (!assignment) {
     return (
       <div style={styles.container}>
-        <button 
+        <button
           style={styles.backButton}
           onClick={() => window.location.hash = courseId ? `#course/${courseId}` : '#courses'}
         >
@@ -997,7 +997,7 @@ export default function AssignmentView() {
   return (
     <div style={styles.container}>
       {/* Back Button */}
-      <button 
+      <button
         style={styles.backButton}
         onClick={() => window.location.hash = courseId ? `#course/${courseId}` : '#courses'}
         onMouseEnter={(e) => e.currentTarget.style.background = '#e5e7eb'}
@@ -1058,7 +1058,7 @@ export default function AssignmentView() {
       {/* Assignment Details */}
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Assignment Details</h2>
-        
+
         <DateTimeline assignment={assignment} />
 
         {assignment.description && (
@@ -1400,12 +1400,12 @@ export default function AssignmentView() {
               setActionLoading(true);
               try {
                 const updatedQuestionIds = getCurrentQuestionIds(newOrder);
-                
+
                 const updatedAssignment = await updateAssignment(assignmentId, {
                   ...assignment,
                   assignment_questions: updatedQuestionIds
                 });
-                
+
                 setAssignment(updatedAssignment);
               } catch (err) {
                 alert('Failed to reorder questions: ' + (err.message || 'Unknown error'));

@@ -9,11 +9,11 @@ import { buildQuestionAnalyticsContext, trackEvent } from '../analytics';
 
 /**
  * StudentPreview - A reusable component to display an assignment as students would see it
- * 
+ *
  * This component can be used for:
  * 1. Instructor preview mode (to see what students will see)
  * 2. Actual student assignment view (when building student-facing features)
- * 
+ *
  * Props:
  * - questions: Array of question objects to display
  * - assignmentTitle: Title of the assignment
@@ -802,8 +802,8 @@ export default function StudentPreview({
       color: '#6b7280'
     }
   };
-  const wrapperStyle = inline 
-    ? { background: '#f3f4f6', height: '100%', overflowY: 'auto' } 
+  const wrapperStyle = inline
+    ? { background: '#f3f4f6', height: '100%', overflowY: 'auto' }
     : styles.overlay;
   const containerStyle = inline
     ? { ...styles.container, maxWidth: '100%', padding: '1rem' }
@@ -872,7 +872,7 @@ export default function StudentPreview({
     (answerChoices.length > 0 && typeof answerChoices[0] === 'string'));
   const isFreeResponse = questionType === 'fr';
   const isShortAnswer = questionType === 'short_answer';
-  const rubricParts = (isFreeResponse || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object' 
+  const rubricParts = (isFreeResponse || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object'
     ? answerChoices : [];
   const selectedAnswer = answers[getQuestionKey(currentQuestion)] ?? answers[currentQuestion.id];
   const isLastQuestion = currentIndex === totalQuestions - 1;
@@ -956,7 +956,7 @@ export default function StudentPreview({
           </div>
         )}
 
-        {/* Header with Progress */} 
+        {/* Header with Progress */}
         {showHeader && (
           <div style={styles.header}>
             <div style={styles.titleRow}>
@@ -969,7 +969,7 @@ export default function StudentPreview({
                 {assignmentType}
               </span>
             </div>
-            
+
             <div style={styles.progressSection}>
               <div style={styles.progressInfo}>
                 <span>Question {currentIndex + 1} of {totalQuestions}</span>
@@ -1020,7 +1020,7 @@ export default function StudentPreview({
         {/* Question Card */}
         <div style={styles.questionCard}>
           {showHeader && <div style={styles.questionNumber}>Question {currentIndex + 1}</div>}
-          
+
           {currentQuestion.title && (
             <div style={styles.questionTitle}>{currentQuestion.title}</div>
           )}
@@ -1261,15 +1261,15 @@ export default function StudentPreview({
                     const isSelected = selectedAnswer === choice;
                     const isCorrect = choice === currentQuestion.correct_answer;
                     const showResult = !isPreviewMode && (submitted || showCorrectAnswers) && isSelected;
-                    
+
                     let buttonStyle = { ...styles.choiceButton };
                     let indicatorStyle = { ...styles.choiceIndicator };
-                    
+
                     if (isSelected) {
                       buttonStyle = { ...buttonStyle, ...styles.choiceButtonSelected };
                       indicatorStyle = { ...indicatorStyle, ...styles.choiceIndicatorSelected };
                     }
-                    
+
                     if (showResult && showCorrectAnswers) {
                       if (isCorrect) {
                         buttonStyle = { ...buttonStyle, ...styles.choiceButtonCorrect };
@@ -1388,9 +1388,9 @@ export default function StudentPreview({
                   const maxPts = levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : (parseInt(part.points) || 0);
                   return (
                     <div key={idx} style={{ marginBottom: '1.5rem' }}>
-                      <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
                         alignItems: 'center',
                         marginBottom: '0.5rem'
                       }}>
@@ -1398,10 +1398,10 @@ export default function StudentPreview({
                           {part.part_label || `Part ${String.fromCharCode(65 + idx)}`}
                         </span>
                         {isPreviewMode && (
-                          <span style={{ 
-                            background: '#e0f2fe', 
-                            color: '#0369a1', 
-                            padding: '4px 10px', 
+                          <span style={{
+                            background: '#e0f2fe',
+                            color: '#0369a1',
+                            padding: '4px 10px',
                             borderRadius: '4px',
                             fontSize: '0.75rem',
                             fontWeight: '600'

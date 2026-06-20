@@ -18,7 +18,7 @@ import GradeAssignmentPage from './pages/GradeAssignmentPage.jsx'
 import LoggedOut from './pages/LoggedOut.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
-import VerifyQuestions from './pages/VerifyQuestions.jsx' 
+import VerifyQuestions from './pages/VerifyQuestions.jsx'
 import Analytics from './pages/Analytics.jsx'
 import { flushAnalytics, trackEvent } from './analytics.js'
 import "./index.css";
@@ -41,7 +41,7 @@ function NavLink({ href, active, children, style = {}, ...props }) {
 // Protected component that requires authentication
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  
+
   if (loading) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
@@ -49,11 +49,11 @@ function ProtectedRoute({ children }) {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Auth />;
   }
-  
+
   return children;
 }
 
@@ -114,7 +114,7 @@ function App() {
         setCheckingProfile(false);
       }
     }
-    
+
     checkProfile();
   }, [user, loading]);
 
@@ -123,7 +123,7 @@ function App() {
     const handlePreferencesUpdate = (event) => {
       setProfilePrefs(event.detail);
     };
-    
+
     window.addEventListener('profilePreferencesUpdated', handlePreferencesUpdate);
     return () => window.removeEventListener('profilePreferencesUpdated', handlePreferencesUpdate);
   }, []);
@@ -262,7 +262,7 @@ function App() {
         top: 0,
         zIndex: 10000,
         isolation: 'isolate'
-        
+
       }}>
         <h1 style={{ margin: 0 }}>
           <a
