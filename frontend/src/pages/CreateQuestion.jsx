@@ -7,6 +7,15 @@ import 'katex/dist/katex.min.css';
 import { createQuestion, uploadImage, getUserInfo } from '../api';
 import { useAuth } from '../AuthContext';
 import StudentPreview from '../components/StudentPreview';
+import StructuredPartsEditor, {
+  defaultCodingPart,
+  defaultMultipartParts,
+  normalizeStructuredParts,
+  partsToLegacyRubric,
+  validateStructuredParts,
+} from '../components/StructuredPartsEditor';
+import RandomizationEditor, { compactRandomization, defaultRandomization, normalizeRandomization } from '../components/RandomizationEditor';
+import { getQuestionQualityChecks, QualityCheckPanel } from '../utils/questionQuality';
 
 export default function CreateQuestion() {
   const { user } = useAuth();
@@ -20,6 +29,10 @@ export default function CreateQuestion() {
     blooms_taxonomy: '',
     keywords: '',
     tags: '',
+    draft_state: 'ready',
+    visibility: 'private',
+    school_scope: '',
+    course_scope: '',
     answer_choices: ['', '', '', ''],
     correct_answer: '',
     is_verified: true,
@@ -32,15 +45,17 @@ export default function CreateQuestion() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [viewMode, setViewMode] = useState('edit');//edit preview and split 
+  const [viewMode, setViewMode] = useState('edit');//edit preview and split
   const [profileSchool, setProfileSchool] = useState('');
+  const [multipartParts, setMultipartParts] = useState(defaultMultipartParts());
+  const [randomization, setRandomization] = useState(defaultRandomization());
 
   // Auto-save to LocalStorage whenever formData changes
   useEffect(() => {
     if (formData.title || formData.text) {
-      localStorage.setItem('question_draft', JSON.stringify(formData));
+      localStorage.setItem('question_draft', JSON.stringify({ ...formData, randomization }));
     }
-  }, [formData]);
+  }, [formData, randomization]);
 
   // Load draft on initial component mount
   useEffect(() => {
@@ -50,6 +65,7 @@ export default function CreateQuestion() {
       const parsedDraft = JSON.parse(savedDraft);
       if (window.confirm('Found an unsaved draft. Would you like to restore it?')) {
         setFormData(parsedDraft);
+        if (parsedDraft.randomization) setRandomization(normalizeRandomization(parsedDraft.randomization));
       } else {
         localStorage.removeItem('question_draft');
       }
@@ -83,7 +99,7 @@ export default function CreateQuestion() {
     if (!resolvedUserSchool) return;
     setFormData((prev) => {
       if ((prev.school || '').trim()) return prev;
-      return { ...prev, school: resolvedUserSchool };
+      return { ...prev, school: resolvedUserSchool, school_scope: prev.school_scope || resolvedUserSchool };
     });
   }, [resolvedUserSchool]);
 
@@ -185,6 +201,12 @@ export default function CreateQuestion() {
       if (name === 'question_type' && value === 'short_answer') {
         const firstPart = next.rubric_parts?.[0] || { part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] };
         next.rubric_parts = [firstPart];
+      }
+      if (name === 'question_type' && value === 'coding') {
+        setMultipartParts([defaultCodingPart()]);
+      }
+      if (name === 'question_type' && value === 'multipart') {
+        setMultipartParts(prevParts => normalizeStructuredParts(prevParts));
       }
       return next;
     });
@@ -294,6 +316,74 @@ export default function CreateQuestion() {
     return levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : 0;
   };
 
+  const choiceIdForIndex = (index) => String.fromCharCode(65 + index);
+
+  const parseJsonArray = (raw) => {
+    try {
+      const parsed = JSON.parse(raw || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const buildQuestionContent = () => {
+    const stem = formData.text;
+    const withRandomization = (content) => {
+      const compact = compactRandomization(randomization);
+      return compact ? { ...content, randomization: compact } : content;
+    };
+    if (formData.question_type === 'multipart') {
+      return withRandomization({
+        schema_version: 1,
+        stem,
+        parts: normalizeStructuredParts(multipartParts)
+      });
+    }
+
+    if (formData.question_type === 'coding') {
+      return withRandomization({
+        schema_version: 1,
+        stem,
+        parts: normalizeStructuredParts(multipartParts.length ? [multipartParts[0]] : [defaultCodingPart()])
+          .map(part => ({ ...part, type: 'coding' }))
+      });
+    }
+
+    if (needsAnswerChoices()) {
+      const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
+      const choices = validAnswers.map((choice, index) => ({ id: choiceIdForIndex(index), text: choice }));
+      const matching = choices.find(choice => choice.text === formData.correct_answer);
+      return withRandomization({
+        schema_version: 1,
+        stem,
+        parts: [{
+          part_id: 'a',
+          label: 'Part A',
+          type: isTrueFalse() ? 'true_false' : 'mcq',
+          choices,
+          correct_answer: matching?.id || formData.correct_answer || choices[0]?.id || 'A',
+          points: 1
+        }]
+      });
+    }
+
+    if (needsRubric()) {
+      return withRandomization({
+        schema_version: 1,
+        stem,
+        parts: formData.rubric_parts.map((part, index) => ({
+          part_id: choiceIdForIndex(index).toLowerCase(),
+          label: part.part_label || `Part ${choiceIdForIndex(index)}`,
+          type: formData.question_type === 'short_answer' ? 'short_answer' : 'free_response',
+          rubric: (part.rubric_levels || []).map(level => ({ points: Number(level.points) || 0, criteria: level.criteria || '' }))
+        }))
+      });
+    }
+
+    return withRandomization({ schema_version: 1, stem, parts: [] });
+  };
+
   // Check if question type needs answer choices
   const needsAnswerChoices = () => {
     return ['mcq', 'true_false'].includes(formData.question_type);
@@ -318,6 +408,8 @@ export default function CreateQuestion() {
   const needsRubric = () => {
     return formData.question_type === 'fr' || formData.question_type === 'short_answer';
   };
+
+  const qualityChecks = getQuestionQualityChecks(buildQuestionContent(), { text: formData.text });
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -412,6 +504,22 @@ export default function CreateQuestion() {
       }
     }
 
+    if (formData.question_type === 'multipart' || formData.question_type === 'coding') {
+      const multipartError = validateStructuredParts(multipartParts);
+      if (multipartError) {
+        setError(multipartError);
+        setLoading(false);
+        return;
+      }
+    }
+
+    const blockingQualityCheck = qualityChecks.find(check => check.severity === 'error');
+    if (blockingQualityCheck) {
+      setError(blockingQualityCheck.message);
+      setLoading(false);
+      return;
+    }
+
     try {
       let imageUrl = null;
 
@@ -430,7 +538,13 @@ export default function CreateQuestion() {
       let answerChoicesData = '[]';
       let correctAnswerData = '';
 
-      if (needsAnswerChoices()) {
+      if (formData.question_type === 'multipart') {
+        answerChoicesData = JSON.stringify(partsToLegacyRubric(multipartParts));
+        correctAnswerData = '';
+      } else if (formData.question_type === 'coding') {
+        answerChoicesData = '[]';
+        correctAnswerData = '';
+      } else if (needsAnswerChoices()) {
         const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
         answerChoicesData = JSON.stringify(validAnswers);
         correctAnswerData = formData.correct_answer;
@@ -443,6 +557,7 @@ export default function CreateQuestion() {
       await createQuestion({
         title: formData.title,
         text: formData.text,
+        content: buildQuestionContent(),
         school: formData.school,
         user_school: resolvedUserSchool || 'Unknown University',
         course: formData.course,
@@ -451,6 +566,10 @@ export default function CreateQuestion() {
         blooms_taxonomy: formData.blooms_taxonomy,
         keywords: formData.keywords,
         tags: formData.tags,
+        visibility: formData.visibility,
+        draft_state: formData.draft_state,
+        school_scope: formData.school_scope || formData.school || resolvedUserSchool || '',
+        course_scope: formData.course_scope,
         answer_choices: answerChoicesData,
         correct_answer: correctAnswerData,
         image_url: imageUrl,
@@ -471,6 +590,10 @@ export default function CreateQuestion() {
         blooms_taxonomy: '',
         keywords: '',
         tags: '',
+        draft_state: 'ready',
+        visibility: 'private',
+        school_scope: resolvedUserSchool || '',
+        course_scope: '',
         answer_choices: ['', '', '', ''],
         correct_answer: '',
         rubric_parts: [{ part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] }],
@@ -478,6 +601,8 @@ export default function CreateQuestion() {
       });
       setImageFile(null);
       setImagePreview(null);
+      setMultipartParts(defaultMultipartParts());
+      setRandomization(defaultRandomization());
 
       // Redirect to question bank
       window.location.hash = 'questions';
@@ -496,6 +621,9 @@ export default function CreateQuestion() {
         marginBottom: '16px'
       }}>Question Metadata</h3>
       <div style={styles.sidebarSection}>
+        <QualityCheckPanel checks={qualityChecks} />
+      </div>
+      <div style={styles.sidebarSection}>
         <label style={styles.label}>School</label>
         <input type="text" name="school" value={formData.school} onChange={handleInputChange} style={styles.input} />
       </div>
@@ -505,12 +633,34 @@ export default function CreateQuestion() {
         <input type="text" name="course_type" value={formData.course_type} placeholder="Type" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
       </div>
       <div style={styles.sidebarSection}>
+        <label style={styles.label}>Sharing</label>
+        <select name="draft_state" value={formData.draft_state} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
+          <option value="ready">Ready</option>
+          <option value="draft">Draft</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select name="visibility" value={formData.visibility} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
+          <option value="private">Private</option>
+          <option value="school">School</option>
+          <option value="course">Course</option>
+          <option value="global">Global</option>
+        </select>
+        {formData.visibility === 'school' && (
+          <input type="text" name="school_scope" value={formData.school_scope} placeholder="School scope" style={styles.input} onChange={handleInputChange} />
+        )}
+        {formData.visibility === 'course' && (
+          <input type="text" name="course_scope" value={formData.course_scope} placeholder="Course ID" style={styles.input} onChange={handleInputChange} />
+        )}
+      </div>
+      <div style={styles.sidebarSection}>
         <label style={styles.label}>Question Type</label>
         <select name="question_type" value={formData.question_type} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
           <option value="mcq">Multiple Choice (MCQ)</option>
           <option value="fr">Free Response (FR)</option>
           <option value="short_answer">Short Answer</option>
           <option value="true_false">True/False</option>
+          <option value="multipart">Multipart</option>
+          <option value="coding">Coding</option>
         </select>
         <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
       </div>
@@ -573,6 +723,9 @@ export default function CreateQuestion() {
 
         {/* Validation Message */}
         {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
+        <div style={{ marginBottom: '16px' }}>
+          <QualityCheckPanel checks={qualityChecks} />
+        </div>
 
         <form onSubmit={handleSubmit} style={{
           display: 'grid',
@@ -899,6 +1052,18 @@ export default function CreateQuestion() {
               </div>
             )}
 
+            {/* Multipart Parts Editor */}
+            {(formData.question_type === 'multipart' || formData.question_type === 'coding') && (
+              <div style={styles.card}>
+                <StructuredPartsEditor
+                  parts={formData.question_type === 'coding' ? normalizeStructuredParts(multipartParts.length ? [multipartParts[0]] : [defaultCodingPart()]).map(part => ({ ...part, type: 'coding' })) : multipartParts}
+                  onChange={setMultipartParts}
+                  styles={styles}
+                />
+              </div>
+            )}
+            <RandomizationEditor value={randomization} onChange={setRandomization} styles={styles} />
+
             {viewMode === 'split' && renderMetadataCard()}
           </div>
 
@@ -940,9 +1105,14 @@ export default function CreateQuestion() {
                       title: formData.title,
                       text: formData.text,
                       question_type: formData.question_type,
+                      content: buildQuestionContent(),
                       answer_choices: (formData.question_type === 'mcq' || formData.question_type === 'true_false')
                         ? JSON.stringify(formData.answer_choices)
-                        : JSON.stringify(formData.rubric_parts),
+                        : formData.question_type === 'multipart'
+                          ? JSON.stringify(partsToLegacyRubric(multipartParts))
+                          : formData.question_type === 'coding'
+                            ? '[]'
+                          : JSON.stringify(formData.rubric_parts),
                       correct_answer: formData.correct_answer
                     }]}
                   />

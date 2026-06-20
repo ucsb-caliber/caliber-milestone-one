@@ -1,5 +1,10 @@
+import base64
+import hashlib
+import hmac
+import json
 import logging
 import os
+import time
 from contextvars import ContextVar
 from collections.abc import Sequence
 from typing import Any, Optional
@@ -30,6 +35,47 @@ TEST_TOKEN_USER_ID = os.getenv("TEST_TOKEN_USER_ID", "test-user-1")
 _oidc_jwks_client = None
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
 _current_user_name: ContextVar[Optional[str]] = ContextVar("current_user_name", default=None)
+_current_impersonator_sub: ContextVar[Optional[str]] = ContextVar("current_impersonator_sub", default=None)
+_current_impersonator_name: ContextVar[Optional[str]] = ContextVar("current_impersonator_name", default=None)
+
+_PLATFORM_IMPERSONATE_COOKIE = "platform_impersonate"
+_PLATFORM_IMPERSONATE_SECRET = os.getenv("PLATFORM_IMPERSONATE_SECRET", "")
+_IS_PRODUCTION = os.getenv("ENV", "").lower() in ("production", "prod")
+if _IS_PRODUCTION and not _PLATFORM_IMPERSONATE_SECRET:
+    raise RuntimeError("PLATFORM_IMPERSONATE_SECRET must be set in production")
+
+
+def _imp_b64url_decode(s: str) -> bytes:
+    pad = 4 - len(s) % 4
+    return base64.urlsafe_b64decode(s + "=" * (pad % 4))
+
+
+def _get_imp_secret() -> str:
+    if _PLATFORM_IMPERSONATE_SECRET:
+        return _PLATFORM_IMPERSONATE_SECRET
+    if _IS_PRODUCTION:
+        raise RuntimeError("PLATFORM_IMPERSONATE_SECRET must be set in production")
+    return "dev-impersonate-secret-change-me"
+
+
+def _imp_sign(encoded: str) -> str:
+    digest = hmac.new(_get_imp_secret().encode("utf-8"), encoded.encode("utf-8"), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def _verify_impersonation_cookie(value: Optional[str]) -> Optional[dict[str, Any]]:
+    if not value:
+        return None
+    try:
+        encoded, sig = value.rsplit(".", 1)
+        if not hmac.compare_digest(sig, _imp_sign(encoded)):
+            return None
+        payload = json.loads(_imp_b64url_decode(encoded).decode("utf-8"))
+        if payload.get("exp", 0) < time.time():
+            return None
+        return payload
+    except Exception:
+        return None
 
 
 def _audience_matches(claims: dict[str, Any], expected: str | None) -> bool:
@@ -164,6 +210,10 @@ async def get_current_user(
         token = request.cookies.get("access_token")
     
     if not token:
+        _current_user_email.set(None)
+        _current_user_name.set(None)
+        _current_impersonator_sub.set(None)
+        _current_impersonator_name.set(None)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated. Please log in via the frontend or provide a Bearer token.",
@@ -174,12 +224,41 @@ async def get_current_user(
     if _is_local_test_token_enabled() and token.strip() == "test-token-1":
         _current_user_email.set(None)
         _current_user_name.set(None)
+        _current_impersonator_sub.set(None)
+        _current_impersonator_name.set(None)
         return TEST_TOKEN_USER_ID
 
     # Verify the token using the common verification function
-    user_id, email, full_name = verify_jwt_token(token)
+    try:
+        user_id, email, full_name = verify_jwt_token(token)
+    except HTTPException:
+        _current_user_email.set(None)
+        _current_user_name.set(None)
+        _current_impersonator_sub.set(None)
+        _current_impersonator_name.set(None)
+        raise
+
+    # Apply platform-wide impersonation overlay (portal sets this cookie)
+    imp = _verify_impersonation_cookie(request.cookies.get(_PLATFORM_IMPERSONATE_COOKIE))
+    if imp and imp.get("impersonator_sub") == user_id:
+        target_sub = imp.get("target_sub")
+        if not target_sub:
+            # Cookie verified but malformed — reject overlay, proceed as normal user
+            _current_user_email.set(email)
+            _current_user_name.set(full_name)
+            _current_impersonator_sub.set(None)
+            _current_impersonator_name.set(None)
+            return user_id
+        _current_impersonator_sub.set(user_id)
+        _current_impersonator_name.set(full_name)
+        _current_user_email.set(None)
+        _current_user_name.set(imp.get("target_name"))
+        return str(target_sub)
+
     _current_user_email.set(email)
     _current_user_name.set(full_name)
+    _current_impersonator_sub.set(None)
+    _current_impersonator_name.set(None)
     return user_id
 
 
@@ -190,33 +269,54 @@ async def get_optional_user(
     """
     Optional authentication - returns user ID if authenticated, None otherwise.
     Useful for endpoints that work differently for authenticated vs anonymous users.
-    
+
     Checks both Bearer token and cookie authentication, same as get_current_user.
     """
     token = None
-    
-    # Try to get token from Authorization header first
+
     if credentials:
         token = credentials.credentials
-    
-    # If not in header, try to get from cookie
+
     if not token:
         token = request.cookies.get("access_token")
-    
+
     if not token:
+        # MED-4: reset all ContextVars on every early-return path to prevent stale state leaking
+        _current_user_email.set(None)
+        _current_user_name.set(None)
+        _current_impersonator_sub.set(None)
+        _current_impersonator_name.set(None)
         return None
 
     if _is_local_test_token_enabled() and token.strip() == "test-token-1":
         _current_user_email.set(None)
         _current_user_name.set(None)
+        _current_impersonator_sub.set(None)
+        _current_impersonator_name.set(None)
         return TEST_TOKEN_USER_ID
-    
+
     try:
         user_id, email, full_name = verify_jwt_token(token)
+        imp = _verify_impersonation_cookie(request.cookies.get(_PLATFORM_IMPERSONATE_COOKIE))
+        if imp and imp.get("impersonator_sub") == user_id:
+            target_sub = imp.get("target_sub")
+            if target_sub:
+                _current_impersonator_sub.set(user_id)
+                _current_impersonator_name.set(full_name)
+                _current_user_email.set(None)
+                _current_user_name.set(imp.get("target_name"))
+                return str(target_sub)
         _current_user_email.set(email)
         _current_user_name.set(full_name)
+        _current_impersonator_sub.set(None)
+        _current_impersonator_name.set(None)
         return user_id
     except Exception:
+        # MED-4: reset on exception path too
+        _current_user_email.set(None)
+        _current_user_name.set(None)
+        _current_impersonator_sub.set(None)
+        _current_impersonator_name.set(None)
         return None
 
 
@@ -226,3 +326,11 @@ def get_current_user_email() -> Optional[str]:
 
 def get_current_user_name() -> Optional[str]:
     return _current_user_name.get()
+
+
+def get_impersonator_sub() -> Optional[str]:
+    return _current_impersonator_sub.get()
+
+
+def get_impersonator_name() -> Optional[str]:
+    return _current_impersonator_name.get()

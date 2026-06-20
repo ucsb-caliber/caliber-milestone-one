@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
 import { useAuth } from '../AuthContext';
 import { formatPacificDateTime, parseScheduleDate } from '../utils/datetime';
+import { getAssignmentQuestionCount } from '../utils/assignmentQuestions';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -506,7 +507,7 @@ export default function CourseDashboard() {
                             <span><strong>Release:</strong> {formatAssignmentDate(item.assignment.release_date)}</span>
                             <span><strong>Due Date:</strong> {formatDateObject(item.softDueDate || item.dueDate)}</span>
                             <span><strong>Late Due Date:</strong> {formatDateObject(item.hardDueDate)}</span>
-                            <span><strong>Questions:</strong> {item.assignment.assignment_questions?.length || 0}</span>
+                            <span><strong>Questions:</strong> {getAssignmentQuestionCount(item.assignment)}</span>
                           </div>
                         </div>
                         {isInstructor && (

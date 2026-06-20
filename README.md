@@ -88,6 +88,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 - `docs/FEATURES_AND_API.md` for current feature scope, routes, and endpoint map
 - `docs/SETUP_OPERATIONS_AND_TESTING.md` for setup, migrations, storage policy setup, and smoke testing
+- `docs/QUESTION_SYSTEM_MASTER_PLAN.md` for the planned question model, multi-part support, stable IDs, sharing rules, and GitHub-folder import/export workflow
 
 ## Quick Start
 

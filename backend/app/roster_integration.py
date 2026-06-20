@@ -18,7 +18,13 @@ def roster_management_enabled() -> bool:
     return ROSTER_MANAGEMENT_ENABLED and bool(ROSTER_BASE_URL)
 
 
-def _build_headers(user_id: str, user_email: Optional[str], user_name: Optional[str]) -> dict[str, str]:
+def _build_headers(
+    user_id: str,
+    user_email: Optional[str],
+    user_name: Optional[str],
+    impersonator_sub: Optional[str] = None,
+    impersonator_name: Optional[str] = None,
+) -> dict[str, str]:
     headers: dict[str, str] = {"Accept": "application/json"}
     if ROSTER_INTERNAL_SECRET:
         headers["X-Internal-Secret"] = ROSTER_INTERNAL_SECRET
@@ -27,6 +33,10 @@ def _build_headers(user_id: str, user_email: Optional[str], user_name: Optional[
             headers["X-Internal-User-Email"] = user_email
         if user_name:
             headers["X-Internal-User-Name"] = user_name
+        if impersonator_sub:
+            headers["X-Internal-Impersonator-Sub"] = impersonator_sub
+        if impersonator_name:
+            headers["X-Internal-Impersonator-Name"] = impersonator_name
     return headers
 
 
@@ -55,6 +65,8 @@ def call_roster(
     user_id: str,
     user_email: Optional[str] = None,
     user_name: Optional[str] = None,
+    impersonator_sub: Optional[str] = None,
+    impersonator_name: Optional[str] = None,
     params: Optional[dict[str, Any]] = None,
     json_body: Optional[dict[str, Any]] = None,
 ) -> Any:
@@ -70,7 +82,13 @@ def call_roster(
         )
 
     url = f"{ROSTER_BASE_URL}{path}"
-    headers = _build_headers(user_id=user_id, user_email=user_email, user_name=user_name)
+    headers = _build_headers(
+        user_id=user_id,
+        user_email=user_email,
+        user_name=user_name,
+        impersonator_sub=impersonator_sub,
+        impersonator_name=impersonator_name,
+    )
     try:
         response = requests.request(
             method=method.upper(),

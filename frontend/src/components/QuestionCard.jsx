@@ -9,6 +9,81 @@ import 'katex/dist/katex.min.css';
 const KEYWORD_COLORS = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec'];
 const TAG_COLORS = ['#ffebee', '#e8eaf6', '#f1f8e9', '#fff8e1', '#fbe9e7'];
 
+const getQID = (question) => {
+  return String(question.qid || question.assigned_qid || `Q${question.id}`);
+};
+
+const getVersion = (question) => {
+  return question.assigned_version || question.version || 1;
+};
+
+const formatDraftState = (question) => {
+  if (question.is_assignment_snapshot) return 'snapshot';
+  return question.draft_state || (question.is_verified === false ? 'draft' : 'ready');
+};
+
+const formatVisibility = (question) => {
+  if (question.is_assignment_snapshot) return 'snapshot';
+  return question.visibility || 'private';
+};
+
+const formatOrigin = (question) => {
+  if (question.is_assignment_snapshot) return 'assignment';
+  return question.origin || 'manual';
+};
+
+const getSourceParts = (question) => {
+  return [
+    question.source_repo,
+    question.source_path,
+    question.source_commit
+  ].filter(Boolean);
+};
+
+const formatSourceLabel = (question) => {
+  const sourceParts = getSourceParts(question);
+  if (sourceParts.length === 0) return '';
+  const [repo, path, commit] = sourceParts;
+  const shortCommit = commit ? String(commit).slice(0, 8) : '';
+  return [repo, path, shortCommit].filter(Boolean).join(' / ');
+};
+
+const ProvenanceChip = ({ label, value, title, monospace = false }) => {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <span
+      title={title}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        maxWidth: '100%',
+        background: '#f3f4f6',
+        color: '#374151',
+        border: '1px solid #e5e7eb',
+        borderRadius: '4px',
+        padding: '0.16rem 0.4rem',
+        fontSize: '0.7rem',
+        fontWeight: '600',
+        lineHeight: 1.3,
+        whiteSpace: 'nowrap'
+      }}
+    >
+      <span style={{ color: '#6b7280', fontWeight: '700', textTransform: 'uppercase', fontSize: '0.62rem' }}>
+        {label}
+      </span>
+      <span style={{
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        fontFamily: monospace ? 'monospace' : 'inherit',
+        textTransform: monospace ? 'none' : 'capitalize'
+      }}>
+        {value}
+      </span>
+    </span>
+  );
+};
+
 // User Icon Component
 const UserIcon = ({ userInfo, size = 40 }) => {
   if (!userInfo) return null;
@@ -144,6 +219,8 @@ export default function QuestionCard({
 
   const keywords = question.keywords ? question.keywords.split(',').map(k => k.trim()).filter(k => k) : [];
   const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+  const sourceLabel = formatSourceLabel(question);
+  const sourceTitle = getSourceParts(question).join('\n');
 
   const handleEdit = (e) => {
     if (e) e.stopPropagation();
@@ -291,6 +368,23 @@ export default function QuestionCard({
             }}>
               Bloom's: {question.blooms_taxonomy}
             </span>
+          )}
+        </div>
+
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.35rem',
+          marginBottom: question.title ? '0.65rem' : '0.5rem',
+          alignItems: 'center'
+        }}>
+          <ProvenanceChip label="QID" value={getQID(question)} title="Question ID" monospace />
+          <ProvenanceChip label="Ver" value={`v${getVersion(question)}`} title="Version" monospace />
+          <ProvenanceChip label="State" value={formatDraftState(question).replace('_', ' ')} title="Draft state" />
+          <ProvenanceChip label="Vis" value={formatVisibility(question).replace('_', ' ')} title="Visibility" />
+          <ProvenanceChip label="Origin" value={formatOrigin(question).replace('_', ' ')} title="Origin" />
+          {sourceLabel && (
+            <ProvenanceChip label="Source" value={sourceLabel} title={sourceTitle} monospace />
           )}
         </div>
 

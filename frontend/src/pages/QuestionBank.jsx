@@ -4,7 +4,17 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { getQuestions, getAllQuestions, deleteQuestion, getImageSignedUrl, getUserById, getUserInfo } from '../api';
+import {
+  getQuestions,
+  getAllQuestions,
+  deleteQuestion,
+  getImageSignedUrl,
+  getUserById,
+  getUserInfo,
+  dryRunQuestionImport,
+  importQuestionFolder,
+  exportQuestionFolder,
+} from '../api';
 import { useAuth } from '../AuthContext';
 import QuestionCard from '../components/QuestionCard';
 import CollapsibleSection from '../components/CollapsibleSection';
@@ -97,13 +107,27 @@ export default function QuestionBank() {
   const [isTeacher, setIsTeacher] = useState(false); // Track if current user is a teacher
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all'); // 'all', 'keywords', 'tags', 'course', 'text'
+  const [visibilityFilter, setVisibilityFilter] = useState('all');
   const [studentViewQuestion, setStudentViewQuestion] = useState(null);
+  const [importFile, setImportFile] = useState(null);
+  const [importConflictMode, setImportConflictMode] = useState('create_only');
+  const [importSourceRepo, setImportSourceRepo] = useState('');
+  const [importSourceCommit, setImportSourceCommit] = useState('');
+  const [importSummary, setImportSummary] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
 
   const itemsPerPage = 6;
 
   // Filtered questions
   const filteredMyQuestions = filterQuestionsBySearch(myQuestions, searchQuery, searchFilter);
-  const filteredAllQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
+  const filteredAllQuestions = filterQuestionsBySearch(
+    visibilityFilter === 'all' ? allQuestions : allQuestions.filter(q => (q.visibility || 'private') === visibilityFilter),
+    searchQuery,
+    searchFilter
+  );
+  const visibleQuestions = [...filteredMyQuestions, ...filteredAllQuestions];
+  const selectedQuestions = [...myQuestions, ...allQuestions].filter(question => selectedQuestionIds.includes(question.id));
 
   // Fetch current user info to check if they are a teacher
   useEffect(() => {
@@ -135,12 +159,15 @@ export default function QuestionBank() {
         .filter(q => q.is_verified === true)
         .sort(sortByNewest);
 
+      const currentUserId = user?.id || user?.user_id;
       const verifiedAllQuestions = (allData.questions || [])
         .filter(q => q.is_verified === true)
+        .filter(q => !currentUserId || (q.user_id !== currentUserId && q.owner_user_id !== currentUserId))
         .sort(sortByNewest);
 
       setMyQuestions(verifiedMyQuestions);
       setAllQuestions(verifiedAllQuestions);
+      setSelectedQuestionIds(prev => prev.filter(id => [...verifiedMyQuestions, ...verifiedAllQuestions].some(q => q.id === id)));
 
       // Generate signed URLs for all questions with images
       const allQuestionsWithImages = [...verifiedMyQuestions, ...verifiedAllQuestions].filter(q => q.image_url);
@@ -199,6 +226,77 @@ export default function QuestionBank() {
     }
   };
 
+  const handleDryRunImport = async () => {
+    if (!importFile) {
+      setError('Choose a Caliber question zip first.');
+      return;
+    }
+    setImportLoading(true);
+    setError('');
+    try {
+      const summary = await dryRunQuestionImport(importFile, { conflict_mode: importConflictMode });
+      setImportSummary(summary);
+    } catch (err) {
+      setError(err.message || 'Failed to validate question import');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleApplyImport = async () => {
+    if (!importFile) {
+      setError('Choose a Caliber question zip first.');
+      return;
+    }
+    setImportLoading(true);
+    setError('');
+    try {
+      const summary = await importQuestionFolder(importFile, {
+        conflict_mode: importConflictMode,
+        source_repo: importSourceRepo.trim(),
+        source_commit: importSourceCommit.trim(),
+      });
+      setImportSummary(summary);
+      await loadQuestions();
+    } catch (err) {
+      setError(err.message || 'Failed to import questions');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleExportMine = async () => {
+    await handleExportQuestions(myQuestions, 'caliber-my-questions.zip');
+  };
+
+  const handleExportQuestions = async (questions, filename) => {
+    setImportLoading(true);
+    setError('');
+    try {
+      const blob = await exportQuestionFolder({ qids: questions.map(q => q.qid).filter(Boolean) });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message || 'Failed to export questions');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const toggleQuestionSelection = (questionId) => {
+    setSelectedQuestionIds(prev => (
+      prev.includes(questionId)
+        ? prev.filter(id => id !== questionId)
+        : [...prev, questionId]
+    ));
+  };
+
   // Wrapper function to render table view using QuestionTable component
   const renderTableView = (questions) => {
     return (
@@ -209,6 +307,9 @@ export default function QuestionBank() {
         showEditButton={isTeacher}
         showUniversity={true}
         onDelete={(id) => setDeleteConfirm(id)}
+        selectable={isTeacher}
+        selectedQuestionIds={selectedQuestionIds}
+        onToggleQuestion={toggleQuestionSelection}
       />
     );
   };
@@ -396,6 +497,184 @@ export default function QuestionBank() {
         resultCount={filteredMyQuestions.length + filteredAllQuestions.length}
         containerStyle={{ marginBottom: '1.7rem' }}
       />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Shared bank</span>
+        <select
+          value={visibilityFilter}
+          onChange={(event) => setVisibilityFilter(event.target.value)}
+          style={{
+            padding: '0.45rem 0.65rem',
+            border: '1px solid #cbd5e1',
+            borderRadius: '8px',
+            background: '#fff',
+            color: '#0f172a',
+            fontSize: '0.85rem'
+          }}
+        >
+          <option value="all">All shared</option>
+          <option value="course">Course</option>
+          <option value="school">School</option>
+          <option value="global">Global</option>
+        </select>
+      </div>
+
+      {isTeacher && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(220px, 1fr) 150px minmax(170px, 0.7fr) minmax(130px, 0.5fr) auto auto',
+          gap: '0.75rem',
+          alignItems: 'center',
+          padding: '0.9rem',
+          border: '1px solid #dbe5f1',
+          borderRadius: '8px',
+          background: '#ffffff',
+          marginBottom: '1.2rem',
+          boxShadow: '0 1px 2px rgba(15,23,42,0.05)'
+        }}>
+          <input
+            type="file"
+            accept=".zip,application/zip"
+            onChange={(event) => {
+              setImportFile(event.target.files?.[0] || null);
+              setImportSummary(null);
+            }}
+            style={{ fontSize: '0.85rem', color: '#334155' }}
+          />
+          <select
+            value={importConflictMode}
+            onChange={(event) => setImportConflictMode(event.target.value)}
+            style={{
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#fff',
+              fontSize: '0.85rem',
+              color: '#0f172a'
+            }}
+          >
+            <option value="create_only">Create only</option>
+            <option value="update_draft">Update drafts</option>
+            <option value="new_version">New version</option>
+          </select>
+          <input
+            type="text"
+            value={importSourceRepo}
+            onChange={(event) => setImportSourceRepo(event.target.value)}
+            placeholder="Repo URL or path"
+            style={{
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#fff',
+              fontSize: '0.85rem',
+              color: '#0f172a'
+            }}
+          />
+          <input
+            type="text"
+            value={importSourceCommit}
+            onChange={(event) => setImportSourceCommit(event.target.value)}
+            placeholder="Commit SHA"
+            style={{
+              padding: '0.5rem 0.65rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#fff',
+              fontSize: '0.85rem',
+              color: '#0f172a'
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleDryRunImport}
+            disabled={importLoading}
+            style={{
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              background: '#eff6ff',
+              color: '#1d4ed8',
+              cursor: importLoading ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Validate Zip
+          </button>
+          <button
+            type="button"
+            onClick={handleApplyImport}
+            disabled={importLoading}
+            style={{
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #bbf7d0',
+              borderRadius: '8px',
+              background: '#f0fdf4',
+              color: '#166534',
+              cursor: importLoading ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Import
+          </button>
+          <button
+            type="button"
+            onClick={handleExportMine}
+            disabled={importLoading || myQuestions.length === 0}
+            style={{
+              justifySelf: 'start',
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#f8fafc',
+              color: myQuestions.length === 0 ? '#94a3b8' : '#0f172a',
+              cursor: importLoading || myQuestions.length === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Export My Questions
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExportQuestions(visibleQuestions, 'caliber-visible-questions.zip')}
+            disabled={importLoading || visibleQuestions.length === 0}
+            style={{
+              justifySelf: 'start',
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#f8fafc',
+              color: visibleQuestions.length === 0 ? '#94a3b8' : '#0f172a',
+              cursor: importLoading || visibleQuestions.length === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Export Visible
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExportQuestions(selectedQuestions, 'caliber-selected-questions.zip')}
+            disabled={importLoading || selectedQuestions.length === 0}
+            style={{
+              justifySelf: 'start',
+              padding: '0.55rem 0.8rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#f8fafc',
+              color: selectedQuestions.length === 0 ? '#94a3b8' : '#0f172a',
+              cursor: importLoading || selectedQuestions.length === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 700
+            }}
+          >
+            Export Selected ({selectedQuestions.length})
+          </button>
+          {importSummary && (
+            <div style={{ gridColumn: '1 / -1', color: '#334155', fontSize: '0.85rem' }}>
+              {importSummary.dry_run ? 'Validation' : 'Import'}: {importSummary.created_count} create, {importSummary.updated_count} update, {importSummary.skipped_count} skip, {importSummary.error_count} error
+            </div>
+          )}
+        </div>
+      )}
 
       {loading && <p style={{ color: '#64748b', fontWeight: 600 }}>Loading questions...</p>}
 

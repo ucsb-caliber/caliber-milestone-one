@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { getImageSignedUrl } from '../api';
+import { getImageSignedUrl, getQuestionsBatch } from '../api';
+import { buildQuestionAnalyticsContext, trackEvent } from '../analytics';
 
 /**
  * StudentPreview - A reusable component to display an assignment as students would see it
@@ -23,6 +24,8 @@ import { getImageSignedUrl } from '../api';
  */
 export default function StudentPreview({
   questions = [],
+  courseId = null,
+  assignmentId = null,
   assignmentTitle = 'Assignment',
   assignmentType = 'Assignment',
   onClose,
@@ -44,13 +47,21 @@ export default function StudentPreview({
   onSubmit,
   isSubmitting = false,
   submitButtonText = 'Submit Assignment',
-  showPrevNextButtons = true
+  showPrevNextButtons = true,
+  onIntegrityEventBatch = null
 }) {
   const [currentIndex, setCurrentIndex] = useState(Number.isInteger(initialQuestionIndex) ? initialQuestionIndex : 0);
   const [answers, setAnswers] = useState(initialAnswers || {});
   const [submitted, setSubmitted] = useState(Boolean(initialSubmitted));
   const [imageUrls, setImageUrls] = useState({});
+  const [subQuestionsCache, setSubQuestionsCache] = useState({});
+  const [subQuestionsLoading, setSubQuestionsLoading] = useState({});
   const isReadOnly = submitted || forceReadOnly;
+  const integrityBufferRef = useRef([]);
+  const lastInputRef = useRef({});
+  const recentPasteRef = useRef({});
+  const telemetryEnabledRef = useRef(false);
+  const questionViewedAtRef = useRef(Date.now());
   const isSubmitAction = !isPreviewMode && !isReadOnly && typeof onSubmit === 'function';
   const primaryButtonText = isSubmitAction
     ? (isSubmitting
@@ -93,6 +104,141 @@ export default function StudentPreview({
   }, [questions]);
 
   const currentQuestion = questions[currentIndex];
+  telemetryEnabledRef.current = !isPreviewMode && !isReadOnly && typeof onIntegrityEventBatch === 'function';
+
+  const getTelemetryContext = (question, partId = null) => ({
+    question_key: question ? String(getQuestionKey(question) || question.id || '') : null,
+    part_id: partId == null ? null : String(partId),
+  });
+
+  const telemetryFieldKey = (question, partId = null) => {
+    const context = getTelemetryContext(question, partId);
+    return `${context.question_key || 'unknown'}:${context.part_id || 'main'}`;
+  };
+
+  const flushIntegrityEvents = useCallback(() => {
+    if (!telemetryEnabledRef.current || typeof onIntegrityEventBatch !== 'function') return;
+    const events = integrityBufferRef.current.splice(0, integrityBufferRef.current.length);
+    if (!events.length) return;
+    void Promise.resolve(onIntegrityEventBatch(events)).catch((err) => {
+      console.error('Integrity event flush failed:', err);
+      integrityBufferRef.current = [...events, ...integrityBufferRef.current].slice(0, 100);
+    });
+  }, [onIntegrityEventBatch]);
+
+  const queueIntegrityEvent = useCallback((eventType, context = {}, metadata = {}) => {
+    if (!telemetryEnabledRef.current) return;
+    integrityBufferRef.current.push({
+      event_type: eventType,
+      question_key: context.question_key || null,
+      part_id: context.part_id || null,
+      metadata: {
+        ...metadata,
+      },
+      client_created_at: new Date().toISOString(),
+    });
+    if (integrityBufferRef.current.length >= 20) {
+      flushIntegrityEvents();
+    }
+  }, [flushIntegrityEvents]);
+
+  useEffect(() => {
+    if (!telemetryEnabledRef.current) return undefined;
+    const timer = window.setInterval(flushIntegrityEvents, 10000);
+    const handleVisibilityChange = () => {
+      queueIntegrityEvent(document.hidden ? 'visibility_hidden' : 'visibility_visible');
+      if (document.hidden) flushIntegrityEvents();
+    };
+    const handleBlur = () => queueIntegrityEvent('blur');
+    const handleFocus = () => queueIntegrityEvent('focus');
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+      flushIntegrityEvents();
+    };
+  }, [flushIntegrityEvents, queueIntegrityEvent]);
+
+  const recordTextInput = (question, partId, previousValue, nextValue) => {
+    if (!telemetryEnabledRef.current) return;
+    const fieldKey = telemetryFieldKey(question, partId);
+    const now = Date.now();
+    const previousText = String(previousValue ?? '');
+    const nextText = String(nextValue ?? '');
+    const deltaChars = nextText.length - previousText.length;
+    const lastInput = lastInputRef.current[fieldKey];
+    const timeSinceLastInputMs = lastInput ? now - lastInput.at : null;
+    const recentPaste = recentPasteRef.current[fieldKey];
+    const hasRecentPaste = Boolean(recentPaste && now - recentPaste.at < 700);
+    const charsPerSecond = timeSinceLastInputMs && timeSinceLastInputMs > 0
+      ? Math.abs(deltaChars) / (timeSinceLastInputMs / 1000)
+      : 0;
+
+    if (!hasRecentPaste && Math.abs(deltaChars) > 300) {
+      queueIntegrityEvent('large_delta', getTelemetryContext(question, partId), {
+        delta_chars: Math.abs(deltaChars),
+        answer_length_before: previousText.length,
+        answer_length_after: nextText.length,
+        time_since_last_input_ms: timeSinceLastInputMs,
+      });
+    }
+    if (!hasRecentPaste && deltaChars > 20 && charsPerSecond > 25) {
+      queueIntegrityEvent('rapid_input', getTelemetryContext(question, partId), {
+        delta_chars: deltaChars,
+        chars_per_second: Math.round(charsPerSecond * 10) / 10,
+        time_since_last_input_ms: timeSinceLastInputMs,
+      });
+    }
+    lastInputRef.current[fieldKey] = { at: now, length: nextText.length };
+  };
+
+  const textTelemetryProps = (question, partId, currentValue) => ({
+    onPaste: (event) => {
+      if (!telemetryEnabledRef.current) return;
+      const pastedText = event.clipboardData?.getData('text') || '';
+      const fieldKey = telemetryFieldKey(question, partId);
+      recentPasteRef.current[fieldKey] = { at: Date.now(), length: pastedText.length };
+      queueIntegrityEvent('paste', getTelemetryContext(question, partId), {
+        paste_length: pastedText.length,
+        answer_length_before: String(currentValue ?? '').length,
+      });
+    },
+    onCopy: () => {
+      queueIntegrityEvent('copy', getTelemetryContext(question, partId), {
+        selection_length: Number(window.getSelection?.()?.toString?.().length || 0),
+      });
+    },
+    onCut: () => {
+      queueIntegrityEvent('cut', getTelemetryContext(question, partId), {
+        selection_length: Number(window.getSelection?.()?.toString?.().length || 0),
+      });
+    },
+  });
+
+  // Fetch sub-questions for multipart questions
+  useEffect(() => {
+    if (!currentQuestion) return;
+    const qtype = (currentQuestion.question_type || '').toLowerCase();
+    if (qtype !== 'multipart') return;
+    if (subQuestionsCache[currentQuestion.id] !== undefined) return;
+    const ids = (() => {
+      try { return JSON.parse(currentQuestion.answer_choices || '[]'); } catch { return []; }
+    })().filter(id => typeof id === 'number');
+    if (!ids.length) {
+      setSubQuestionsCache(prev => ({ ...prev, [currentQuestion.id]: [] }));
+      return;
+    }
+    setSubQuestionsLoading(prev => ({ ...prev, [currentQuestion.id]: true }));
+    getQuestionsBatch(ids)
+      .then(data => setSubQuestionsCache(prev => ({ ...prev, [currentQuestion.id]: data.questions || [] })))
+      .catch(() => setSubQuestionsCache(prev => ({ ...prev, [currentQuestion.id]: [] })))
+      .finally(() => setSubQuestionsLoading(prev => ({ ...prev, [currentQuestion.id]: false })));
+  }, [currentQuestion?.id, currentQuestion?.question_type]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const totalQuestions = questions.length;
   const progress = totalQuestions > 0 ? ((currentIndex + 1) / totalQuestions) * 100 : 0;
 
@@ -105,8 +251,62 @@ export default function StudentPreview({
     }
   };
 
+  const getQuestionContent = (question) => {
+    if (!question?.content) return null;
+    try {
+      const parsed = typeof question.content === 'string' ? JSON.parse(question.content) : question.content;
+      if (parsed && Array.isArray(parsed.parts)) return parsed;
+    } catch (e) {
+      return null;
+    }
+    return null;
+  };
+
+  const getQuestionKey = (question) => question?.qid || question?.id;
+
+  const analyticsContextForQuestion = (question, metadata = {}) => buildQuestionAnalyticsContext(question, {
+    course_id: courseId,
+    assignment_id: assignmentId,
+    metadata: {
+      question_index: currentIndex,
+      question_count: totalQuestions,
+      ...metadata,
+    },
+  });
+
+  const leaveQuestionForAnalytics = (question, reason = 'navigation') => {
+    if (!question || isPreviewMode) return;
+    const now = Date.now();
+    const durationMs = Math.max(0, now - questionViewedAtRef.current);
+    trackEvent('question_left', analyticsContextForQuestion(question, {
+      duration_ms: durationMs,
+      active_seconds: Math.round(durationMs / 1000),
+      action: reason,
+    }));
+  };
+
+  useEffect(() => {
+    if (!currentQuestion || isPreviewMode) return undefined;
+    questionViewedAtRef.current = Date.now();
+    trackEvent('question_viewed', analyticsContextForQuestion(currentQuestion));
+    return () => {
+      leaveQuestionForAnalytics(currentQuestion, 'unmount');
+    };
+  }, [currentQuestion?.id, currentQuestion?.qid, isPreviewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleAnswerSelect = (questionId, answer) => {
     if (isReadOnly) return;
+    const question = questions.find((q) => q.id === questionId) || currentQuestion;
+    const choices = (() => {
+      try { return JSON.parse(question?.answer_choices || '[]'); } catch { return []; }
+    })();
+    trackEvent('question_choice_selected', analyticsContextForQuestion(question, {
+      choice_index: choices.findIndex((choice) => String(choice) === String(answer)),
+      answer_length: String(answer || '').length,
+    }));
+    trackEvent('question_answer_changed', analyticsContextForQuestion(question, {
+      answer_length: String(answer || '').length,
+    }));
     setAnswers(prev => {
       const next = {
         ...prev,
@@ -117,8 +317,90 @@ export default function StudentPreview({
     });
   };
 
+  const handlePartAnswer = (question, partId, answer) => {
+    if (isReadOnly) return;
+    trackEvent('question_part_answer_changed', buildQuestionAnalyticsContext(question, {
+      course_id: courseId,
+      assignment_id: assignmentId,
+      part_id: partId,
+      metadata: {
+        question_index: currentIndex,
+        question_count: totalQuestions,
+        part_type: typeof answer,
+        answer_length: typeof answer === 'string' ? answer.length : 0,
+      },
+    }));
+    const questionKey = getQuestionKey(question);
+    setAnswers(prev => {
+      const existing = (typeof prev[questionKey] === 'object' && prev[questionKey] !== null) ? prev[questionKey] : {};
+      const next = {
+        ...prev,
+        [questionKey]: {
+          ...existing,
+          [partId]: answer
+        }
+      };
+      if (onAnswersChange) onAnswersChange(next);
+      return next;
+    });
+  };
+
+  const handleCodingAnswer = (question, partId, patch) => {
+    if (isReadOnly) return;
+    if (Object.prototype.hasOwnProperty.call(patch, 'language')) {
+      trackEvent('question_code_language_changed', buildQuestionAnalyticsContext(question, {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        part_id: partId,
+        metadata: {
+          question_index: currentIndex,
+          question_count: totalQuestions,
+          language: patch.language,
+        },
+      }));
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'code')) {
+      trackEvent('question_code_changed', buildQuestionAnalyticsContext(question, {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        part_id: partId,
+        metadata: {
+          question_index: currentIndex,
+          question_count: totalQuestions,
+          code_length: String(patch.code || '').length,
+          language: patch.language,
+        },
+      }));
+    }
+    const questionKey = getQuestionKey(question);
+    setAnswers(prev => {
+      const existingQuestion = (typeof prev[questionKey] === 'object' && prev[questionKey] !== null) ? prev[questionKey] : {};
+      const existingPart = (typeof existingQuestion[partId] === 'object' && existingQuestion[partId] !== null) ? existingQuestion[partId] : {};
+      const next = {
+        ...prev,
+        [questionKey]: {
+          ...existingQuestion,
+          [partId]: {
+            ...existingPart,
+            ...patch
+          }
+        }
+      };
+      if (onAnswersChange) onAnswersChange(next);
+      return next;
+    });
+  };
+
   const handleTextAnswer = (questionId, text) => {
     if (isReadOnly) return;
+    const question = questions.find((q) => q.id === questionId) || currentQuestion;
+    const answerLength = typeof text === 'string' ? text.length : JSON.stringify(text || {}).length;
+    trackEvent('question_text_changed', analyticsContextForQuestion(question, {
+      answer_length: answerLength,
+    }));
+    trackEvent('question_answer_changed', analyticsContextForQuestion(question, {
+      answer_length: answerLength,
+    }));
     setAnswers(prev => {
       const next = {
         ...prev,
@@ -132,6 +414,14 @@ export default function StudentPreview({
   const handlePrevious = () => {
     if (currentIndex > 0) {
       const nextIndex = currentIndex - 1;
+      queueIntegrityEvent('navigation_jump', getTelemetryContext(currentQuestion), {
+        from_question_index: currentIndex,
+        to_question_index: nextIndex,
+      });
+      trackEvent('question_nav_previous', analyticsContextForQuestion(currentQuestion, {
+        from_index: currentIndex,
+        to_index: nextIndex,
+      }));
       setCurrentIndex(nextIndex);
       if (onQuestionChange) onQuestionChange(nextIndex);
     }
@@ -140,20 +430,45 @@ export default function StudentPreview({
   const handleNext = () => {
     if (currentIndex < totalQuestions - 1) {
       const nextIndex = currentIndex + 1;
+      queueIntegrityEvent('navigation_jump', getTelemetryContext(currentQuestion), {
+        from_question_index: currentIndex,
+        to_question_index: nextIndex,
+      });
+      trackEvent('question_nav_next', analyticsContextForQuestion(currentQuestion, {
+        from_index: currentIndex,
+        to_index: nextIndex,
+      }));
       setCurrentIndex(nextIndex);
       if (onQuestionChange) onQuestionChange(nextIndex);
     }
   };
 
-  const isQuestionAnswered = (questionId) => {
-    const value = answers[questionId];
+  const handlePrimaryAction = () => {
+    if (isSubmitAction) {
+      queueIntegrityEvent('submit', getTelemetryContext(currentQuestion), {
+        question_index: currentIndex,
+        answered_count: getAnsweredCount(),
+      });
+      flushIntegrityEvents();
+      onSubmit();
+      return;
+    }
+    flushIntegrityEvents();
+    if (onClose) onClose();
+  };
+
+  const isQuestionAnswered = (question) => {
+    const value = answers[getQuestionKey(question)] ?? answers[question.id];
     if (value === undefined || value === null) return false;
     if (typeof value === 'string') return value.trim() !== '';
+    if (typeof value === 'object') {
+      return Object.values(value).some((partValue) => typeof partValue === 'string' ? partValue.trim() !== '' : partValue !== undefined && partValue !== null);
+    }
     return true;
   };
 
   const getAnsweredCount = () => {
-    return questions.filter((q) => isQuestionAnswered(q.id)).length;
+    return questions.filter((q) => isQuestionAnswered(q)).length;
   };
 
   // Get type badge color
@@ -496,8 +811,8 @@ export default function StudentPreview({
 
   if (questions.length === 0) {
     return (
-      <div style={styles.overlay}>
-        <div style={styles.container}>
+      <div style={wrapperStyle}>
+        <div style={containerStyle}>
           {isPreviewMode && (
             <div style={styles.previewBanner}>
               <div style={styles.bannerText}>
@@ -548,14 +863,18 @@ export default function StudentPreview({
   }
 
   const answerChoices = getAnswerChoices(currentQuestion);
+  const questionContent = getQuestionContent(currentQuestion);
+  const structuredParts = questionContent?.parts || [];
+  const hasStructuredParts = structuredParts.length > 0;
   const questionType = currentQuestion.question_type?.toLowerCase();
-  const isMCQ = questionType === 'mcq' || questionType === 'true_false' || 
-    (answerChoices.length > 0 && typeof answerChoices[0] === 'string');
+  const isMultipart = questionType === 'multipart';
+  const isMCQ = !isMultipart && (questionType === 'mcq' || questionType === 'true_false' ||
+    (answerChoices.length > 0 && typeof answerChoices[0] === 'string'));
   const isFreeResponse = questionType === 'fr';
   const isShortAnswer = questionType === 'short_answer';
   const rubricParts = (isFreeResponse || isShortAnswer) && answerChoices.length > 0 && typeof answerChoices[0] === 'object' 
     ? answerChoices : [];
-  const selectedAnswer = answers[currentQuestion.id];
+  const selectedAnswer = answers[getQuestionKey(currentQuestion)] ?? answers[currentQuestion.id];
   const isLastQuestion = currentIndex === totalQuestions - 1;
   const showFinishPreviewButton = isLastQuestion && isPreviewMode && onClose;
   const showNavigationFooter = showPrevNextButtons || showFinishPreviewButton;
@@ -608,7 +927,7 @@ export default function StudentPreview({
                     ? { background: '#10b981' }
                     : {})
                 }}
-                onClick={isSubmitAction ? onSubmit : onClose}
+                onClick={handlePrimaryAction}
                 disabled={isSubmitting}
                 onMouseEnter={(e) => {
                   if (isSubmitting) return;
@@ -664,7 +983,7 @@ export default function StudentPreview({
             {/* Question Navigation Dots */}
             <div style={styles.questionNav}>
               {questions.map((q, idx) => {
-                const isAnswered = isQuestionAnswered(q.id);
+                const isAnswered = isQuestionAnswered(q);
                 const isCurrent = idx === currentIndex;
                 return (
                   <button
@@ -674,10 +993,20 @@ export default function StudentPreview({
                       ...(isCurrent ? styles.questionDotCurrent : {}),
                       ...(!isCurrent && isAnswered ? styles.questionDotAnswered : {})
                     }}
-                    onClick={() => {
-                      setCurrentIndex(idx);
-                      if (onQuestionChange) onQuestionChange(idx);
-                    }}
+	                    onClick={() => {
+	                      queueIntegrityEvent('navigation_jump', getTelemetryContext(currentQuestion), {
+	                        from_question_index: currentIndex,
+	                        to_question_index: idx,
+	                      });
+                      trackEvent('question_nav_jump', analyticsContextForQuestion(currentQuestion, {
+                        from_index: currentIndex,
+                        to_index: idx,
+                        to_question_id: q.id,
+                        to_question_qid: q.qid || String(q.id),
+                      }));
+	                      setCurrentIndex(idx);
+	                      if (onQuestionChange) onQuestionChange(idx);
+	                    }}
                     title={`Question ${idx + 1}${isAnswered ? ' (answered)' : ''}`}
                   >
                     {idx + 1}
@@ -728,22 +1057,203 @@ export default function StudentPreview({
                 }
               }}
             >
-              {currentQuestion.text}
+              {questionContent?.stem || currentQuestion.text}
             </ReactMarkdown>
           </div>
 
           {/* Question Image */}
           {imageUrls[currentQuestion.id] && (
             <img
-              src={imageUrls[currentQuestion.id]}
-              alt="Question illustration"
-              style={styles.questionImage}
-            />
+	              src={imageUrls[currentQuestion.id]}
+	              alt="Question illustration"
+	              style={styles.questionImage}
+              onLoad={() => trackEvent('question_image_loaded', analyticsContextForQuestion(currentQuestion))}
+              onError={() => trackEvent('question_image_failed', analyticsContextForQuestion(currentQuestion, { error: 'image_failed' }))}
+	            />
           )}
 
           {/* Answer Section */}
           <div style={styles.answerSection}>
-            {isMCQ && (
+            {hasStructuredParts && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {structuredParts.map((part, idx) => {
+                  const partAnswer = selectedAnswer && typeof selectedAnswer === 'object'
+                    ? selectedAnswer[part.part_id]
+                    : (idx === 0 ? selectedAnswer : '');
+                  const choices = Array.isArray(part.choices) ? part.choices : [];
+                  const isAuto = part.type === 'mcq' || part.type === 'true_false';
+                  const isText = part.type === 'free_response' || part.type === 'short_answer';
+                  const isCoding = part.type === 'coding';
+                  const maxPoints = part.points ?? (Array.isArray(part.rubric) && part.rubric.length
+                    ? Math.max(...part.rubric.map(level => Number(level.points) || 0))
+                    : 1);
+                  const coding = part.coding || {};
+                  const allowedLanguages = Array.isArray(coding.allowed_languages) && coding.allowed_languages.length
+                    ? coding.allowed_languages
+                    : ['python'];
+                  const codingAnswer = (partAnswer && typeof partAnswer === 'object') ? partAnswer : {};
+                  const selectedLanguage = codingAnswer.language || allowedLanguages[0];
+                  const starterCode = coding.starter_code_by_language?.[selectedLanguage] || '';
+                  const codeValue = codingAnswer.code ?? starterCode;
+
+                  return (
+                    <div key={part.part_id || idx} style={{
+                      borderTop: idx > 0 ? '1px solid #e5e7eb' : 'none',
+                      paddingTop: idx > 0 ? '1.25rem' : 0
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '0.65rem' }}>
+                        <div style={{ fontWeight: 700, color: '#374151' }}>
+                          {part.label || `Part ${String.fromCharCode(65 + idx)}`}
+                        </div>
+                        {isPreviewMode && (
+                          <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700 }}>
+                            {maxPoints} pts
+                          </span>
+                        )}
+                      </div>
+                      {part.prompt && (
+                        <div style={{ marginBottom: '0.75rem', color: '#1f2937' }}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
+                            components={{ p: ({children}) => <p style={{ margin: '0 0 0.5rem 0' }}>{children}</p> }}
+                          >
+                            {part.prompt}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                      {isAuto && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {choices.map((choice, choiceIndex) => {
+                            const value = choice.id || choice.text;
+                            const isSelected = partAnswer === value || partAnswer === choice.text;
+                            return (
+                              <button
+                                key={choice.id || choiceIndex}
+                                type="button"
+                                onClick={() => handlePartAnswer(currentQuestion, part.part_id, value)}
+                                disabled={isReadOnly}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.75rem',
+                                  padding: '0.75rem 1rem',
+                                  borderRadius: '8px',
+                                  cursor: isReadOnly ? 'default' : 'pointer',
+                                  border: isSelected ? '2px solid #4f46e5' : '2px solid #e5e7eb',
+                                  background: isSelected ? '#eef2ff' : 'white',
+                                  textAlign: 'left',
+                                  fontSize: '0.95rem'
+                                }}
+                              >
+                                <span style={{
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  background: isSelected ? '#4f46e5' : '#f3f4f6',
+                                  color: isSelected ? 'white' : '#6b7280',
+                                  fontWeight: 700,
+                                  fontSize: '0.8rem',
+                                  flexShrink: 0
+                                }}>
+                                  {choice.id || String.fromCharCode(65 + choiceIndex)}
+                                </span>
+                                <span>{choice.text}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {isText && isPreviewMode && Array.isArray(part.rubric) && part.rubric.length > 0 && (
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                          Rubric (instructors only):
+                          {part.rubric.map((level, levelIndex) => (
+                            <div key={levelIndex} style={{ marginTop: '0.2rem' }}>
+                              <span style={{ fontWeight: 700 }}>+{level.points}:</span> {level.criteria || '-'}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isText && (
+                        <textarea
+                          style={{ ...styles.textArea, minHeight: part.type === 'short_answer' ? '90px' : '130px' }}
+                          placeholder={`Enter your response for ${part.label || `Part ${String.fromCharCode(65 + idx)}`}...`}
+                          value={partAnswer || ''}
+                          onChange={(e) => {
+                            recordTextInput(currentQuestion, part.part_id, partAnswer || '', e.target.value);
+                            handlePartAnswer(currentQuestion, part.part_id, e.target.value);
+                          }}
+                          {...textTelemetryProps(currentQuestion, part.part_id, partAnswer || '')}
+                          disabled={isReadOnly}
+                          onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
+                          onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                        />
+                      )}
+                      {isCoding && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <label style={{ fontWeight: 700, color: '#374151' }}>Language</label>
+                            <select
+                              value={selectedLanguage}
+                              disabled={isReadOnly}
+                              onChange={(e) => {
+                                const nextLanguage = e.target.value;
+                                const nextStarter = coding.starter_code_by_language?.[nextLanguage] || '';
+                                handleCodingAnswer(currentQuestion, part.part_id, {
+                                  language: nextLanguage,
+                                  code: codingAnswer.code ?? nextStarter
+                                });
+                              }}
+                              style={{ padding: '0.55rem 0.7rem', border: '2px solid #e5e7eb', borderRadius: '8px', background: 'white' }}
+                            >
+                              {allowedLanguages.map((language) => (
+                                <option key={language} value={language}>{language === 'cpp' ? 'C++' : 'Python'}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <textarea
+                            style={{ ...styles.textArea, minHeight: '260px', fontFamily: 'monospace', fontSize: '0.92rem' }}
+                            placeholder="Write your solution here..."
+                            value={codeValue}
+                            onChange={(e) => {
+                              recordTextInput(currentQuestion, part.part_id, codeValue, e.target.value);
+                              handleCodingAnswer(currentQuestion, part.part_id, { language: selectedLanguage, code: e.target.value });
+                            }}
+                            {...textTelemetryProps(currentQuestion, part.part_id, codeValue)}
+                            disabled={isReadOnly}
+                            onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
+                            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                          />
+                          {(coding.tests || []).filter(test => test.visibility === 'visible').length > 0 && (
+                            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+                              <div style={{ background: '#f8fafc', padding: '0.6rem 0.75rem', fontWeight: 700, color: '#374151' }}>Sample tests</div>
+                              {(coding.tests || []).filter(test => test.visibility === 'visible').map((test, testIndex) => (
+                                <div key={testIndex} style={{ padding: '0.75rem', borderTop: testIndex > 0 ? '1px solid #e5e7eb' : 'none' }}>
+                                  <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{test.name || `Sample ${testIndex + 1}`}</div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                    <div>
+                                      <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 700 }}>{test.mode === 'python_harness' ? 'Check' : 'Input'}</div>
+                                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#f3f4f6', padding: '0.55rem', borderRadius: '6px' }}>{test.mode === 'python_harness' ? (test.harness || 'Python harness') : (test.input || '(empty)')}</pre>
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 700 }}>Expected output</div>
+                                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#f3f4f6', padding: '0.55rem', borderRadius: '6px' }}>{test.expected_output || '(empty)'}</pre>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {!hasStructuredParts && isMCQ && (
               <>
                 <div style={styles.answerLabel}>Select your answer:</div>
                 <div>
@@ -804,7 +1314,7 @@ export default function StudentPreview({
               </>
             )}
 
-            {isShortAnswer && rubricParts.length > 0 && (
+            {!hasStructuredParts && isShortAnswer && rubricParts.length > 0 && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <div style={styles.answerLabel}>Your answer:</div>
@@ -846,7 +1356,11 @@ export default function StudentPreview({
                   style={styles.textArea}
                   placeholder="Enter your short answer..."
                   value={selectedAnswer || ''}
-                  onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                  onChange={(e) => {
+                    recordTextInput(currentQuestion, null, selectedAnswer || '', e.target.value);
+                    handleTextAnswer(currentQuestion.id, e.target.value);
+                  }}
+                  {...textTelemetryProps(currentQuestion, null, selectedAnswer || '')}
                   disabled={isReadOnly}
                   onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                   onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
@@ -854,7 +1368,7 @@ export default function StudentPreview({
               </>
             )}
 
-            {isFreeResponse && rubricParts.length > 0 && (
+            {!hasStructuredParts && isFreeResponse && rubricParts.length > 0 && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <div style={styles.answerLabel}>Your response:</div>
@@ -909,10 +1423,12 @@ export default function StudentPreview({
                         placeholder={`Enter your response for ${part.part_label || `Part ${String.fromCharCode(65 + idx)}`}...`}
                         value={partAnswer || ''}
                         onChange={(e) => {
+                          recordTextInput(currentQuestion, idx, partAnswer || '', e.target.value);
                           const newParts = typeof selectedAnswer === 'object' ? { ...selectedAnswer } : {};
                           newParts[idx] = e.target.value;
                           handleTextAnswer(currentQuestion.id, newParts);
                         }}
+                        {...textTelemetryProps(currentQuestion, idx, partAnswer || '')}
                         disabled={isReadOnly}
                         onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                         onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
@@ -923,14 +1439,18 @@ export default function StudentPreview({
               </>
             )}
 
-            {(isFreeResponse || isShortAnswer) && rubricParts.length === 0 && (
+            {!hasStructuredParts && (isFreeResponse || isShortAnswer) && rubricParts.length === 0 && (
               <>
                 <div style={styles.answerLabel}>Your response:</div>
                 <textarea
                   style={styles.textArea}
                   placeholder="Type your answer here..."
                   value={selectedAnswer || ''}
-                  onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                  onChange={(e) => {
+                    recordTextInput(currentQuestion, null, selectedAnswer || '', e.target.value);
+                    handleTextAnswer(currentQuestion.id, e.target.value);
+                  }}
+                  {...textTelemetryProps(currentQuestion, null, selectedAnswer || '')}
                   disabled={isReadOnly}
                   onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                   onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
@@ -938,14 +1458,121 @@ export default function StudentPreview({
               </>
             )}
 
-            {!isMCQ && !isFreeResponse && !isShortAnswer && (
+            {!hasStructuredParts && isMultipart && (() => {
+              const subQs = subQuestionsCache[currentQuestion.id] || [];
+              const loadingSubQs = subQuestionsLoading[currentQuestion.id];
+              const containerAns = answers[currentQuestion.id];
+              const subAnswers = (typeof containerAns === 'object' && containerAns !== null) ? containerAns : {};
+
+              if (loadingSubQs) {
+                return <div style={{ color: '#6b7280', padding: '1rem 0' }}>Loading sub-questions...</div>;
+              }
+
+              if (!subQs.length) {
+                return <div style={{ color: '#9ca3af', padding: '1rem 0' }}>No sub-questions found.</div>;
+              }
+
+              return (
+                <div style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                  {subQs.map((subQ, idx) => {
+                    const subType = (subQ.question_type || '').toLowerCase();
+                    const subChoices = (() => { try { return JSON.parse(subQ.answer_choices || '[]'); } catch { return []; } })();
+                    const subIsMCQ = subType === 'mcq' || subType === 'true_false' || (subChoices.length > 0 && typeof subChoices[0] === 'string');
+                    const subIsText = subType === 'fr' || subType === 'short_answer';
+                    const subAns = subAnswers[subQ.id];
+
+                    const handleSubSelect = (val) => {
+                      if (isReadOnly) return;
+                      setAnswers(prev => {
+                        const existing = (typeof prev[currentQuestion.id] === 'object' && prev[currentQuestion.id] !== null) ? prev[currentQuestion.id] : {};
+                        const next = { ...prev, [currentQuestion.id]: { ...existing, [subQ.id]: val } };
+                        if (onAnswersChange) onAnswersChange(next);
+                        return next;
+                      });
+                    };
+
+                    return (
+                      <div key={subQ.id} style={{
+                        borderBottom: idx < subQs.length - 1 ? '1px solid #e5e7eb' : 'none',
+                        paddingBottom: '1.5rem',
+                        marginBottom: '1.5rem',
+                      }}>
+                        <div style={{ fontWeight: '600', color: '#374151', marginBottom: '0.5rem', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Part {String.fromCharCode(65 + idx)}
+                        </div>
+                        {subQ.title && (
+                          <div style={{ fontWeight: '600', fontSize: '1rem', marginBottom: '0.5rem' }}>{subQ.title}</div>
+                        )}
+                        <div style={{ marginBottom: '0.75rem', color: '#1f2937' }}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
+                            components={{ p: ({children}) => <p style={{ margin: '0 0 0.5rem 0' }}>{children}</p> }}
+                          >
+                            {subQ.text}
+                          </ReactMarkdown>
+                        </div>
+                        {subIsMCQ && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {subChoices.map((choice, cIdx) => {
+                              const isSelected = subAns === choice;
+                              return (
+                                <button key={cIdx}
+                                  onClick={() => handleSubSelect(choice)}
+                                  disabled={isReadOnly}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                    padding: '0.75rem 1rem', borderRadius: '8px', cursor: isReadOnly ? 'default' : 'pointer',
+                                    border: isSelected ? '2px solid #4f46e5' : '2px solid #e5e7eb',
+                                    background: isSelected ? '#eef2ff' : 'white',
+                                    textAlign: 'left', fontSize: '0.95rem',
+                                  }}
+                                >
+                                  <span style={{
+                                    width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: isSelected ? '#4f46e5' : '#f3f4f6', color: isSelected ? 'white' : '#6b7280',
+                                    fontWeight: '600', fontSize: '0.8rem', flexShrink: 0,
+                                  }}>
+                                    {String.fromCharCode(65 + cIdx)}
+                                  </span>
+                                  <span>{choice}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {subIsText && (
+                          <textarea
+                            style={{ ...styles.textArea, minHeight: '80px' }}
+                            placeholder="Type your answer..."
+                            value={typeof subAns === 'string' ? subAns : ''}
+                            onChange={(e) => {
+                              recordTextInput(currentQuestion, subQ.id, typeof subAns === 'string' ? subAns : '', e.target.value);
+                              handleSubSelect(e.target.value);
+                            }}
+                            {...textTelemetryProps(currentQuestion, subQ.id, typeof subAns === 'string' ? subAns : '')}
+                            disabled={isReadOnly}
+                            onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
+                            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {!isMCQ && !isFreeResponse && !isShortAnswer && !isMultipart && (
               <>
                 <div style={styles.answerLabel}>Your answer:</div>
                 <textarea
                   style={styles.textArea}
                   placeholder="Type your answer here..."
                   value={selectedAnswer || ''}
-                  onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                  onChange={(e) => {
+                    recordTextInput(currentQuestion, null, selectedAnswer || '', e.target.value);
+                    handleTextAnswer(currentQuestion.id, e.target.value);
+                  }}
+                  {...textTelemetryProps(currentQuestion, null, selectedAnswer || '')}
                   disabled={isReadOnly}
                   onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
                   onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}

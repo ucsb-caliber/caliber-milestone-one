@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { getAssignment, getQuestionsBatch, getAssignmentProgress, saveAssignmentProgress } from '../api';
+import { getAssignment, getAssignmentProgress, recordAssignmentIntegrityEvents, saveAssignmentProgress } from '../api';
 import StudentPreview from '../components/StudentPreview';
 import StudentGradeReport from '../components/StudentGradeReport';
 import { useAuth } from '../AuthContext';
 import { parseScheduleDate } from '../utils/datetime';
+import { loadAssignmentQuestions } from '../utils/assignmentQuestions';
+import { flushAnalytics, trackEvent } from '../analytics';
 
 export default function StudentAssignmentPage() {
   const { user } = useAuth();
@@ -24,6 +26,7 @@ export default function StudentAssignmentPage() {
   const isSubmittingOnExitRef = useRef(false);
   const latestProgressRef = useRef({ answers: {}, questionIndex: 0 });
   const skipUnmountSubmitRef = useRef(false);
+  const assignmentOpenedRef = useRef(false);
 
   const parseHash = () => {
     const hash = window.location.hash;
@@ -58,9 +61,21 @@ export default function StudentAssignmentPage() {
         setProgressReady(false);
         const assignmentData = await getAssignment(assignmentId);
         setAssignment(assignmentData);
+        if (!assignmentOpenedRef.current) {
+          assignmentOpenedRef.current = true;
+          trackEvent('assignment_opened', {
+            course_id: courseId,
+            assignment_id: assignmentId,
+            metadata: {
+              is_resubmit: Boolean(resubmitRequested),
+              hard_due_passed: Boolean(parseScheduleDate(assignmentData?.due_date_hard) && Date.now() > parseScheduleDate(assignmentData?.due_date_hard).getTime()),
+            },
+          });
+        }
 
         const instructorPreview = user?.id === assignmentData.instructor_id;
         setIsInstructorPreview(instructorPreview);
+        let loadedSubmittedForAnalytics = false;
 
         if (instructorPreview) {
           setInitialAnswers({});
@@ -80,6 +95,7 @@ export default function StudentAssignmentPage() {
           const canResubmitBeforeHardDue = !hardDue || Date.now() <= hardDue.getTime();
           const allowResubmitMode = hasPriorSubmission && resubmitRequested && canResubmitBeforeHardDue;
           const loadedSubmitted = hasPriorSubmission && !allowResubmitMode;
+          loadedSubmittedForAnalytics = loadedSubmitted;
           const hardDuePassed = Boolean(hardDue && Date.now() > hardDue.getTime());
           const forceReadOnlyUnsubmitted = !hasPriorSubmission && (readOnlyRequested || hardDuePassed);
           const shouldStartOnFirstQuestion = hasPriorSubmission || forceReadOnlyUnsubmitted;
@@ -95,13 +111,22 @@ export default function StudentAssignmentPage() {
           setProgressReady(true);
         }
 
-        if (assignmentData.assignment_questions && assignmentData.assignment_questions.length > 0) {
-          const result = await getQuestionsBatch(assignmentData.assignment_questions);
-          setQuestions(result.questions || []);
-        } else {
-          setQuestions([]);
-        }
+        const loadedQuestions = await loadAssignmentQuestions(assignmentData);
+        setQuestions(loadedQuestions);
+        trackEvent('assignment_loaded', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: {
+            question_count: loadedQuestions.length,
+            submitted: Boolean(loadedSubmittedForAnalytics),
+          },
+        });
       } catch (err) {
+        trackEvent('api_error_seen', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: { error: 'load_assignment_failed' },
+        });
         setError(err.message || 'Failed to load assignment');
       } finally {
         setLoading(false);
@@ -124,11 +149,32 @@ export default function StudentAssignmentPage() {
     if (!assignmentId || !progressReady || isInstructorPreview || isReadOnlyView || resubmitRequested || isSubmissionClosed) return;
     const timer = setTimeout(async () => {
       try {
+        trackEvent('assignment_autosave_started', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: {
+            answered_count: Object.keys(liveAnswers || {}).length,
+            question_index: liveQuestionIndex || 0,
+          },
+        });
         await saveAssignmentProgress(assignmentId, {
           answers: liveAnswers,
           current_question_index: liveQuestionIndex
         });
+        trackEvent('assignment_autosave_succeeded', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: {
+            answered_count: Object.keys(liveAnswers || {}).length,
+            question_index: liveQuestionIndex || 0,
+          },
+        });
       } catch (err) {
+        trackEvent('assignment_autosave_failed', {
+          course_id: courseId,
+          assignment_id: assignmentId,
+          metadata: { error: 'autosave_failed' },
+        });
         console.error('Autosave failed:', err);
       }
     }, 500);
@@ -162,12 +208,30 @@ export default function StudentAssignmentPage() {
     }
 
     setSubmitting(true);
+    trackEvent('assignment_submit_clicked', {
+      course_id: courseId,
+      assignment_id: assignmentId,
+      metadata: {
+        is_resubmit: Boolean(wasPreviouslySubmitted),
+        answered_count: Object.keys(latestProgressRef.current.answers || {}).length,
+        question_index: latestProgressRef.current.questionIndex || 0,
+      },
+    });
     try {
       const savedProgress = await saveAssignmentProgress(assignmentId, {
         answers: latestProgressRef.current.answers || {},
         current_question_index: latestProgressRef.current.questionIndex || 0,
         submitted: true
       });
+      trackEvent('assignment_submit_succeeded', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: {
+          is_resubmit: Boolean(wasPreviouslySubmitted),
+          submitted: true,
+        },
+      });
+      await flushAnalytics({ keepalive: true, dropOnFailure: true });
 
       skipUnmountSubmitRef.current = true;
       if (courseId) {
@@ -183,6 +247,11 @@ export default function StudentAssignmentPage() {
         window.location.hash = '#student-courses';
       }
     } catch (err) {
+      trackEvent('assignment_submit_failed', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: { error: 'submit_failed', is_resubmit: Boolean(wasPreviouslySubmitted) },
+      });
       console.error('Submit failed:', err);
       setError(err.message || 'Failed to submit assignment');
     } finally {
@@ -199,6 +268,33 @@ export default function StudentAssignmentPage() {
       window.location.hash = '#student-courses';
     }
   }, [courseId]);
+
+  useEffect(() => {
+    if (resubmitRequested && assignmentId && courseId) {
+      trackEvent('assignment_resubmit_started', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: { is_resubmit: true },
+      });
+    }
+  }, [assignmentId, courseId, resubmitRequested]);
+
+  useEffect(() => {
+    if (isReadOnlyView && assignmentId) {
+      trackEvent('assignment_closed_viewed', {
+        course_id: courseId,
+        assignment_id: assignmentId,
+        metadata: { hard_due_passed: Boolean(isSubmissionClosed), submitted: Boolean(initialSubmitted) },
+      });
+    }
+  }, [assignmentId, courseId, initialSubmitted, isReadOnlyView, isSubmissionClosed]);
+
+  const recordIntegrityEvents = useCallback(async (events) => {
+    if (!assignmentId || isInstructorPreview || isReadOnlyView || !Array.isArray(events) || events.length === 0) {
+      return;
+    }
+    await recordAssignmentIntegrityEvents(assignmentId, events);
+  }, [assignmentId, isInstructorPreview, isReadOnlyView]);
 
   useEffect(() => () => {
     if (
@@ -364,6 +460,8 @@ export default function StudentAssignmentPage() {
       )}
     <StudentPreview
       questions={questions}
+      courseId={courseId}
+      assignmentId={assignmentId}
       assignmentTitle={assignment.title}
       assignmentType={assignment.type}
       isPreviewMode={false}
@@ -398,6 +496,7 @@ export default function StudentAssignmentPage() {
       onSubmit={submitAssignment}
       isSubmitting={submitting}
       submitButtonText={resubmitRequested ? 'Resubmit Assignment' : 'Submit Assignment'}
+      onIntegrityEventBatch={recordIntegrityEvents}
     />
     </>
   );

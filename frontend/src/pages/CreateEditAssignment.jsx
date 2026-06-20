@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import QuestionTable from '../components/QuestionTable';
 import QuestionSearchBar from '../components/QuestionSearchBar';
+import StudentPreview from '../components/StudentPreview';
 import { getUserById } from '../api';
-import { createAssignment, getAssignment, updateAssignment, getAllQuestions } from '../api';
+import { createAssignment, getAssignment, updateAssignment, getAllQuestions, previewAssignmentDraft } from '../api';
 import { filterQuestionsBySearch } from '../utils/questionSearch';
 import { parseScheduleDate } from '../utils/datetime';
+import { getAssignmentQuestionIds } from '../utils/assignmentQuestions';
 
 function formatDateForDateTimeLocal(dateStr) {
   const date = parseScheduleDate(dateStr);
@@ -25,6 +27,9 @@ export default function CreateEditAssignment() {
   const [showQuestionPicker, setShowQuestionPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('all');
+  const [previewQuestions, setPreviewQuestions] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
 
 
 
@@ -96,6 +101,25 @@ export default function CreateEditAssignment() {
     });
   };
 
+  const questionsFromPreviewRefs = (refs = []) => refs
+    .map((ref, index) => {
+      const snapshot = ref?.question_snapshot;
+      if (!snapshot) return null;
+      return {
+        id: ref.id ?? `preview-${index}`,
+        qid: ref.qid || snapshot.qid || `preview-${index}`,
+        version: ref.version || snapshot.version || 1,
+        title: snapshot.title || '',
+        text: snapshot.text || '',
+        content: snapshot.content || '',
+        question_type: snapshot.question_type || '',
+        answer_choices: snapshot.answer_choices || '[]',
+        correct_answer: snapshot.correct_answer || '',
+        image_url: snapshot.image_url || null,
+      };
+    })
+    .filter(Boolean);
+
   // Load data on mount
   useEffect(() => {
     async function loadData() {
@@ -142,7 +166,7 @@ export default function CreateEditAssignment() {
             due_date_soft: formatDateForDateTimeLocal(assignmentData.due_date_soft),
             due_date_hard: formatDateForDateTimeLocal(assignmentData.due_date_hard),
             late_policy_id: assignmentData.late_policy_id || '',
-            assignment_questions: assignmentData.assignment_questions || []
+            assignment_questions: getAssignmentQuestionIds(assignmentData)
           });
         }
       } catch (err) {
@@ -249,6 +273,58 @@ export default function CreateEditAssignment() {
   };
 
   const filteredQuestions = filterQuestionsBySearch(allQuestions, searchQuery, searchFilter);
+  const selectedQuestions = formData.assignment_questions
+    .map(questionId => allQuestions.find(question => Number(question.id) === Number(questionId)))
+    .filter(Boolean);
+
+  useEffect(() => {
+    if (!courseId || !formData.assignment_questions.length) {
+      setPreviewQuestions([]);
+      setPreviewError('');
+      setPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewQuestions(selectedQuestions);
+    setPreviewLoading(true);
+    setPreviewError('');
+
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await previewAssignmentDraft({
+          course_id: courseId,
+          title: formData.title || 'Untitled Assignment',
+          type: formData.type || 'Homework',
+          description: formData.description || '',
+          assignment_questions: formData.assignment_questions,
+          preview_student_id: 'preview-student',
+          assignment_id: isEditMode ? assignmentId : null,
+        });
+        if (cancelled) return;
+        const rendered = questionsFromPreviewRefs(result?.assignment_question_refs || []);
+        setPreviewQuestions(rendered.length ? rendered : selectedQuestions);
+      } catch (err) {
+        if (cancelled) return;
+        setPreviewError(err.message || 'Preview could not be rendered');
+        setPreviewQuestions(selectedQuestions);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [
+    courseId,
+    formData.title,
+    formData.type,
+    formData.description,
+    formData.assignment_questions.join(','),
+    selectedQuestions.length
+  ]);
 
   const styles = {
     container: {
@@ -352,6 +428,22 @@ export default function CreateEditAssignment() {
       fontSize: '0.75rem',
       color: '#6b7280',
       marginTop: '0.25rem'
+    },
+    previewShell: {
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      background: '#f8fafc',
+      minHeight: '420px'
+    },
+    previewMeta: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      gap: '1rem',
+      alignItems: 'center',
+      marginBottom: '0.75rem',
+      color: '#6b7280',
+      fontSize: '0.8rem'
     }
   };
 
@@ -522,6 +614,30 @@ export default function CreateEditAssignment() {
             </button>
           </div>
 
+        </div>
+
+        <div style={styles.formGroup}>
+          <div style={styles.previewMeta}>
+            <label style={{ ...styles.label, marginBottom: 0 }}>Live Student Preview</label>
+            <span>{previewLoading ? 'Rendering...' : `${previewQuestions.length || selectedQuestions.length} question${(previewQuestions.length || selectedQuestions.length) === 1 ? '' : 's'}`}</span>
+          </div>
+          {previewError && (
+            <div style={{ ...styles.helpText, color: '#b45309', marginBottom: '0.75rem' }}>
+              {previewError}
+            </div>
+          )}
+          <div style={styles.previewShell}>
+            <StudentPreview
+              inline
+              isPreviewMode={false}
+              showStatusBanner={false}
+              showPrevNextButtons
+              assignmentTitle={formData.title || 'Untitled Assignment'}
+              assignmentType={formData.type || 'Assignment'}
+              questions={previewQuestions.length ? previewQuestions : selectedQuestions}
+              submitButtonText="Submit Preview"
+            />
+          </div>
         </div>
 
         {/* Buttons */}

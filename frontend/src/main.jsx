@@ -20,6 +20,7 @@ import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
 import VerifyQuestions from './pages/VerifyQuestions.jsx' 
 import Analytics from './pages/Analytics.jsx'
+import { flushAnalytics, trackEvent } from './analytics.js'
 import "./index.css";
 
 // Determine backend base URL from Vite env or default to localhost
@@ -85,8 +86,11 @@ function App() {
   });
 
 
-  const { user, loading } = useAuth();
+  const { user, loading, exitImpersonation } = useAuth();
   const isInstructorOrAdmin = Boolean(userInfo?.teacher || userInfo?.admin);
+  const impersonation = user?.impersonation;
+  const pageViewedAtRef = React.useRef(Date.now());
+  const previousPageRef = React.useRef(page);
 
   // Check if user profile is complete and load preferences
   React.useEffect(() => {
@@ -143,6 +147,35 @@ function App() {
   }, []);
 
   React.useEffect(() => {
+    if (!user || loading || checkingProfile) return;
+    const now = Date.now();
+    const previousPage = previousPageRef.current;
+    if (previousPage && previousPage !== page) {
+      trackEvent('page_left', {
+        route: previousPage,
+        metadata: { duration_ms: now - pageViewedAtRef.current },
+      });
+      void flushAnalytics({ keepalive: true });
+    }
+    previousPageRef.current = page;
+    pageViewedAtRef.current = now;
+    trackEvent('page_viewed', { route: page });
+  }, [page, user, loading, checkingProfile]);
+
+  React.useEffect(() => {
+    if (!user || loading || checkingProfile) return;
+    const handleClick = (event) => {
+      const target = event.target?.closest?.('button,a,input,select,textarea,[role="button"]');
+      if (!target) return;
+      trackEvent('tap', {
+        metadata: { action: target.tagName },
+      });
+    };
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, [user, loading, checkingProfile]);
+
+  React.useEffect(() => {
     if (!user || page !== 'logged-out') return;
     const url = new URL(window.location.href);
     url.searchParams.delete('logged_out');
@@ -193,6 +226,31 @@ function App() {
 
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', margin: 0, padding: 0 }}>
+      {impersonation?.active && (
+        <div style={{
+          background: '#f59e0b',
+          color: '#fff',
+          padding: '.5rem 1.2rem',
+          fontSize: '.875rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10001,
+        }}>
+          <span>
+            Viewing as <strong>{user?.first_name || user?.last_name || user?.email || user?.user_id || 'student'}</strong> (student) &mdash; you are {impersonation.impersonator_name}
+          </span>
+          <button
+            type="button"
+            onClick={exitImpersonation}
+            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', textDecoration: 'underline', fontSize: '.875rem', fontWeight: 600, padding: 0 }}
+          >
+            Exit impersonation
+          </button>
+        </div>
+      )}
       <nav style={{
         background: '#333',
         color: 'white',

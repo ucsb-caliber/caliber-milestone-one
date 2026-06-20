@@ -12,7 +12,12 @@ function asDisplayAnswer(raw) {
     if (typeof parsed === 'string') return parsed;
     if (Array.isArray(parsed)) return parsed.join(', ');
     if (typeof parsed === 'object') {
-      return Object.entries(parsed).map(([k, v]) => `Part ${k}: ${v}`).join('\n');
+      return Object.entries(parsed).map(([k, v]) => {
+        if (v && typeof v === 'object' && ('code' in v || 'language' in v)) {
+          return `Part ${k} (${v.language || 'code'}):\n${v.code || ''}`;
+        }
+        return `Part ${k}: ${typeof v === 'object' ? JSON.stringify(v, null, 2) : v}`;
+      }).join('\n');
     }
   } catch {
     // keep raw
@@ -118,7 +123,23 @@ export default function StudentGradeReport({ assignmentId, courseId, assignmentT
           <p style={{ margin: '0 0 0.5rem 0', whiteSpace: 'pre-wrap', color: '#374151', fontSize: '0.9rem' }}>{asDisplayAnswer(q.student_answer)}</p>
 
           {q.is_auto_graded && (
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#065f46', fontWeight: 600 }}>Auto-graded (MCQ / T/F)</p>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#065f46', fontWeight: 600 }}>Auto-graded</p>
+          )}
+
+          {q.autograder_result && (
+            <div style={styles.rubricBlock}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', marginBottom: '0.5rem' }}>Autograder results</div>
+              {Object.entries(q.autograder_result.parts || {}).map(([partId, partResult]) => (
+                <div key={partId} style={{ marginBottom: '0.65rem' }}>
+                  <strong>{partId}</strong>: {partResult.score ?? 0} / {partResult.max_score ?? 0} pts
+                  {(partResult.tests || []).map((test, testIndex) => (
+                    <div key={testIndex} style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: test.passed ? '#166534' : '#991b1b' }}>
+                      {test.passed ? 'Passed' : 'Failed'} {test.name}: {test.earned}/{test.points} pts
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
           )}
 
           {!q.is_auto_graded && (q.rubric_parts || []).length > 0 && (

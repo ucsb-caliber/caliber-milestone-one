@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
-import { getAssignment, getQuestionsBatch, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus, releaseAssignmentGrades } from '../api';
+import { getAssignment, updateAssignment, createQuestion, getUserById, getCourse, getAssignmentSubmissionStatus, releaseAssignmentGrades, exportQuestionFolder } from '../api';
 import QuestionCard from '../components/QuestionCard';
 import QuestionTable from '../components/QuestionTable';
 import StudentPreview from '../components/StudentPreview';
 import AssignmentGradingStats from '../components/AssignmentGradingStats';
 import { formatPacificDateTime, parseScheduleDate } from '../utils/datetime';
+import { getAssignmentQuestionCount, loadAssignmentQuestions } from '../utils/assignmentQuestions';
 
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -365,6 +366,16 @@ export default function AssignmentView() {
         return compareSubmissionStatusRows(a, b);
       }
 
+      if (submissionSort.key === 'integrity') {
+        const rank = { none: 0, review: 1, high: 2 };
+        const aRank = rank[a?.integrity_risk_level] ?? 0;
+        const bRank = rank[b?.integrity_risk_level] ?? 0;
+        if (aRank !== bRank) return (aRank - bRank) * direction;
+        const scoreDiff = Number(a?.integrity_risk_score || 0) - Number(b?.integrity_risk_score || 0);
+        if (scoreDiff !== 0) return scoreDiff * direction;
+        return compareSubmissionStatusRows(a, b);
+      }
+
       return compareSubmissionStatusRows(a, b);
     });
 
@@ -390,6 +401,10 @@ export default function AssignmentView() {
     return result;
   };
 
+  const getCurrentQuestionIds = (list = questions) => (
+    list.map(q => Number(q.id)).filter(id => Number.isInteger(id) && id > 0)
+  );
+
   const handleDragEnd = async (result) => {
     if (!result.destination) return;
     if (result.destination.index === result.source.index) return;
@@ -404,7 +419,7 @@ export default function AssignmentView() {
       
       setQuestions(reorderedQuestions);
       
-      const updatedQuestionIds = reorderedQuestions.map(q => q.id);
+      const updatedQuestionIds = getCurrentQuestionIds(reorderedQuestions);
       
       const updatedAssignment = await updateAssignment(assignmentId, {
         ...assignment,
@@ -434,15 +449,13 @@ export default function AssignmentView() {
         const assignmentData = await getAssignment(assignmentId);
         setAssignment(assignmentData);
 
-        // Load questions for this assignment in a single batch request
-        if (assignmentData.assignment_questions && assignmentData.assignment_questions.length > 0) {
-          console.log('Loading questions:', assignmentData.assignment_questions);
-          const result = await getQuestionsBatch(assignmentData.assignment_questions);
-          console.log('Loaded questions:', result.questions);
-          setQuestions(result.questions);
+        // Load assignment questions from stable refs, falling back to legacy IDs.
+        const assignmentQuestions = await loadAssignmentQuestions(assignmentData);
+        setQuestions(assignmentQuestions);
 
+        if (assignmentQuestions.length > 0) {
           // Fetch user info for all question authors
-          const uniqueUserIds = [...new Set(result.questions.map(q => q.user_id).filter(Boolean))];
+          const uniqueUserIds = [...new Set(assignmentQuestions.map(q => q.user_id).filter(Boolean))];
           const userPromises = uniqueUserIds.map(async (userId) => {
             try {
               const userInfo = await getUserById(userId);
@@ -461,6 +474,8 @@ export default function AssignmentView() {
             }
           });
           setUserInfoCache(userMap);
+        } else {
+          setUserInfoCache({});
         }
       } catch (err) {
         setError(err.message || 'Failed to load assignment');
@@ -552,7 +567,7 @@ export default function AssignmentView() {
     setActionLoading(true);
     try {
       // Filter out the question from the assignment
-      const updatedQuestionIds = assignment.assignment_questions.filter(id => id !== questionId);
+      const updatedQuestionIds = getCurrentQuestionIds().filter(id => id !== Number(questionId));
       
       // Update the assignment
       const updatedAssignment = await updateAssignment(assignmentId, {
@@ -596,6 +611,7 @@ export default function AssignmentView() {
       const copyData = {
         title: question.title ? `${question.title} (Modified)` : 'Untitled (Modified)',
         text: question.text,
+        content: question.content || null,
         tags: question.tags || '',
         keywords: question.keywords || '',
         school: question.school || '',
@@ -611,12 +627,12 @@ export default function AssignmentView() {
 
       // Create the new question (copy)
       const newQuestion = await createQuestion(copyData);
-      
+
       // Update the assignment to replace the old question ID with the new one
-      const updatedQuestionIds = assignment.assignment_questions.map(id => 
-        id === question.id ? newQuestion.id : id
+      const updatedQuestionIds = getCurrentQuestionIds().map(id =>
+        id === Number(question.id) ? newQuestion.id : id
       );
-      
+
       const updatedAssignment = await updateAssignment(assignmentId, {
         ...assignment,
         assignment_questions: updatedQuestionIds
@@ -631,6 +647,30 @@ export default function AssignmentView() {
       window.location.hash = `edit-question?id=${newQuestion.id}&returnTo=${encodeURIComponent(`#course/${courseId}/assignment/${assignmentId}/view`)}`;
     } catch (err) {
       alert('Failed to create question copy: ' + (err.message || 'Unknown error'));
+      setActionLoading(false);
+    }
+  };
+
+  const handleExportAssignmentQuestions = async () => {
+    if (!assignment) return;
+    setActionLoading(true);
+    try {
+      const blob = await exportQuestionFolder({
+        qids: questions.map(question => question.qid || question.assigned_qid).filter(Boolean),
+        assignment_ids: assignment.id ? [assignment.id] : [],
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeTitle = (assignment.title || 'assignment').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'assignment';
+      link.href = url;
+      link.download = `${safeTitle}-caliber-questions.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Failed to export assignment questions: ' + (err.message || 'Unknown error'));
+    } finally {
       setActionLoading(false);
     }
   };
@@ -683,7 +723,17 @@ export default function AssignmentView() {
     return { bg: '#fee2e2', color: '#b91c1c', label: 'Not Submitted' };
   };
 
-  const fallbackQuestionCountPoints = Math.max(0, Number(assignment?.assignment_questions?.length || 0));
+  const getIntegrityPillStyle = (riskLevel) => {
+    if (riskLevel === 'high') {
+      return { bg: '#fee2e2', color: '#991b1b', label: 'High' };
+    }
+    if (riskLevel === 'review') {
+      return { bg: '#fef3c7', color: '#92400e', label: 'Review' };
+    }
+    return { bg: '#e5e7eb', color: '#374151', label: 'No flags' };
+  };
+
+  const fallbackQuestionCountPoints = Math.max(0, Number(getAssignmentQuestionCount(assignment)));
   const effectiveTotalPoints = assignmentTotalPoints > 0 ? assignmentTotalPoints : fallbackQuestionCountPoints;
 
   const getSubmittedGradeStyle = (percent) => {
@@ -1161,11 +1211,18 @@ export default function AssignmentView() {
                       <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('grade')}</span>
                     </button>
                   </th>
+                  <th style={styles.submissionHeaderCell}>
+                    <button type="button" onClick={() => toggleSubmissionSort('integrity')} style={styles.submissionSortButton}>
+                      Integrity
+                      <span style={styles.submissionSortArrow}>{getSubmissionSortArrow('integrity')}</span>
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {sortedSubmissionStatusRows.map((row) => {
                   const pill = getSubmissionPillStyle(row.timing_status);
+                  const integrityPill = getIntegrityPillStyle(row.integrity_risk_level);
                   const canGrade = row.timing_status === 'on_time' || row.timing_status === 'late';
                   const hasSubmittedGrade = Boolean(row.grade_submitted) && row.score_earned != null && row.score_total != null;
                   return (
@@ -1242,6 +1299,21 @@ export default function AssignmentView() {
                           </span>
                         )}
                       </td>
+                      <td style={styles.submissionCell}>
+                        <span
+                          title={`${row.integrity_event_count || 0} integrity events, score ${row.integrity_risk_score || 0}`}
+                          style={{
+                            background: integrityPill.bg,
+                            color: integrityPill.color,
+                            borderRadius: '999px',
+                            padding: '0.2rem 0.55rem',
+                            fontSize: '0.78rem',
+                            fontWeight: '700'
+                          }}
+                        >
+                          {integrityPill.label}
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}
@@ -1260,6 +1332,22 @@ export default function AssignmentView() {
           </h2>
 
           <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: '8px', padding: '0.25rem', gap: '0.25rem' }}>
+            {canEditAssignment && (
+              <button
+                onClick={handleExportAssignmentQuestions}
+                disabled={actionLoading || questions.length === 0}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'transparent',
+                  color: questions.length === 0 ? '#9ca3af' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: actionLoading || questions.length === 0 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >Export</button>
+            )}
             <button
               onClick={() => setViewMode('table')}
               style={{
@@ -1311,7 +1399,7 @@ export default function AssignmentView() {
 
               setActionLoading(true);
               try {
-                const updatedQuestionIds = newOrder.map(q => q.id);
+                const updatedQuestionIds = getCurrentQuestionIds(newOrder);
                 
                 const updatedAssignment = await updateAssignment(assignmentId, {
                   ...assignment,

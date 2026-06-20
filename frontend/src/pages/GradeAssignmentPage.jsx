@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { getAssignmentGradingState, saveAssignmentGradingState, getAssignmentSubmissionStatus, getCourse, getUserById } from '../api';
+import { getAssignmentGradingState, saveAssignmentGradingState, getAssignmentSubmissionStatus, getCourse, getUserById, retryAssignmentAutograde, getStudentIntegritySummary } from '../api';
 
 function parseHash() {
   const hash = window.location.hash;
@@ -23,7 +23,12 @@ function asDisplayAnswer(raw) {
     if (typeof parsed === 'string') return parsed;
     if (Array.isArray(parsed)) return parsed.join(', ');
     if (typeof parsed === 'object') {
-      return Object.entries(parsed).map(([k, v]) => `Part ${k}: ${v}`).join('\n');
+      return Object.entries(parsed).map(([k, v]) => {
+        if (v && typeof v === 'object' && ('code' in v || 'language' in v)) {
+          return `Part ${k} (${v.language || 'code'}):\n${v.code || ''}`;
+        }
+        return `Part ${k}: ${typeof v === 'object' ? JSON.stringify(v, null, 2) : v}`;
+      }).join('\n');
     }
   } catch {
     // keep raw
@@ -140,6 +145,7 @@ export default function GradeAssignmentPage() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [saveState, setSaveState] = useState('updated');
   const [studentMenuOpen, setStudentMenuOpen] = useState(false);
+  const [integritySummary, setIntegritySummary] = useState(null);
   const latestQuestionsRef = useRef([]);
   const persistSequenceRef = useRef(0);
   const autoSaveTimerRef = useRef(null);
@@ -190,9 +196,13 @@ export default function GradeAssignmentPage() {
     setSaveState('updated');
 
     try {
-      const response = await getAssignmentGradingState(assignmentId, nextStudentId);
+      const [response, integrity] = await Promise.all([
+        getAssignmentGradingState(assignmentId, nextStudentId),
+        getStudentIntegritySummary(assignmentId, nextStudentId).catch(() => null),
+      ]);
       if (!mountedRef.current || requestId !== persistSequenceRef.current) return;
       setData(response);
+      setIntegritySummary(integrity);
       latestQuestionsRef.current = response?.questions || [];
       setQuestionIndex(0);
     } catch (err) {
@@ -281,6 +291,7 @@ export default function GradeAssignmentPage() {
           .filter((q) => q.requires_manual_grading)
           .map((q) => ({
             question_id: q.question_id,
+            question_qid: q.question_qid,
             question_comment: q.question_comment || '',
             parts: (q.rubric_parts || [])
               .filter((p) => p.selected_score != null)
@@ -398,6 +409,24 @@ export default function GradeAssignmentPage() {
     scheduleAutoSave(nextQuestions);
   };
 
+  const retryAutograde = async () => {
+    if (!assignmentId || !selectedStudentId) return;
+    setSaveState('updating');
+    setError('');
+    try {
+      const updated = await retryAssignmentAutograde(assignmentId, selectedStudentId);
+      setData(updated);
+      latestQuestionsRef.current = updated?.questions || [];
+      const statuses = await getAssignmentSubmissionStatus(assignmentId);
+      setStatusData(statuses);
+      setStudentRows((prevRows) => mergeStudentRows(prevRows, statuses));
+    } catch (err) {
+      setError(err.message || 'Failed to retry autograding');
+    } finally {
+      setSaveState('updated');
+    }
+  };
+
   const isQuestionComplete = (question) => Boolean(question?.is_auto_graded || question?.is_fully_graded || isQuestionCompleteDraft(question));
 
   const navigateToStudent = async (nextStudentId) => {
@@ -476,6 +505,13 @@ export default function GradeAssignmentPage() {
     loadingPanel: { background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1rem', color: '#6b7280' },
   };
 
+  const integrityLevel = integritySummary?.risk_level || 'none';
+  const integrityStyle = integrityLevel === 'high'
+    ? { bg: '#fee2e2', color: '#991b1b', label: 'High' }
+    : integrityLevel === 'review'
+      ? { bg: '#fef3c7', color: '#92400e', label: 'Review' }
+      : { bg: '#e5e7eb', color: '#374151', label: 'No flags' };
+
   if (initialLoading) return <div style={styles.container}>Loading grading view...</div>;
   if (!data && error) return <div style={styles.container}>{error}</div>;
 
@@ -552,6 +588,12 @@ export default function GradeAssignmentPage() {
         <div style={styles.headerRight}>
           <strong>Total grade:</strong>
           {data ? `${Math.round(data.score_earned * 100) / 100}/${Math.round(data.score_total * 100) / 100}` : '...'}
+          <span
+            title={`${integritySummary?.event_count || 0} integrity events, score ${integritySummary?.risk_score || 0}`}
+            style={{ background: integrityStyle.bg, color: integrityStyle.color, borderRadius: '999px', padding: '0.24rem 0.6rem', fontSize: '0.78rem', fontWeight: 800 }}
+          >
+            Integrity: {integrityStyle.label}
+          </span>
           {statusData?.grade_released && (
             <span style={{ color: '#065f46', fontWeight: 700 }}>Released</span>
           )}
@@ -619,6 +661,49 @@ export default function GradeAssignmentPage() {
           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}>Student answer</div>
           <p style={{ whiteSpace: 'pre-wrap', color: '#374151' }}>{asDisplayAnswer(currentQuestion.student_answer)}</p>
 
+          {currentQuestion.autograder_result && (
+            <div style={{ marginTop: '1rem', border: '1px solid #dbeafe', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{ background: '#eff6ff', padding: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#1e3a8a' }}>Autograder</div>
+                  <div style={{ fontSize: '0.85rem', color: '#1d4ed8' }}>
+                    {currentQuestion.earned_points}/{currentQuestion.max_points} points
+                  </div>
+                </div>
+                <button type="button" onClick={retryAutograde} style={{ ...styles.navButton, background: '#2563eb', color: 'white' }}>
+                  Retry
+                </button>
+              </div>
+              <div style={{ padding: '0.75rem' }}>
+                {Object.entries(currentQuestion.autograder_result.parts || {}).map(([partId, partResult]) => (
+                  <div key={partId} style={{ marginBottom: '0.85rem' }}>
+                    <div style={{ fontWeight: 800, marginBottom: '0.4rem', color: '#111827' }}>
+                      {partId}: {partResult.status || 'unknown'} · {partResult.score ?? 0}/{partResult.max_score ?? 0}
+                    </div>
+                    {partResult.error && <div style={{ color: '#b91c1c', marginBottom: '0.4rem' }}>{partResult.error}</div>}
+                    {partResult.stderr && <pre style={{ whiteSpace: 'pre-wrap', background: '#fef2f2', padding: '0.6rem', borderRadius: '6px', color: '#991b1b' }}>{partResult.stderr}</pre>}
+                    {(partResult.tests || []).map((test, testIndex) => (
+                      <div key={testIndex} style={{ borderTop: '1px solid #e5e7eb', padding: '0.55rem 0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          <strong style={{ color: test.passed ? '#166534' : '#991b1b' }}>
+                            {test.passed ? 'Passed' : 'Failed'}: {test.name}
+                          </strong>
+                          <span>{test.earned}/{test.points} pts · {test.visibility}{test.mode ? ` · ${test.mode}` : ''}</span>
+                        </div>
+                        {test.visibility === 'visible' && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginTop: '0.45rem' }}>
+                            <pre style={{ whiteSpace: 'pre-wrap', background: '#f3f4f6', padding: '0.5rem', borderRadius: '6px', margin: 0 }}>Expected:{'\n'}{test.expected_output || '(empty)'}</pre>
+                            <pre style={{ whiteSpace: 'pre-wrap', background: '#f3f4f6', padding: '0.5rem', borderRadius: '6px', margin: 0 }}>Actual:{'\n'}{test.actual_output || '(empty)'}</pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {currentQuestion.requires_manual_grading && (
             <div style={{ marginTop: '1rem' }}>
               <h3 style={{ ...styles.h, marginBottom: '0.75rem' }}>Rubric</h3>
@@ -673,6 +758,27 @@ export default function GradeAssignmentPage() {
         </div>
 
         <div style={styles.panel}>
+          <div style={{ marginBottom: '1rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.85rem' }}>
+            <h3 style={styles.h}>Integrity review</h3>
+            <div style={{ marginTop: '0.6rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.55rem' }}>
+              {[
+                ['Pastes', integritySummary?.paste_count || 0],
+                ['Largest paste', `${integritySummary?.largest_paste_chars || 0} chars`],
+                ['Focus away', integritySummary?.focus_away_count || 0],
+                ['Rapid input', integritySummary?.rapid_input_count || 0],
+                ['Large changes', integritySummary?.large_delta_count || 0],
+                ['Events', integritySummary?.event_count || 0],
+              ].map(([label, value]) => (
+                <div key={label} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '0.55rem', background: '#f9fafb' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 800 }}>{label}</div>
+                  <div style={{ fontSize: '0.95rem', color: '#111827', fontWeight: 800, marginTop: '0.2rem' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: '0.55rem', color: '#6b7280', fontSize: '0.82rem' }}>
+              Last event: {integritySummary?.last_event_at ? new Date(integritySummary.last_event_at).toLocaleString() : 'None'}
+            </div>
+          </div>
           <h3 style={styles.h}>Questions</h3>
           <div style={styles.questionList}>
             {questions.map((question, idx) => {

@@ -6,6 +6,15 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { getQuestion, updateQuestion, uploadImage, getImageSignedUrl } from '../api';
 import StudentPreview from '../components/StudentPreview';
+import StructuredPartsEditor, {
+  defaultCodingPart,
+  defaultMultipartParts,
+  normalizeStructuredParts,
+  partsToLegacyRubric,
+  validateStructuredParts,
+} from '../components/StructuredPartsEditor';
+import RandomizationEditor, { compactRandomization, defaultRandomization, normalizeRandomization } from '../components/RandomizationEditor';
+import { getQuestionQualityChecks, QualityCheckPanel } from '../utils/questionQuality';
 
 const DEFAULT_RUBRIC_PARTS = [
   {
@@ -44,6 +53,10 @@ export default function EditQuestion() {
     blooms_taxonomy: '',
     keywords: '',
     tags: '',
+    draft_state: 'ready',
+    visibility: 'private',
+    school_scope: '',
+    course_scope: '',
     answer_choices: ['', '', '', ''],
     correct_answer: '',
     rubric_parts: DEFAULT_RUBRIC_PARTS,
@@ -58,6 +71,8 @@ export default function EditQuestion() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [viewMode, setViewMode] = useState('edit');
+  const [multipartParts, setMultipartParts] = useState(defaultMultipartParts());
+  const [randomization, setRandomization] = useState(defaultRandomization());
 
   useEffect(() => {
     let active = true;
@@ -74,6 +89,43 @@ export default function EditQuestion() {
 
         let answerChoices = [];
         let rubricParts = DEFAULT_RUBRIC_PARTS;
+        let loadedMultipartParts = defaultMultipartParts();
+        let loadedRandomization = defaultRandomization();
+        let contentQuestionType = question.question_type || 'mcq';
+        let contentText = question.text || '';
+        let contentCorrectAnswer = question.correct_answer || '';
+
+        try {
+          const content = typeof question.content === 'string' ? JSON.parse(question.content || '{}') : question.content;
+          if (content?.randomization) {
+            loadedRandomization = normalizeRandomization(content.randomization);
+          }
+          if (content && Array.isArray(content.parts) && content.parts.length > 0) {
+            contentText = content.stem || contentText;
+            const firstPart = content.parts[0];
+            const contentTypes = new Set(content.parts.map(part => part.type));
+            const isNativeMultipart = question.question_type === 'multipart' || contentTypes.size > 1 || content.parts.some(part => part.type === 'mcq' || part.type === 'true_false');
+            contentQuestionType = isNativeMultipart && content.parts.length > 1
+              ? 'multipart'
+              : (firstPart.type === 'free_response' ? 'fr' : firstPart.type || contentQuestionType);
+            if (contentQuestionType === 'multipart') {
+              loadedMultipartParts = normalizeStructuredParts(content.parts);
+            } else if (contentQuestionType === 'coding') {
+              loadedMultipartParts = normalizeStructuredParts(content.parts);
+            } else if (firstPart.type === 'mcq' || firstPart.type === 'true_false') {
+              answerChoices = (firstPart.choices || []).map(choice => choice.text || choice.id || '');
+              const selected = (firstPart.choices || []).find(choice => choice.id === firstPart.correct_answer);
+              contentCorrectAnswer = selected?.text || firstPart.correct_answer || '';
+            } else {
+              rubricParts = content.parts.map((part, index) => ({
+                part_label: part.label || `Part ${String.fromCharCode(65 + index)}`,
+                rubric_levels: (part.rubric || []).map(level => ({ points: level.points || 0, criteria: level.criteria || '' }))
+              }));
+            }
+          }
+        } catch (contentError) {
+          // Fall back to legacy fields below.
+        }
 
         try {
           const parsed = JSON.parse(question.answer_choices || '[]');
@@ -115,19 +167,25 @@ export default function EditQuestion() {
         if (active) {
           setFormData({
             title: question.title || '',
-            text: question.text || '',
+            text: contentText,
             school: question.school || 'UCSB',
             course: question.course || '',
             course_type: question.course_type || '',
-            question_type: question.question_type || 'mcq',
+            question_type: contentQuestionType,
             blooms_taxonomy: question.blooms_taxonomy || '',
             keywords: question.keywords || '',
             tags: question.tags || '',
+            draft_state: question.draft_state || (question.is_verified ? 'ready' : 'draft'),
+            visibility: question.visibility || 'private',
+            school_scope: question.school_scope || question.school || '',
+            course_scope: question.course_scope || '',
             answer_choices: answerChoices,
-            correct_answer: question.question_type === 'short_answer' ? '' : (question.correct_answer || ''),
+            correct_answer: contentQuestionType === 'short_answer' ? '' : contentCorrectAnswer,
             rubric_parts: rubricParts,
             short_answer_expected: ''
           });
+          setMultipartParts(loadedMultipartParts);
+          setRandomization(loadedRandomization);
         }
 
         if (question.image_url) {
@@ -258,6 +316,12 @@ export default function EditQuestion() {
         const firstPart = next.rubric_parts?.[0] || { part_label: 'Part A', rubric_levels: [{ points: 6, criteria: '' }, { points: 3, criteria: '' }, { points: 0, criteria: '' }] };
         next.rubric_parts = [firstPart];
       }
+      if (name === 'question_type' && value === 'multipart') {
+        setMultipartParts(prevParts => normalizeStructuredParts(prevParts));
+      }
+      if (name === 'question_type' && value === 'coding') {
+        setMultipartParts([defaultCodingPart()]);
+      }
       return next;
     });
   };
@@ -366,6 +430,64 @@ export default function EditQuestion() {
     return levels.length > 0 ? Math.max(...levels.map(l => parseInt(l.points) || 0)) : 0;
   };
 
+  const choiceIdForIndex = (index) => String.fromCharCode(65 + index);
+
+  const buildQuestionContent = () => {
+    const withRandomization = (content) => {
+      const compact = compactRandomization(randomization);
+      return compact ? { ...content, randomization: compact } : content;
+    };
+    if (formData.question_type === 'multipart') {
+      return withRandomization({
+        schema_version: 1,
+        stem: formData.text,
+        parts: normalizeStructuredParts(multipartParts)
+      });
+    }
+
+    if (formData.question_type === 'coding') {
+      return withRandomization({
+        schema_version: 1,
+        stem: formData.text,
+        parts: normalizeStructuredParts(multipartParts.length ? [multipartParts[0]] : [defaultCodingPart()])
+          .map(part => ({ ...part, type: 'coding' }))
+      });
+    }
+
+    if (needsAnswerChoices()) {
+      const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
+      const choices = validAnswers.map((choice, index) => ({ id: choiceIdForIndex(index), text: choice }));
+      const matching = choices.find(choice => choice.text === formData.correct_answer);
+      return withRandomization({
+        schema_version: 1,
+        stem: formData.text,
+        parts: [{
+          part_id: 'a',
+          label: 'Part A',
+          type: isTrueFalse() ? 'true_false' : 'mcq',
+          choices,
+          correct_answer: matching?.id || formData.correct_answer || choices[0]?.id || 'A',
+          points: 1
+        }]
+      });
+    }
+
+    if (needsRubric()) {
+      return withRandomization({
+        schema_version: 1,
+        stem: formData.text,
+        parts: formData.rubric_parts.map((part, index) => ({
+          part_id: choiceIdForIndex(index).toLowerCase(),
+          label: part.part_label || `Part ${choiceIdForIndex(index)}`,
+          type: formData.question_type === 'short_answer' ? 'short_answer' : 'free_response',
+          rubric: (part.rubric_levels || []).map(level => ({ points: Number(level.points) || 0, criteria: level.criteria || '' }))
+        }))
+      });
+    }
+
+    return withRandomization({ schema_version: 1, stem: formData.text, parts: [] });
+  };
+
   // Check if question type needs answer choices
   const needsAnswerChoices = () => {
     return ['mcq', 'true_false'].includes(formData.question_type);
@@ -390,6 +512,8 @@ export default function EditQuestion() {
   const needsRubric = () => {
     return formData.question_type === 'fr' || formData.question_type === 'short_answer';
   };
+
+  const qualityChecks = getQuestionQualityChecks(buildQuestionContent(), { text: formData.text });
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -485,6 +609,22 @@ export default function EditQuestion() {
       }
     }
 
+    if (formData.question_type === 'multipart' || formData.question_type === 'coding') {
+      const multipartError = validateStructuredParts(multipartParts);
+      if (multipartError) {
+        setError(multipartError);
+        setLoading(false);
+        return;
+      }
+    }
+
+    const blockingQualityCheck = qualityChecks.find(check => check.severity === 'error');
+    if (blockingQualityCheck) {
+      setError(blockingQualityCheck.message);
+      setLoading(false);
+      return;
+    }
+
     try {
       let imageUrl = originalImageUrl;
 
@@ -503,7 +643,13 @@ export default function EditQuestion() {
       let answerChoicesData = '[]';
       let correctAnswerData = '';
 
-      if (needsAnswerChoices()) {
+      if (formData.question_type === 'multipart') {
+        answerChoicesData = JSON.stringify(partsToLegacyRubric(multipartParts));
+        correctAnswerData = '';
+      } else if (formData.question_type === 'coding') {
+        answerChoicesData = '[]';
+        correctAnswerData = '';
+      } else if (needsAnswerChoices()) {
         const validAnswers = isTrueFalse() ? ['True', 'False'] : formData.answer_choices.filter(a => a.trim());
         answerChoicesData = JSON.stringify(validAnswers);
         correctAnswerData = formData.correct_answer;
@@ -516,6 +662,7 @@ export default function EditQuestion() {
       await updateQuestion(questionId, {
         title: formData.title,
         text: formData.text,
+        content: buildQuestionContent(),
         school: formData.school,
         course: formData.course,
         course_type: formData.course_type,
@@ -523,6 +670,10 @@ export default function EditQuestion() {
         blooms_taxonomy: formData.blooms_taxonomy,
         keywords: formData.keywords,
         tags: formData.tags,
+        draft_state: formData.draft_state,
+        visibility: formData.visibility,
+        school_scope: formData.school_scope || formData.school || '',
+        course_scope: formData.course_scope,
         answer_choices: answerChoicesData,
         correct_answer: correctAnswerData,
         image_url: imageUrl
@@ -547,6 +698,9 @@ export default function EditQuestion() {
         marginBottom: '16px'
       }}>Question Metadata</h3>
       <div style={styles.sidebarSection}>
+        <QualityCheckPanel checks={qualityChecks} />
+      </div>
+      <div style={styles.sidebarSection}>
         <label style={styles.label}>School</label>
         <input type="text" name="school" value={formData.school} onChange={handleInputChange} style={styles.input} />
       </div>
@@ -556,12 +710,34 @@ export default function EditQuestion() {
         <input type="text" name="course_type" value={formData.course_type} placeholder="Type" style={{ ...styles.input, marginBottom: '8px' }} onChange={handleInputChange} />
       </div>
       <div style={styles.sidebarSection}>
+        <label style={styles.label}>Sharing</label>
+        <select name="draft_state" value={formData.draft_state} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
+          <option value="ready">Ready</option>
+          <option value="draft">Draft</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select name="visibility" value={formData.visibility} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
+          <option value="private">Private</option>
+          <option value="school">School</option>
+          <option value="course">Course</option>
+          <option value="global">Global</option>
+        </select>
+        {formData.visibility === 'school' && (
+          <input type="text" name="school_scope" value={formData.school_scope} placeholder="School scope" style={styles.input} onChange={handleInputChange} />
+        )}
+        {formData.visibility === 'course' && (
+          <input type="text" name="course_scope" value={formData.course_scope} placeholder="Course ID" style={styles.input} onChange={handleInputChange} />
+        )}
+      </div>
+      <div style={styles.sidebarSection}>
         <label style={styles.label}>Question Type</label>
         <select name="question_type" value={formData.question_type} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
           <option value="mcq">Multiple Choice (MCQ)</option>
           <option value="fr">Free Response (FR)</option>
           <option value="short_answer">Short Answer</option>
           <option value="true_false">True/False</option>
+          <option value="multipart">Multipart</option>
+          <option value="coding">Coding</option>
         </select>
         <input type="text" name="keywords" value={formData.keywords} placeholder="Keywords" style={styles.input} onChange={handleInputChange} />
       </div>
@@ -648,6 +824,9 @@ export default function EditQuestion() {
         {/* Validation Message */}
         {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
         {success && <div style={styles.successBanner}>✅ Question updated. Redirecting...</div>}
+        <div style={{ marginBottom: '16px' }}>
+          <QualityCheckPanel checks={qualityChecks} />
+        </div>
 
         <form onSubmit={handleSubmit} style={{
           display: 'grid',
@@ -974,6 +1153,17 @@ export default function EditQuestion() {
               </div>
             )}
 
+            {(formData.question_type === 'multipart' || formData.question_type === 'coding') && (
+              <div style={styles.card}>
+                <StructuredPartsEditor
+                  parts={formData.question_type === 'coding' ? normalizeStructuredParts(multipartParts.length ? [multipartParts[0]] : [defaultCodingPart()]).map(part => ({ ...part, type: 'coding' })) : multipartParts}
+                  onChange={setMultipartParts}
+                  styles={styles}
+                />
+              </div>
+            )}
+            <RandomizationEditor value={randomization} onChange={setRandomization} styles={styles} />
+
             {viewMode === 'split' && renderMetadataCard()}
           </div>
 
@@ -1015,9 +1205,14 @@ export default function EditQuestion() {
                       title: formData.title,
                       text: formData.text,
                       question_type: formData.question_type,
+                      content: buildQuestionContent(),
                       answer_choices: (formData.question_type === 'mcq' || formData.question_type === 'true_false')
                         ? JSON.stringify(formData.answer_choices)
-                        : JSON.stringify(formData.rubric_parts),
+                        : formData.question_type === 'multipart'
+                          ? JSON.stringify(partsToLegacyRubric(multipartParts))
+                          : formData.question_type === 'coding'
+                            ? '[]'
+                          : JSON.stringify(formData.rubric_parts),
                       correct_answer: formData.correct_answer
                     }]}
                   />
