@@ -54,7 +54,7 @@ export default function EditQuestion() {
     keywords: '',
     tags: '',
     draft_state: 'ready',
-    visibility: 'private',
+    visibility: 'local',
     school_scope: '',
     course_scope: '',
     answer_choices: ['', '', '', ''],
@@ -176,7 +176,7 @@ export default function EditQuestion() {
             keywords: question.keywords || '',
             tags: question.tags || '',
             draft_state: question.draft_state || (question.is_verified ? 'ready' : 'draft'),
-            visibility: question.visibility || 'private',
+            visibility: (question.visibility === 'private' ? 'local' : question.visibility) || 'local',
             school_scope: question.school_scope || question.school || '',
             course_scope: question.course_scope || '',
             answer_choices: answerChoices,
@@ -717,10 +717,11 @@ export default function EditQuestion() {
           <option value="archived">Archived</option>
         </select>
         <select name="visibility" value={formData.visibility} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
-          <option value="private">Private</option>
-          <option value="school">School</option>
-          <option value="course">Course</option>
-          <option value="global">Global</option>
+          <option value="local">Local: only my instructor bank</option>
+          <option value="locked">Locked: export-only exam question</option>
+          <option value="global">Global: shared with instructors</option>
+          <option value="school">School shared</option>
+          <option value="course">Course shared</option>
         </select>
         {formData.visibility === 'school' && (
           <input type="text" name="school_scope" value={formData.school_scope} placeholder="School scope" style={styles.input} onChange={handleInputChange} />

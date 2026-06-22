@@ -1,41 +1,66 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import UploadPDF from './pages/UploadPDF.jsx'
-import QuestionBank from './pages/QuestionBank.jsx'
-import CreateQuestion from './pages/CreateQuestion.jsx'
-import EditQuestion from './pages/EditQuestion.jsx'
-import Profile from './pages/Profile.jsx'
 import Auth from './pages/Auth.jsx'
-import Onboarding from './pages/Onboarding.jsx'
-import InstructorCoursesPage from './pages/InstructorCoursesPage.jsx'
-import CourseDashboard from './pages/CourseDashboard.jsx'
-import CreateEditAssignment from './pages/CreateEditAssignment.jsx'
-import AssignmentView from './pages/AssignmentView.jsx'
-import StudentCoursesPage from './pages/StudentCoursesPage.jsx'
-import StudentCourseDashboard from './pages/StudentCourseDashboard.jsx'
-import StudentAssignmentPage from './pages/StudentAssignmentPage.jsx'
-import GradeAssignmentPage from './pages/GradeAssignmentPage.jsx'
 import LoggedOut from './pages/LoggedOut.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 import { getUserInfo } from './api.js'
-import VerifyQuestions from './pages/VerifyQuestions.jsx'
-import Analytics from './pages/Analytics.jsx'
 import { flushAnalytics, trackEvent } from './analytics.js'
+import { AppChrome, AppMain, AppNavbar } from './components/CourseDashboardUI.jsx'
 import "./index.css";
 
 // Determine backend base URL from Vite env or default to localhost
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-// Nav link that reserves space for bold text so active state doesn't shift layout
-function NavLink({ href, active, children, style = {}, ...props }) {
+const UploadPDF = React.lazy(() => import('./pages/UploadPDF.jsx'));
+const QuestionBank = React.lazy(() => import('./pages/QuestionBank.jsx'));
+const CreateQuestion = React.lazy(() => import('./pages/CreateQuestion.jsx'));
+const EditQuestion = React.lazy(() => import('./pages/EditQuestion.jsx'));
+const Profile = React.lazy(() => import('./pages/Profile.jsx'));
+const Onboarding = React.lazy(() => import('./pages/Onboarding.jsx'));
+const InstructorCoursesPage = React.lazy(() => import('./pages/InstructorCoursesPage.jsx'));
+const CourseDashboard = React.lazy(() => import('./pages/CourseDashboard.jsx'));
+const CreateEditAssignment = React.lazy(() => import('./pages/CreateEditAssignment.jsx'));
+const AssignmentView = React.lazy(() => import('./pages/AssignmentView.jsx'));
+const StudentCoursesPage = React.lazy(() => import('./pages/StudentCoursesPage.jsx'));
+const StudentCourseDashboard = React.lazy(() => import('./pages/StudentCourseDashboard.jsx'));
+const StudentAssignmentPage = React.lazy(() => import('./pages/StudentAssignmentPage.jsx'));
+const GradeAssignmentPage = React.lazy(() => import('./pages/GradeAssignmentPage.jsx'));
+const VerifyQuestions = React.lazy(() => import('./pages/VerifyQuestions.jsx'));
+const Analytics = React.lazy(() => import('./pages/Analytics.jsx'));
+
+function RouteLoading() {
   return (
-    <a href={href} style={{ color: active ? '#fff' : '#aaa', textDecoration: 'none', fontWeight: active ? 'bold' : 'normal', ...style }} {...props}>
-      <span style={{ position: 'relative', display: 'inline-block' }}>
-        <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{children}</span>
-        <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: active ? 'bold' : 'normal' }}>{children}</span>
-      </span>
-    </a>
+    <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <p>Loading...</p>
+    </div>
   );
+}
+
+const instructorExactRoutes = {
+  'upload-pdf': UploadPDF,
+  questions: QuestionBank,
+  'create-question': CreateQuestion,
+  'edit-question': EditQuestion,
+  verify: VerifyQuestions,
+  courses: InstructorCoursesPage,
+  analytics: Analytics,
+};
+
+function routeComponentFor(page, isInstructorOrAdmin) {
+  if (page === 'profile') return Profile;
+  if (page === 'student-courses') return StudentCoursesPage;
+  if (page.startsWith('student-course/')) {
+    return page.includes('/assignment/') ? StudentAssignmentPage : StudentCourseDashboard;
+  }
+
+  if (!isInstructorOrAdmin) return null;
+  if (instructorExactRoutes[page]) return instructorExactRoutes[page];
+  if (page.startsWith('course/') && !page.includes('/assignment/')) return CourseDashboard;
+  if (page.includes('/assignment/') && page.includes('/view')) return AssignmentView;
+  if (page.includes('/assignment/') && page.includes('/grade/')) return GradeAssignmentPage;
+  if (page.includes('/assignment/') && (page.includes('/edit') || page.includes('/new'))) return CreateEditAssignment;
+
+  return null;
 }
 
 // Protected component that requires authentication
@@ -151,7 +176,7 @@ function App() {
   });
 
 
-  const { user, loading, exitImpersonation } = useAuth();
+  const { user, loading, exitImpersonation, signOut } = useAuth();
   const isInstructorOrAdmin = Boolean(userInfo?.teacher || userInfo?.admin);
   const impersonation = user?.impersonation;
   const pageViewedAtRef = React.useRef(Date.now());
@@ -265,22 +290,7 @@ function App() {
   };
 
   const needsOnboarding = user && userInfo && !userInfo.profile_complete;
-  const routeMatched =
-    page === 'logged-out' ||
-    page === 'profile' ||
-    page === 'student-courses' ||
-    page.startsWith('student-course/') ||
-    (isInstructorOrAdmin && (
-      page === 'upload-pdf' ||
-      page === 'questions' ||
-      page === 'create-question' ||
-      page === 'edit-question' ||
-      page === 'verify' ||
-      page === 'courses' ||
-      page === 'analytics' ||
-      page.startsWith('course/') ||
-      page.includes('/assignment/')
-    ));
+  const RouteComponent = routeComponentFor(page, isInstructorOrAdmin);
 
   React.useEffect(() => {
     if (!user || loading || checkingProfile || !userInfo || needsOnboarding) return;
@@ -306,216 +316,46 @@ function App() {
   }
 
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', margin: 0, padding: 0 }}>
-      {impersonation?.active && (
-        <div style={{
-          background: '#f59e0b',
-          color: '#fff',
-          padding: '.5rem 1.2rem',
-          fontSize: '.875rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10001,
-        }}>
-          <span>
-            Viewing as <strong>{user?.first_name || user?.last_name || user?.email || user?.user_id || 'student'}</strong> (student) &mdash; you are {impersonation.impersonator_name}
-          </span>
-          <button
-            type="button"
-            onClick={exitImpersonation}
-            style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', textDecoration: 'underline', fontSize: '.875rem', fontWeight: 600, padding: 0 }}
-          >
-            Exit impersonation
-          </button>
-        </div>
-      )}
-      <nav style={{
-        background: '#333',
-        color: 'white',
-        padding: '1rem',
-        display: 'flex',
-        gap: '1rem',
-        alignItems: 'center',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10000,
-        isolation: 'isolate'
-
-      }}>
-        <h1 style={{ margin: 0 }}>
-          <a
-            href="#courses"
-            onClick={handleLogoClick}
-            style={{ fontSize: '1.5rem', cursor: 'pointer', color: 'inherit', textDecoration: 'none' }}
-          >
-            Caliber
-          </a>
-        </h1>
-
-        {/* Temporary API docs link immediately to the right of the title */}
-        <a
-          href={`${API_BASE}/docs`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: '#fff',
-            marginLeft: '0.5rem',
-            textDecoration: 'none',
-            fontSize: '0.9rem',
-            opacity: 0.95
-          }}
-        >
-          API Docs
-        </a>
-
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 1 }}>
-          {user && (
-            <>
-              {isInstructorOrAdmin && (
-                <NavLink href="#courses" active={page === 'courses'}>Courses</NavLink>
-              )}
-              {isInstructorOrAdmin && (
-                <NavLink href="#questions" active={page === 'questions'}>Question Bank</NavLink>
-              )}
-              {isInstructorOrAdmin && (
-                <NavLink href="#analytics" active={page === 'analytics'}>Analytics</NavLink>
-              )}
-              <NavLink href="#student-courses" active={page === 'student-courses' || page.startsWith('student-course/')}>
-                {isInstructorOrAdmin ? 'Student View' : 'Courses'}
-              </NavLink>
-              <a
-                href="#profile"
-                style={{
-                  color: page === 'profile' ? '#fff' : '#aaa',
-                  textDecoration: 'none',
-                  fontSize: '0.9rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}
-                title="View your profile"
-              >
-                <span
-                  style={{
-                    width: 28,
-                    height: 28,
-                    background: profilePrefs.color,
-                    color: 'white',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: '0.8rem',
-                    borderRadius: profilePrefs.iconShape === 'square' ? 6 : 9999,
-                    ...(profilePrefs.iconShape === 'hex'
-                      ? { clipPath: 'polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%)' }
-                      : {}),
-                    flexShrink: 0
-                  }}
-                >
-                  {(profilePrefs.initials || '').toUpperCase()}
-                </span>
-                <span style={{ position: 'relative', display: 'inline-block' }}>
-                  <span style={{ fontWeight: 'bold', visibility: 'hidden' }} aria-hidden="true">{user.email}</span>
-                  <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', fontWeight: page === 'profile' ? 'bold' : 'normal' }}>{user.email}</span>
-                </span>
-              </a>
-            </>
-          )}
-        </div>
-      </nav>
-      <main style={{ padding: '2rem' }}>
-        {!user && !loading ? (
-          page === 'logged-out' ? <LoggedOut /> : <Auth />
-        ) : needsOnboarding ? (
-          <Onboarding onComplete={handleOnboardingComplete} />
-        ) : (
-          <>
-            {isInstructorOrAdmin && page === 'upload-pdf' && (
-              <ProtectedRoute>
-                <UploadPDF />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page === 'questions' && (
-              <ProtectedRoute>
-                <QuestionBank />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page === 'create-question' && (
-              <ProtectedRoute>
-                <CreateQuestion />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page === 'edit-question' && (
-              <ProtectedRoute>
-                <EditQuestion />
-              </ProtectedRoute>
-            )}
-            {page === 'profile' && (
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page === 'verify' && (
-              <ProtectedRoute>
-                <VerifyQuestions />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page === 'courses' && (
-              <ProtectedRoute>
-                <InstructorCoursesPage />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page === 'analytics' && (
-              <ProtectedRoute>
-                <Analytics />
-              </ProtectedRoute>
-            )}
-            {page === 'student-courses' && (
-              <ProtectedRoute>
-                <StudentCoursesPage />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page.startsWith('course/') && !page.includes('/assignment/') && (
-              <ProtectedRoute>
-                <CourseDashboard />
-              </ProtectedRoute>
-            )}
-            {page.startsWith('student-course/') && page.includes('/assignment/') && (
-              <ProtectedRoute>
-                <StudentAssignmentPage />
-              </ProtectedRoute>
-            )}
-            {page.startsWith('student-course/') && !page.includes('/assignment/') && (
-              <ProtectedRoute>
-                <StudentCourseDashboard />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page.includes('/assignment/') && page.includes('/view') && (
-              <ProtectedRoute>
-                <AssignmentView />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page.includes('/assignment/') && page.includes('/grade/') && (
-              <ProtectedRoute>
-                <GradeAssignmentPage />
-              </ProtectedRoute>
-            )}
-            {isInstructorOrAdmin && page.includes('/assignment/') && (page.includes('/edit') || page.includes('/new')) && (
-              <ProtectedRoute>
-                <CreateEditAssignment />
-              </ProtectedRoute>
-            )}
-            {!routeMatched && (
-              <EmptyRouteFallback page={page} user={user} />
-            )}
-          </>
+    <AppChrome>
+      {user ? (
+        <AppNavbar
+          apiBase={API_BASE}
+          onLogoClick={handleLogoClick}
+          user={user}
+          isInstructorOrAdmin={isInstructorOrAdmin}
+          page={page}
+          profilePrefs={profilePrefs}
+          signOut={signOut}
+        />
+      ) : null}
+      <AppMain style={!user && !loading ? { padding: 0 } : null}>
+        {impersonation?.active && (
+          <div className="caliber-impersonation-banner">
+            <span>
+              Viewing as <strong>{user?.first_name || user?.last_name || user?.email || user?.user_id || 'student'}</strong> (student) - you are {impersonation.impersonator_name}
+            </span>
+            <button type="button" onClick={exitImpersonation}>
+              Exit impersonation
+            </button>
+          </div>
         )}
-      </main>
-    </div>
+        <React.Suspense fallback={<RouteLoading />}>
+          {!user && !loading ? (
+            page === 'logged-out' ? <LoggedOut /> : <Auth />
+          ) : needsOnboarding ? (
+            <Onboarding onComplete={handleOnboardingComplete} />
+          ) : page === 'logged-out' ? (
+            null
+          ) : RouteComponent ? (
+            <ProtectedRoute>
+              <RouteComponent />
+            </ProtectedRoute>
+          ) : (
+            <EmptyRouteFallback page={page} user={user} />
+          )}
+        </React.Suspense>
+      </AppMain>
+    </AppChrome>
   );
 }
 

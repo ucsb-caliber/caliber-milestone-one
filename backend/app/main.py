@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
 
 from .database import create_db_and_tables, get_session, engine, session_with_rls, temporary_rls_mode
-from .models import AnalyticsEvent, AssignmentIntegrityEvent, Question, Assignment, AssignmentProgress
+from .models import AnalyticsEvent, AssignmentIntegrityEvent, Question, QuestionComment, QuestionLike, Assignment, AssignmentProgress
 from .schemas import (QuestionCreate, QuestionResponse, UploadResponse, QuestionListResponse, QuestionUpdate,
                      UserResponse, UserUpdate, UserProfileUpdate, UserOnboardingUpdate, UserPreferencesUpdate,
                      UserListResponse,
@@ -32,6 +32,7 @@ from .schemas import (QuestionCreate, QuestionResponse, UploadResponse, Question
                      CoursePinUpdate, CoursePinResponse, CoursePinsResponse,
                      AdminCourseOverviewResponse,
                      AssignmentResponse, AssignmentCreate, AssignmentUpdate, AssignmentPreviewRequest, UploadStatusResponse,
+                     QuestionCommentCreate, QuestionCommentResponse,
                      VerifyBySourceRequest, VerifyBySourceResponse,
                      AssignmentProgressResponse, AssignmentProgressUpdate,
                      AssignmentIntegrityEventBatch, AssignmentIntegrityEventResponse,
@@ -90,6 +91,7 @@ from .question_randomization import (
     render_question_with_variant,
     variant_key,
 )
+from .question_social import question_social_metadata
 from .question_folder import (
     apply_question_import,
     build_question_export_zip,
@@ -296,6 +298,7 @@ def on_startup():
     create_db_and_tables()
     ensure_question_structured_columns()
     ensure_assignment_question_ref_columns()
+    ensure_question_social_columns()
     backfill_assignment_question_refs()
     ensure_assignment_progress_grading_columns()
     ensure_assignment_grade_release_columns()
@@ -330,7 +333,7 @@ def ensure_question_structured_columns():
             "content": "ALTER TABLE question ADD COLUMN content TEXT NOT NULL DEFAULT ''",
             "owner_user_id": "ALTER TABLE question ADD COLUMN owner_user_id VARCHAR NULL",
             "draft_state": "ALTER TABLE question ADD COLUMN draft_state VARCHAR NOT NULL DEFAULT 'ready'",
-            "visibility": "ALTER TABLE question ADD COLUMN visibility VARCHAR NOT NULL DEFAULT 'private'",
+            "visibility": "ALTER TABLE question ADD COLUMN visibility VARCHAR NOT NULL DEFAULT 'local'",
             "origin": "ALTER TABLE question ADD COLUMN origin VARCHAR NOT NULL DEFAULT 'manual'",
             "school_scope": "ALTER TABLE question ADD COLUMN school_scope VARCHAR NOT NULL DEFAULT ''",
             "course_scope": "ALTER TABLE question ADD COLUMN course_scope VARCHAR NULL",
@@ -340,6 +343,9 @@ def ensure_question_structured_columns():
             "content_hash": "ALTER TABLE question ADD COLUMN content_hash VARCHAR NOT NULL DEFAULT ''",
             "reviewed_at": f"ALTER TABLE question ADD COLUMN reviewed_at {timestamp_type} NULL",
             "reviewed_by": "ALTER TABLE question ADD COLUMN reviewed_by VARCHAR NULL",
+            "original_author_user_id": "ALTER TABLE question ADD COLUMN original_author_user_id VARCHAR NULL",
+            "copied_from_question_id": "ALTER TABLE question ADD COLUMN copied_from_question_id INTEGER NULL",
+            "copied_from_qid": "ALTER TABLE question ADD COLUMN copied_from_qid VARCHAR NULL",
             "updated_at": f"ALTER TABLE question ADD COLUMN updated_at {timestamp_type} NULL",
         }
 
@@ -348,9 +354,54 @@ def ensure_question_structured_columns():
                 connection.execute(text(stmt))
 
         connection.execute(text("UPDATE question SET owner_user_id = user_id WHERE owner_user_id IS NULL"))
+        connection.execute(text("UPDATE question SET original_author_user_id = COALESCE(owner_user_id, user_id) WHERE original_author_user_id IS NULL OR original_author_user_id = ''"))
         connection.execute(text("UPDATE question SET draft_state = CASE WHEN is_verified THEN 'ready' ELSE 'draft' END WHERE draft_state IS NULL OR draft_state = ''"))
         connection.execute(text("UPDATE question SET school_scope = COALESCE(NULLIF(user_school, ''), NULLIF(school, ''), '') WHERE school_scope IS NULL OR school_scope = ''"))
         connection.execute(text("UPDATE question SET updated_at = created_at WHERE updated_at IS NULL"))
+        connection.commit()
+
+
+def ensure_question_social_columns():
+    """Backward-compatible schema guard for question social tables."""
+    with engine.connect() as connection:
+        inspector = inspect(connection)
+        table_names = set(inspector.get_table_names())
+        if "question" not in table_names:
+            return
+        dialect = connection.dialect.name
+        id_type = "SERIAL PRIMARY KEY" if dialect == "postgresql" else "INTEGER PRIMARY KEY"
+        timestamp_type = "TIMESTAMP" if dialect == "postgresql" else "DATETIME"
+
+        if "question_like" not in table_names:
+            connection.execute(text("""
+                CREATE TABLE question_like (
+                    id {id_type},
+                    question_id INTEGER NOT NULL,
+                    user_id VARCHAR NOT NULL,
+                    created_at {timestamp_type} NOT NULL,
+                    FOREIGN KEY(question_id) REFERENCES question (id),
+                    CONSTRAINT uq_question_like_question_user UNIQUE (question_id, user_id)
+                )
+            """.format(id_type=id_type, timestamp_type=timestamp_type)))
+            connection.execute(text("CREATE INDEX ix_question_like_question_id ON question_like (question_id)"))
+            connection.execute(text("CREATE INDEX ix_question_like_user_id ON question_like (user_id)"))
+
+        if "question_comment" not in table_names:
+            connection.execute(text("""
+                CREATE TABLE question_comment (
+                    id {id_type},
+                    question_id INTEGER NOT NULL,
+                    user_id VARCHAR NOT NULL,
+                    body TEXT NOT NULL,
+                    created_at {timestamp_type} NOT NULL,
+                    updated_at {timestamp_type} NOT NULL,
+                    FOREIGN KEY(question_id) REFERENCES question (id)
+                )
+            """.format(id_type=id_type, timestamp_type=timestamp_type)))
+            connection.execute(text("CREATE INDEX ix_question_comment_question_id ON question_comment (question_id)"))
+            connection.execute(text("CREATE INDEX ix_question_comment_user_id ON question_comment (user_id)"))
+            connection.execute(text("CREATE INDEX ix_question_comment_question_created ON question_comment (question_id, created_at)"))
+
         connection.commit()
 
 
@@ -555,6 +606,11 @@ def _late_due_deadline_utc(assignment: Assignment) -> Optional[datetime]:
     """Return the late-submission deadline as a UTC event timestamp."""
     deadline_local = _late_due_deadline_local(assignment)
     return deadline_local.astimezone(timezone.utc) if deadline_local else None
+
+
+def _late_due_deadline_stored(assignment: Assignment) -> Optional[datetime]:
+    """Return the deadline value in the same shape as assignment schedule fields."""
+    return assignment.due_date_hard or assignment.due_date_soft
 
 
 def _has_late_due_passed(assignment: Assignment, *, now: Optional[datetime] = None) -> bool:
@@ -845,12 +901,23 @@ def _build_question_response(
     question: Question,
     *,
     include_hidden_coding: bool = False,
+    current_user_id: Optional[str] = None,
+    social_metadata: Optional[dict[str, Any]] = None,
 ) -> QuestionResponse:
+    if social_metadata is None:
+        social_metadata = question_social_metadata(session, [question.id], current_user_id).get(question.id, {})
+
+    likes_count = int(social_metadata.get("likes_count") or 0)
+    comments_count = int(social_metadata.get("comments_count") or 0)
+    liked_by_me = bool(social_metadata.get("liked_by_me"))
+    recent_comments = social_metadata.get("recent_comments") or []
     return QuestionResponse(
         id=question.id,
         qid=question.qid,
+        version=question.version,
         title=question.title,
         text=question.text,
+        content=question.content,
         tags=question.tags,
         keywords=question.keywords,
         school=question.school,
@@ -865,14 +932,139 @@ def _build_question_response(
         source_pdf=question.source_pdf,
         image_url=question.image_url,
         user_id=question.user_id,
+        owner_user_id=question.owner_user_id,
+        draft_state=question.draft_state,
+        visibility=question.visibility,
+        origin=question.origin,
+        school_scope=question.school_scope,
+        course_scope=question.course_scope,
+        source_repo=question.source_repo,
+        source_path=question.source_path,
+        source_commit=question.source_commit,
+        content_hash=question.content_hash,
+        reviewed_at=question.reviewed_at,
+        reviewed_by=question.reviewed_by,
+        original_author_user_id=question.original_author_user_id or question.owner_user_id or question.user_id,
+        copied_from_question_id=question.copied_from_question_id,
+        copied_from_qid=question.copied_from_qid,
         created_at=question.created_at,
+        updated_at=question.updated_at,
         is_verified=question.is_verified,
         coding=_coding_response_from_question(
             session,
             question,
             include_hidden_tests=include_hidden_coding,
         ),
+        likes_count=likes_count,
+        liked_by_me=liked_by_me,
+        comments_count=comments_count,
+        recent_comments=[QuestionCommentResponse.model_validate(comment) for comment in recent_comments],
     )
+
+
+def _question_response_for_user(
+    session: Session,
+    question: Question,
+    user_id: str,
+    *,
+    include_hidden_coding: bool = False,
+) -> QuestionResponse:
+    return _build_question_response(
+        session,
+        question,
+        include_hidden_coding=include_hidden_coding,
+        current_user_id=user_id,
+    )
+
+
+def _question_responses_for_user(
+    session: Session,
+    questions: list[Question],
+    user_id: str,
+    *,
+    include_hidden_coding: bool = False,
+) -> list[QuestionResponse]:
+    social_metadata = question_social_metadata(
+        session,
+        [question.id for question in questions],
+        current_user_id=user_id,
+    )
+    return [
+        _build_question_response(
+            session,
+            question,
+            include_hidden_coding=include_hidden_coding,
+            current_user_id=user_id,
+            social_metadata=social_metadata.get(question.id),
+        )
+        for question in questions
+    ]
+
+
+def _normalize_visibility(value: Optional[str]) -> str:
+    visibility = (value or "local").strip().lower()
+    if visibility == "private":
+        return "local"
+    allowed = {"local", "locked", "global", "school", "course"}
+    return visibility if visibility in allowed else "local"
+
+
+def _question_scope_for_user(session: Session, user_id: str) -> tuple[str, list[str]]:
+    school_scope = ""
+    course_scope_ids: list[str] = []
+    try:
+        user_payload = _roster_call_for_user(session, user_id, "GET", "/api/user")
+        school_scope = str(user_payload.get("school_name") or "").strip()
+    except Exception:
+        school_scope = ""
+    try:
+        courses_payload = _roster_call_for_user(
+            session,
+            user_id,
+            "GET",
+            "/api/courses",
+            params={"skip": 0, "limit": 1000},
+        )
+        course_items = courses_payload.get("courses") if isinstance(courses_payload, dict) else courses_payload
+        if isinstance(course_items, list):
+            course_scope_ids = [str(item.get("id")) for item in course_items if isinstance(item, dict) and item.get("id") is not None]
+    except Exception:
+        course_scope_ids = []
+    return school_scope, course_scope_ids
+
+
+def _is_locked_question(question: Question) -> bool:
+    return (question.visibility or "").strip().lower() == "locked"
+
+
+def _require_question_bank_access(session: Session, question_id: int, user_id: str) -> Question:
+    school_scope, course_scope_ids = _question_scope_for_user(session, user_id)
+    question = session.exec(
+        select(Question).where(
+            Question.id == question_id,
+            _visible_question_predicate(
+                user_id=user_id,
+                school_scope=school_scope,
+                course_scope_ids=course_scope_ids,
+            ),
+        )
+    ).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return question
+
+
+def _reject_locked_assignment_questions(session: Session, question_ids: list[int]) -> None:
+    if not question_ids:
+        return
+    questions = get_questions_by_ids(session, question_ids)
+    locked = [question for question in questions if _is_locked_question(question)]
+    if locked:
+        labels = ", ".join(question.qid or str(question.id) for question in locked[:5])
+        raise HTTPException(
+            status_code=400,
+            detail=f"Locked questions are export-only and cannot be shown to students: {labels}",
+        )
 
 
 def _normalize_coding_answer(raw_answer: Any) -> dict[str, str]:
@@ -1196,9 +1388,9 @@ def _build_grading_response(
     answers_by_question_id: dict[str, Any],
     grading_data: dict[str, Any],
     grade_submitted: bool,
-    submitted_at: Optional[datetime],
-    stored_score_earned: Optional[float],
-    stored_score_total: Optional[float],
+    submitted_at: Optional[datetime] = None,
+    stored_score_earned: Optional[float] = None,
+    stored_score_total: Optional[float] = None,
     include_hidden_autograder: bool = False,
 ) -> AssignmentGradingResponse:
     question_cards: list[AssignmentQuestionGradeResponse] = []
@@ -1346,7 +1538,8 @@ def _build_zero_grading_data_for_missing_submission(
 
         qid = _question_answer_key(question)
         legacy_qid = _legacy_question_answer_key(question)
-        existing_question_grade = normalized.get(qid, normalized.get(legacy_qid, {}))
+        output_key = qid if qid in normalized or legacy_qid not in normalized else legacy_qid
+        existing_question_grade = normalized.get(output_key, normalized.get(qid, normalized.get(legacy_qid, {})))
         existing_parts = existing_question_grade.get("parts", {}) if isinstance(existing_question_grade, dict) else {}
         zero_parts = {}
         for part in _build_manual_rubric_parts(question, {}):
@@ -1361,12 +1554,10 @@ def _build_zero_grading_data_for_missing_submission(
                 "comment": str(existing_part.get("comment") or ""),
             }
 
-        normalized[qid] = {
+        normalized[output_key] = {
             "question_comment": str(existing_question_grade.get("question_comment") or "") if isinstance(existing_question_grade, dict) else "",
             "parts": zero_parts,
         }
-        if legacy_qid in normalized and legacy_qid != qid:
-            normalized.pop(legacy_qid, None)
 
     return normalized
 
@@ -1548,7 +1739,7 @@ def _sync_assignment_post_due_grading(
         answers = _safe_json_loads(progress.answers if progress else "{}", {})
         grading_data = _safe_json_loads(progress.grading_data if progress else "{}", {})
         normalized_grading_data = grading_data if isinstance(grading_data, dict) else {}
-        auto_graded_at = _late_due_deadline_utc(assignment) or finalized_at
+        auto_graded_at = _late_due_deadline_stored(assignment) or finalized_at
 
         next_score_earned: Optional[float] = None
         next_score_total: Optional[float] = None
@@ -2163,7 +2354,7 @@ def list_questions(
     )
     
     return QuestionListResponse(
-        questions=[_build_question_response(session, question) for question in questions],
+        questions=_question_responses_for_user(session, questions, user_id),
         total=total
     )
 
@@ -2180,7 +2371,7 @@ def list_draft_questions(
     total = get_draft_questions_count(session, user_id=user_id)
 
     return QuestionListResponse(
-        questions=[_build_question_response(session, question) for question in questions],
+        questions=_question_responses_for_user(session, questions, user_id),
         total=total
     )
 
@@ -2230,7 +2421,7 @@ def list_all_questions(
     )
     
     return QuestionListResponse(
-        questions=[_build_question_response(session, question) for question in questions],
+        questions=_question_responses_for_user(session, questions, user_id),
         total=total
     )
 
@@ -2250,7 +2441,7 @@ def create_question_json(
             raise HTTPException(status_code=422, detail=f"Invalid question content: {exc}") from exc
 
     try:
-        return create_question(
+        question = create_question(
             session=session,
             qid=question_data.qid,
             version=question_data.version,
@@ -2273,7 +2464,7 @@ def create_question_json(
             user_id=user_id,
             is_verified=question_data.is_verified,
             draft_state=question_data.draft_state,
-            visibility=question_data.visibility,
+            visibility=_normalize_visibility(question_data.visibility),
             origin=question_data.origin,
             school_scope=question_data.school_scope,
             course_scope=question_data.course_scope,
@@ -2282,7 +2473,11 @@ def create_question_json(
             source_commit=question_data.source_commit,
             reviewed_at=question_data.reviewed_at,
             reviewed_by=question_data.reviewed_by,
+            original_author_user_id=question_data.original_author_user_id,
+            copied_from_question_id=question_data.copied_from_question_id,
+            copied_from_qid=question_data.copied_from_qid,
         )
+        return _question_response_for_user(session, question, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -2299,7 +2494,8 @@ def get_question_by_qid(
     ).first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    return question
+    question = _require_question_bank_access(session, question.id, user_id)
+    return _question_response_for_user(session, question, user_id)
 
 
 @app.get("/api/questions/by-qid/{qid}/versions", response_model=QuestionListResponse)
@@ -2312,7 +2508,22 @@ def list_question_versions(
     questions = list(session.exec(
         select(Question).where(Question.qid == qid).order_by(Question.version.desc())
     ).all())
-    return QuestionListResponse(questions=questions, total=len(questions))
+    school_scope, course_scope_ids = _question_scope_for_user(session, user_id)
+    visible_ids = set(session.exec(
+        select(Question.id).where(
+            Question.qid == qid,
+            _visible_question_predicate(
+                user_id=user_id,
+                school_scope=school_scope,
+                course_scope_ids=course_scope_ids,
+            ),
+        )
+    ).all())
+    questions = [question for question in questions if question.id in visible_ids]
+    return QuestionListResponse(
+        questions=_question_responses_for_user(session, questions, user_id),
+        total=len(questions),
+    )
 
 
 @app.put("/api/questions/by-qid/{qid}", response_model=QuestionResponse)
@@ -2415,12 +2626,7 @@ def export_question_folder(
     user_id: str = Depends(get_current_user),
 ):
     """Export selected questions as a Caliber question-folder zip."""
-    school_scope = _user_school_scope(user_id)
-    course_scope_ids: list[str] = []
-    try:
-        course_scope_ids = [str(course.get("id")) for course in roster_db.list_user_courses(user_id)]
-    except Exception:
-        course_scope_ids = []
+    school_scope, course_scope_ids = _question_scope_for_user(session, user_id)
 
     statement = select(Question).where(
         _visible_question_predicate(
@@ -2475,14 +2681,150 @@ def get_question_by_id(
 ):
     """Get a specific question by ID. Returns the question if it exists (for assignment viewing)."""
     # Don't filter by user_id - allow fetching any question for assignment viewing
-    question = get_question(session, question_id, user_id=None)
-    if not question:
-        raise HTTPException(status_code=404, detail="Question not found")
+    question = _require_question_bank_access(session, question_id, user_id)
     return _build_question_response(
         session,
         question,
         include_hidden_coding=question.user_id == user_id,
+        current_user_id=user_id,
     )
+
+
+@app.post("/api/questions/{question_id}/like", response_model=QuestionResponse)
+def toggle_question_like(
+    question_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Toggle the current instructor's like on a visible question."""
+    question = _require_question_bank_access(session, question_id, user_id)
+    existing = session.exec(
+        select(QuestionLike).where(
+            QuestionLike.question_id == question.id,
+            QuestionLike.user_id == user_id,
+        )
+    ).first()
+    if existing:
+        session.delete(existing)
+    else:
+        session.add(QuestionLike(question_id=question.id, user_id=user_id))
+    session.commit()
+    return _question_response_for_user(session, question, user_id, include_hidden_coding=question.user_id == user_id)
+
+
+@app.get("/api/questions/{question_id}/comments", response_model=list[QuestionCommentResponse])
+def list_question_comments(
+    question_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """List instructor comments for a visible question."""
+    question = _require_question_bank_access(session, question_id, user_id)
+    comments = list(session.exec(
+        select(QuestionComment)
+        .where(QuestionComment.question_id == question.id)
+        .order_by(QuestionComment.created_at.asc())
+    ).all())
+    return [QuestionCommentResponse.model_validate(comment) for comment in comments]
+
+
+@app.post("/api/questions/{question_id}/comments", response_model=QuestionCommentResponse, status_code=201)
+def create_question_comment(
+    question_id: int,
+    payload: QuestionCommentCreate,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Add an instructor comment to a visible question."""
+    question = _require_question_bank_access(session, question_id, user_id)
+    body = (payload.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    comment = QuestionComment(
+        question_id=question.id,
+        user_id=user_id,
+        body=body,
+        updated_at=datetime.utcnow(),
+    )
+    session.add(comment)
+    session.commit()
+    session.refresh(comment)
+    return QuestionCommentResponse.model_validate(comment)
+
+
+@app.delete("/api/questions/{question_id}/comments/{comment_id}", status_code=204)
+def delete_question_comment(
+    question_id: int,
+    comment_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Delete one of the current instructor's comments."""
+    _require_question_bank_access(session, question_id, user_id)
+    comment = session.get(QuestionComment, comment_id)
+    if not comment or comment.question_id != question_id or comment.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    session.delete(comment)
+    session.commit()
+
+
+@app.post("/api/questions/{question_id}/copy", response_model=QuestionResponse, status_code=201)
+def copy_question_to_my_bank(
+    question_id: int,
+    session: Session = Depends(get_session),
+    user_id: str = Depends(get_current_user),
+):
+    """Copy a shared question into the current instructor's local bank while preserving author credit."""
+    source_question = _require_question_bank_access(session, question_id, user_id)
+    if source_question.user_id == user_id:
+        raise HTTPException(status_code=400, detail="This question is already in your question bank")
+    if _is_locked_question(source_question):
+        raise HTTPException(status_code=400, detail="Locked questions are export-only and cannot be copied into assignments")
+
+    source_content = question_content_from_question(source_question) if (source_question.content or "").strip() else None
+    try:
+        copied_question = create_question(
+            session=session,
+            title=source_question.title,
+            text=source_question.text,
+            content=source_content,
+            tags=source_question.tags,
+            keywords=source_question.keywords,
+            school=source_question.school,
+            user_school=source_question.user_school,
+            course=source_question.course,
+            course_type=source_question.course_type,
+            question_type=source_question.question_type,
+            blooms_taxonomy=source_question.blooms_taxonomy,
+            answer_choices=source_question.answer_choices,
+            correct_answer=source_question.correct_answer,
+            pdf_url=source_question.pdf_url,
+            source_pdf=source_question.source_pdf,
+            image_url=source_question.image_url,
+            user_id=user_id,
+            owner_user_id=user_id,
+            original_author_user_id=source_question.original_author_user_id or source_question.owner_user_id or source_question.user_id,
+            is_verified=True,
+            draft_state="ready",
+            visibility="local",
+            origin="global_copy",
+            school_scope=source_question.school_scope,
+            course_scope=source_question.course_scope,
+            source_repo=source_question.source_repo,
+            source_path=source_question.source_path,
+            source_commit=source_question.source_commit,
+            copied_from_question_id=source_question.id,
+            copied_from_qid=source_question.qid,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    if _is_coding_question_type(source_question.question_type):
+        private_row = get_coding_question_private(session, source_question.id)
+        if private_row:
+            upsert_coding_question_private(session, copied_question.id, private_row.hidden_tests)
+
+    return _question_response_for_user(session, copied_question, user_id, include_hidden_coding=True)
 
 
 @app.post("/api/questions/{question_id}/variants", response_model=QuestionListResponse, status_code=201)
@@ -2546,7 +2888,7 @@ def generate_question_variants(
     ]
 
     return QuestionListResponse(
-        questions=[_build_question_response(session, draft) for draft in drafts],
+        questions=_question_responses_for_user(session, drafts, user_id),
         total=len(drafts),
     )
 
@@ -2558,9 +2900,21 @@ def get_questions_batch(
     user_id: str = Depends(get_current_user)
 ):
     """Get multiple questions by IDs in a single request. More efficient than individual calls."""
-    questions = get_questions_by_ids(session, question_ids)
+    school_scope, course_scope_ids = _question_scope_for_user(session, user_id)
+    questions = list(session.exec(
+        select(Question).where(
+            Question.id.in_(question_ids),
+            _visible_question_predicate(
+                user_id=user_id,
+                school_scope=school_scope,
+                course_scope_ids=course_scope_ids,
+            ),
+        )
+    ).all())
+    id_to_question = {question.id: question for question in questions}
+    questions = [id_to_question[question_id] for question_id in question_ids if question_id in id_to_question]
     return QuestionListResponse(
-        questions=[_build_question_response(session, question) for question in questions],
+        questions=_question_responses_for_user(session, questions, user_id),
         total=len(questions)
     )
 
@@ -2587,7 +2941,7 @@ def create_new_question(
     source_pdf: Optional[str] = Form(None),
     image_url: Optional[str] = Form(None),
     draft_state: Optional[str] = Form(None),
-    visibility: str = Form("private"),
+    visibility: str = Form("local"),
     origin: str = Form("manual"),
     school_scope: str = Form(""),
     course_scope: Optional[str] = Form(None),
@@ -2649,7 +3003,7 @@ def create_new_question(
             user_id=user_id,
             is_verified=is_verified,
             draft_state=effective_draft_state,
-            visibility=visibility,
+            visibility=_normalize_visibility(visibility),
             origin=origin,
             school_scope=school_scope,
             course_scope=course_scope,
@@ -2668,7 +3022,7 @@ def create_new_question(
             question.id,
             serialize_coding_hidden_tests((coding_payload or {}).get("hidden_tests")),
         )
-    return _build_question_response(session, question, include_hidden_coding=True)
+    return _question_response_for_user(session, question, user_id, include_hidden_coding=True)
 
 
 @app.put("/api/questions/{question_id}", response_model=QuestionResponse)
@@ -2711,7 +3065,7 @@ def update_existing_question(
             image_url=question_data.image_url,
             is_verified=question_data.is_verified,
             draft_state=question_data.draft_state,
-            visibility=question_data.visibility,
+            visibility=_normalize_visibility(question_data.visibility) if question_data.visibility is not None else None,
             origin=question_data.origin,
             school_scope=question_data.school_scope,
             course_scope=question_data.course_scope,
@@ -2761,7 +3115,7 @@ def update_existing_question(
             serialize_coding_hidden_tests(coding_payload.get("hidden_tests")),
         )
 
-    return _build_question_response(session, question, include_hidden_coding=True)
+    return _question_response_for_user(session, question, user_id, include_hidden_coding=True)
 
 
 @app.delete("/api/questions/{question_id}", status_code=204)
@@ -3571,6 +3925,7 @@ def create_new_assignment(
         )
     course_name = roster_course_payload.get("course_name") or ""
     student_ids_for_progress = roster_course_payload.get("student_ids") or []
+    _reject_locked_assignment_questions(session, assignment_data.assignment_questions)
 
     # Create the assignment
     with temporary_rls_mode(
@@ -3622,6 +3977,7 @@ def preview_assignment_draft(
     missing_ids = [question_id for question_id in preview_data.assignment_questions if int(question_id) not in resolved_ids]
     if missing_ids:
         raise HTTPException(status_code=400, detail=f"Preview includes missing questions: {missing_ids}")
+    _reject_locked_assignment_questions(session, preview_data.assignment_questions)
     rendered_questions = _render_questions_for_preview(
         questions=questions,
         preview_student_id=preview_data.preview_student_id,
@@ -3716,6 +4072,8 @@ def update_existing_assignment(
     )
     if course_payload.get("instructor_id") != user_id:
         raise HTTPException(status_code=403, detail="Only the course instructor can update assignments")
+    if assignment_data.assignment_questions is not None:
+        _reject_locked_assignment_questions(session, assignment_data.assignment_questions)
 
     with temporary_rls_mode(
         session,
@@ -4337,7 +4695,7 @@ def get_assignment_submission_status(
         if timing_status == "not_submitted":
             if assignment_phase in {"ungraded", "graded"}:
                 grade_submitted = True
-                grade_submitted_at = grade_submitted_at or _late_due_deadline_utc(assignment)
+                grade_submitted_at = grade_submitted_at or _late_due_deadline_stored(assignment)
                 score_earned = 0.0 if score_earned is None else score_earned
                 score_total = assignment_total_points if score_total is None else score_total
                 score_percent = 0.0 if assignment_total_points > 0 else None

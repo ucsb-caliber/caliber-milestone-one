@@ -30,7 +30,7 @@ export default function CreateQuestion() {
     keywords: '',
     tags: '',
     draft_state: 'ready',
-    visibility: 'private',
+    visibility: 'local',
     school_scope: '',
     course_scope: '',
     answer_choices: ['', '', '', ''],
@@ -64,7 +64,10 @@ export default function CreateQuestion() {
     try {
       const parsedDraft = JSON.parse(savedDraft);
       if (window.confirm('Found an unsaved draft. Would you like to restore it?')) {
-        setFormData(parsedDraft);
+        setFormData({
+          ...parsedDraft,
+          visibility: (parsedDraft.visibility === 'private' ? 'local' : parsedDraft.visibility) || 'local'
+        });
         if (parsedDraft.randomization) setRandomization(normalizeRandomization(parsedDraft.randomization));
       } else {
         localStorage.removeItem('question_draft');
@@ -591,7 +594,7 @@ export default function CreateQuestion() {
         keywords: '',
         tags: '',
         draft_state: 'ready',
-        visibility: 'private',
+        visibility: 'local',
         school_scope: resolvedUserSchool || '',
         course_scope: '',
         answer_choices: ['', '', '', ''],
@@ -640,10 +643,11 @@ export default function CreateQuestion() {
           <option value="archived">Archived</option>
         </select>
         <select name="visibility" value={formData.visibility} onChange={handleInputChange} style={{ ...styles.input, marginBottom: '8px' }}>
-          <option value="private">Private</option>
-          <option value="school">School</option>
-          <option value="course">Course</option>
-          <option value="global">Global</option>
+          <option value="local">Local: only my instructor bank</option>
+          <option value="locked">Locked: export-only exam question</option>
+          <option value="global">Global: shared with instructors</option>
+          <option value="school">School shared</option>
+          <option value="course">Course shared</option>
         </select>
         {formData.visibility === 'school' && (
           <input type="text" name="school_scope" value={formData.school_scope} placeholder="School scope" style={styles.input} onChange={handleInputChange} />

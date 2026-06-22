@@ -47,6 +47,18 @@
 
 :root {
   --radius: 0.625rem;
+  --caliber-navy: #003660;
+  --caliber-gold: #FEBC11;
+  --caliber-ink: #111517;
+  --caliber-text: #3D4952;
+  --caliber-muted: #66737D;
+  --caliber-bg: #EEF0F2;
+  --caliber-surface: #FFFFFF;
+  --caliber-border: #DCE1E5;
+  --caliber-sea-green: #09847A;
+  --caliber-aqua: #047C91;
+  --caliber-coral: #EF5645;
+  --caliber-danger: #C43424;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -118,8 +130,26 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    background: var(--caliber-bg);
+  }
+
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    min-width: 320px;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Nunito Sans", "Helvetica Neue", sans-serif;
+    background: var(--caliber-bg);
+    color: var(--caliber-text);
+    text-rendering: geometricPrecision;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
   }
 
   .sidebar-nav-link,
@@ -145,5 +175,238 @@
 @keyframes caliber-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.caliber-button,
+.caliber-icon-button,
+.caliber-nav-link,
+.caliber-course-card,
+.caliber-surface-card,
+.caliber-stat-card,
+.caliber-input {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.caliber-button:hover,
+.caliber-icon-button:hover {
+  box-shadow: 0 1px 3px rgba(17, 21, 23, 0.10);
+}
+
+.caliber-nav-link:hover {
+  background: rgba(255, 255, 255, 0.11);
+  color: #ffffff;
+}
+
+.caliber-course-card:hover,
+.caliber-surface-card:hover,
+.caliber-stat-card:hover {
+  border-color: #B8C4CC !important;
+  box-shadow: 0 1px 4px rgba(17, 21, 23, 0.10) !important;
+}
+
+.caliber-input:focus,
+.caliber-button:focus-visible,
+.caliber-icon-button:focus-visible,
+.caliber-nav-link:focus-visible,
+.caliber-auth-button:focus-visible {
+  outline: 3px solid rgba(254, 188, 17, 0.34);
+  outline-offset: 2px;
+  border-color: var(--caliber-gold) !important;
+}
+
+.caliber-app-frame {
+  isolation: isolate;
+}
+
+.caliber-app-main {
+  overflow-x: hidden;
+}
+
+.caliber-impersonation-banner {
+  margin: 0 0 18px;
+  border: 1px solid rgba(184, 117, 3, 0.28);
+  border-radius: 8px;
+  background: #fff4cf;
+  color: #5f3c00;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.caliber-impersonation-banner button {
+  border: 1px solid rgba(184, 117, 3, 0.28);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #5f3c00;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.caliber-auth-screen {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--caliber-navy);
+}
+
+.caliber-auth-card {
+  width: min(440px, 100%);
+  border: 1px solid var(--caliber-border);
+  border-radius: 8px;
+  background: var(--caliber-surface);
+  box-shadow: 0 8px 24px rgba(17, 21, 23, 0.18);
+  padding: 32px;
+  text-align: center;
+}
+
+.caliber-auth-mark {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 18px;
+  border-radius: 8px;
+  background: var(--caliber-gold);
+  color: var(--caliber-navy);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.caliber-auth-card h1,
+.caliber-auth-card h2 {
+  margin: 0 0 10px;
+  color: var(--caliber-navy);
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.caliber-auth-card h1 {
+  font-size: 2rem;
+}
+
+.caliber-auth-card h2 {
+  font-size: 1.35rem;
+}
+
+.caliber-auth-card p {
+  margin: 0 auto 18px;
+  max-width: 34rem;
+  color: var(--caliber-muted);
+  line-height: 1.55;
+}
+
+.caliber-auth-detail {
+  border: 1px solid #F3B5AD;
+  border-radius: 8px;
+  background: #FFF1EF;
+  color: var(--caliber-danger) !important;
+  padding: 12px;
+  font-size: 0.9rem;
+}
+
+.caliber-auth-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--caliber-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--caliber-text);
+  font-weight: 800;
+  padding: 10px 13px;
+}
+
+.caliber-auth-loading svg {
+  animation: caliber-spin 0.8s linear infinite;
+}
+
+.caliber-auth-button {
+  min-height: 42px;
+  border: 1px solid var(--caliber-navy);
+  border-radius: 8px;
+  background: var(--caliber-navy);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 850;
+  padding: 0 16px;
+}
+
+@media (max-width: 860px) {
+  .caliber-app-frame {
+    display: block !important;
+  }
+
+  .caliber-app-nav {
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    box-shadow: none !important;
+  }
+
+  .caliber-app-main {
+    padding: 20px !important;
+  }
+
+  .caliber-page-container {
+    max-width: none !important;
+  }
+
+  .caliber-toolbar {
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+
+  .caliber-toolbar > * {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .caliber-course-workspace {
+    grid-template-columns: 1fr !important;
+  }
+
+  .caliber-assignment-table-header {
+    display: none !important;
+  }
+
+  .caliber-assignment-row {
+    grid-template-columns: 1fr !important;
+    align-items: start !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .caliber-app-main {
+    padding: 16px !important;
+  }
+
+  .caliber-dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .caliber-auth-screen {
+    padding: 18px;
+  }
+
+  .caliber-auth-card {
+    padding: 24px;
+  }
+
+  .caliber-impersonation-banner {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

@@ -80,7 +80,7 @@ class QuestionCreate(BaseModel):
     image_url: Optional[str] = None
     is_verified: bool = False
     draft_state: str = "ready"
-    visibility: str = "private"
+    visibility: str = "local"
     origin: str = "manual"
     school_scope: str = ""
     course_scope: Optional[str] = None
@@ -123,7 +123,26 @@ class QuestionUpdate(BaseModel):
     source_commit: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[str] = None
+    original_author_user_id: Optional[str] = None
+    copied_from_question_id: Optional[int] = None
+    copied_from_qid: Optional[str] = None
     coding_config: Optional[dict] = None
+
+
+class QuestionCommentCreate(BaseModel):
+    body: str = Field(..., min_length=1, max_length=2000)
+
+
+class QuestionCommentResponse(BaseModel):
+    id: int
+    question_id: int
+    user_id: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class CodingTestCase(BaseModel):
@@ -170,7 +189,7 @@ class QuestionResponse(BaseModel):
     user_id: str
     owner_user_id: Optional[str] = None
     draft_state: str = "ready"
-    visibility: str = "private"
+    visibility: str = "local"
     origin: str = "manual"
     school_scope: str = ""
     course_scope: Optional[str] = None
@@ -180,10 +199,17 @@ class QuestionResponse(BaseModel):
     content_hash: str = ""
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[str] = None
+    original_author_user_id: Optional[str] = None
+    copied_from_question_id: Optional[int] = None
+    copied_from_qid: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     is_verified: bool
     coding: Optional[CodingQuestionConfigResponse] = None
+    likes_count: int = 0
+    liked_by_me: bool = False
+    comments_count: int = 0
+    recent_comments: List[QuestionCommentResponse] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

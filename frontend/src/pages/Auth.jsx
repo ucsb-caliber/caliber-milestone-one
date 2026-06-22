@@ -1,5 +1,7 @@
 import React from 'react';
+import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import { clearOidcLoginStateForRetry, getOidcLoginError, useAuth } from '../AuthContext';
+import { dashboardPalette } from '../components/CourseDashboardUI';
 
 export default function Auth() {
   const { signIn } = useAuth();
@@ -21,36 +23,43 @@ export default function Auth() {
 
   if (oidcError) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#4b5563' }}>
-        <h2 style={{ color: '#111827', marginBottom: '0.75rem' }}>Sign in could not be completed</h2>
-        <p style={{ margin: '0 auto 1rem', maxWidth: 620 }}>
-          Caliber received an OIDC callback error and paused automatic retries.
-        </p>
-        <p style={{ margin: '0 auto 1.5rem', maxWidth: 620, fontSize: '0.9rem' }}>
-          {oidcError}
-        </p>
-        <button
-          type="button"
-          onClick={retrySignIn}
-          style={{
-            border: 0,
-            borderRadius: 6,
-            background: '#2563eb',
-            color: 'white',
-            cursor: 'pointer',
-            fontWeight: 700,
-            padding: '0.75rem 1rem',
-          }}
-        >
-          Try sign in again
-        </button>
+      <div className="caliber-auth-screen">
+        <div className="caliber-auth-card">
+          <div className="caliber-auth-mark" style={{ background: dashboardPalette.dangerBg, color: dashboardPalette.dangerText }}>
+            <AlertCircle size={22} aria-hidden="true" />
+          </div>
+          <h2>Sign in could not be completed</h2>
+          <p>
+            Caliber received an OIDC callback error and paused automatic retries.
+          </p>
+          <p className="caliber-auth-detail">
+            {oidcError}
+          </p>
+          <button
+            type="button"
+            onClick={retrySignIn}
+            className="caliber-auth-button"
+          >
+            Try sign in again
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '2rem', textAlign: 'center', color: '#4b5563' }}>
-      Redirecting to sign in...
+    <div className="caliber-auth-screen">
+      <div className="caliber-auth-card">
+        <div className="caliber-auth-mark">
+          <Sparkles size={22} aria-hidden="true" />
+        </div>
+        <h1>Caliber</h1>
+        <p>Opening your course workspace.</p>
+        <div className="caliber-auth-loading">
+          <Loader2 size={18} aria-hidden="true" />
+          Redirecting to sign in
+        </div>
+      </div>
     </div>
   );
 }

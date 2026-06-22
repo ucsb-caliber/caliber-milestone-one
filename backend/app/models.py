@@ -32,7 +32,7 @@ class Question(SQLModel, table=True):
     user_id: str = Field(index=True)  # OIDC subject
     owner_user_id: Optional[str] = Field(default=None, index=True)  # Canonical owner; falls back to user_id
     draft_state: str = Field(default="ready", index=True)  # draft, ready, archived
-    visibility: str = Field(default="private", index=True)  # private, course, school, global
+    visibility: str = Field(default="local", index=True)  # local, locked, global, course, school
     origin: str = Field(default="manual", index=True)  # manual, pdf_extract, github_import, system_seed
     school_scope: str = Field(default="", index=True)
     course_scope: Optional[str] = Field(default=None, index=True)
@@ -42,9 +42,40 @@ class Question(SQLModel, table=True):
     content_hash: str = Field(default="", index=True)
     reviewed_at: Optional[datetime] = Field(default=None)
     reviewed_by: Optional[str] = Field(default=None, index=True)
+    original_author_user_id: Optional[str] = Field(default=None, index=True)
+    copied_from_question_id: Optional[int] = Field(default=None, index=True)
+    copied_from_qid: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     is_verified: bool = Field(default=False)  # Whether question in database is verified
+
+
+class QuestionLike(SQLModel, table=True):
+    """Instructor like on a question-bank item."""
+    __tablename__ = "question_like"
+    __table_args__ = (
+        UniqueConstraint("question_id", "user_id", name="uq_question_like_question_user"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    question_id: int = Field(foreign_key="question.id", index=True)
+    user_id: str = Field(index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class QuestionComment(SQLModel, table=True):
+    """Instructor discussion attached to a question-bank item."""
+    __tablename__ = "question_comment"
+    __table_args__ = (
+        Index("ix_question_comment_question_created", "question_id", "created_at"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    question_id: int = Field(foreign_key="question.id", index=True)
+    user_id: str = Field(index=True)
+    body: str = Field(sa_column=Column(TEXT))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class CodingQuestionPrivate(SQLModel, table=True):

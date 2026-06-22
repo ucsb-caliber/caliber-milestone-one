@@ -5,7 +5,7 @@ from typing import List, Optional
 from sqlmodel import Session, delete, func, select
 from sqlalchemy import and_, or_
 
-from .models import AssignmentIntegrityEvent, CodingQuestionPrivate, CodingRun, Question
+from .models import AssignmentIntegrityEvent, CodingQuestionPrivate, CodingRun, Question, QuestionComment, QuestionLike
 from .question_content import QuestionContent, question_content_from_question, question_content_hash, question_content_to_json
 
 
@@ -54,13 +54,16 @@ def create_question(session: Session, text: str, title: str, tags: str, keywords
                    image_url: Optional[str] = None, is_verified: bool = False,
                    qid: Optional[str] = None, version: int = 1,
                    content: Optional[QuestionContent] = None,
-                   draft_state: Optional[str] = None, visibility: str = "private",
+                   draft_state: Optional[str] = None, visibility: str = "local",
                    origin: str = "manual", owner_user_id: Optional[str] = None,
                    school_scope: str = "", course_scope: Optional[str] = None,
                    source_repo: Optional[str] = None, source_path: Optional[str] = None,
                    source_commit: Optional[str] = None,
                    reviewed_at: Optional[datetime] = None,
-                   reviewed_by: Optional[str] = None) -> Question:
+                   reviewed_by: Optional[str] = None,
+                   original_author_user_id: Optional[str] = None,
+                   copied_from_question_id: Optional[int] = None,
+                   copied_from_qid: Optional[str] = None) -> Question:
     """Create and persist a new question, optionally marking it as verified."""
     effective_qid = (qid or "").strip() or generate_unique_question_qid(session)
     effective_version = max(1, int(version or 1))
@@ -104,6 +107,9 @@ def create_question(session: Session, text: str, title: str, tags: str, keywords
         content_hash=question_content_hash(content) if content else "",
         reviewed_at=reviewed_at,
         reviewed_by=reviewed_by,
+        original_author_user_id=original_author_user_id or effective_owner,
+        copied_from_question_id=copied_from_question_id,
+        copied_from_qid=copied_from_qid,
         updated_at=datetime.utcnow(),
         is_verified=is_verified
     )
@@ -300,7 +306,10 @@ def update_question(session: Session, question_id: int, user_id: str, title: Opt
                    source_repo: Optional[str] = None, source_path: Optional[str] = None,
                    source_commit: Optional[str] = None,
                    reviewed_at: Optional[datetime] = None,
-                   reviewed_by: Optional[str] = None) -> Optional[Question]:
+                   reviewed_by: Optional[str] = None,
+                   original_author_user_id: Optional[str] = None,
+                   copied_from_question_id: Optional[int] = None,
+                   copied_from_qid: Optional[str] = None) -> Optional[Question]:
     """Update an existing question in the database. Only the owner can update."""
     question = session.get(Question, question_id)
     if not question or question.user_id != user_id:
@@ -386,6 +395,12 @@ def update_question(session: Session, question_id: int, user_id: str, title: Opt
         question.reviewed_at = reviewed_at
     if reviewed_by is not None:
         question.reviewed_by = reviewed_by
+    if original_author_user_id is not None:
+        question.original_author_user_id = original_author_user_id
+    if copied_from_question_id is not None:
+        question.copied_from_question_id = copied_from_question_id
+    if copied_from_qid is not None:
+        question.copied_from_qid = copied_from_qid
 
     question.updated_at = datetime.utcnow()
     
@@ -456,6 +471,16 @@ def delete_question(session: Session, question_id: int, user_id: str) -> bool:
     if not question or question.user_id != user_id:
         return False
 
+    likes = session.exec(select(QuestionLike).where(QuestionLike.question_id == question_id)).all()
+    for row in likes:
+        session.delete(row)
+    comments = session.exec(select(QuestionComment).where(QuestionComment.question_id == question_id)).all()
+    for row in comments:
+        session.delete(row)
+    copies = session.exec(select(Question).where(Question.copied_from_question_id == question_id)).all()
+    for row in copies:
+        row.copied_from_question_id = None
+        session.add(row)
     private_row = session.get(CodingQuestionPrivate, question_id)
     if private_row:
         session.delete(private_row)

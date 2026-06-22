@@ -1,20 +1,47 @@
 import React from 'react';
+import {
+  BarChart3,
+  Database,
+  ExternalLink,
+  GraduationCap,
+  Home,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCw,
+} from 'lucide-react';
 
 export const dashboardPalette = {
+  ink: '#111517',
+  inkSoft: '#28323b',
   navy: '#003660',
-  navyMid: '#00507a',
-  navyLight: '#cce0f0',
+  navyMid: '#15385F',
+  navyLight: '#E6EEF4',
+  blue: '#047C91',
+  teal: '#09847A',
+  mint: '#DAE6E6',
   gold: '#FEBC11',
-  goldDark: '#d9a00e',
-  surface: '#f4f7fb',
+  goldDark: '#6B4B00',
+  coral: '#EF5645',
+  clay: '#DCD6CC',
+  lightClay: '#F1EEEA',
+  sandstone: '#EDEADF',
+  mist: '#9CBEBE',
+  surface: '#EEF0F2',
+  surfaceWarm: '#F1EEEA',
   white: '#ffffff',
-  border: '#dde6ef',
-  text: '#0a1f35',
-  muted: '#5a7590',
-  dangerBg: '#fef2f2',
-  dangerBorder: '#fecaca',
-  dangerText: '#b91c1c',
+  border: '#DCE1E5',
+  borderStrong: '#B8C4CC',
+  text: '#3D4952',
+  muted: '#66737D',
+  subtle: '#F7F8F9',
+  dangerBg: '#FFF1EF',
+  dangerBorder: '#F3B5AD',
+  dangerText: '#C43424',
 };
+
+const shadow = '0 1px 3px rgba(17, 21, 23, 0.08)';
+const softShadow = '0 1px 2px rgba(17, 21, 23, 0.06)';
 
 const shellStyles = {
   page: {
@@ -26,53 +53,61 @@ const shellStyles = {
     width: '100%',
     minHeight: '100vh',
     display: 'flex',
-    flexWrap: 'wrap',
     alignItems: 'stretch',
   },
   sidebar: {
-    width: '248px',
+    width: '256px',
     position: 'sticky',
     top: 0,
     height: '100vh',
     background: dashboardPalette.navy,
     color: dashboardPalette.white,
-    padding: '24px 0',
+    padding: '20px 0',
     display: 'flex',
     flexDirection: 'column',
-    borderRight: `1px solid ${dashboardPalette.navyMid}`,
+    borderRight: '1px solid rgba(255,255,255,0.10)',
     overflowY: 'auto',
     flexShrink: 0,
   },
   brand: {
-    padding: '0 20px 20px',
-    borderBottom: `1px solid ${dashboardPalette.navyMid}`,
+    padding: '0 18px 18px',
+    borderBottom: '1px solid rgba(255,255,255,0.10)',
   },
   brandTitle: {
     margin: 0,
-    fontSize: '1rem',
-    fontWeight: 600,
-    letterSpacing: '0.01em',
+    fontSize: '1.05rem',
+    fontWeight: 800,
+    letterSpacing: 0,
   },
   nav: {
-    padding: '16px 0',
+    padding: '16px 10px',
+    display: 'grid',
+    gap: '6px',
   },
   navLink: {
-    display: 'block',
-    padding: '10px 20px',
-    color: 'rgba(255, 255, 255, 0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    minHeight: '42px',
+    padding: '0 12px',
+    color: 'rgba(255, 255, 255, 0.72)',
     textDecoration: 'none',
-    fontSize: '0.95rem',
-    borderLeft: '3px solid transparent',
+    fontSize: '0.94rem',
+    borderRadius: '8px',
+    border: '1px solid transparent',
   },
   navLinkActive: {
     color: dashboardPalette.white,
-    background: 'rgba(255, 255, 255, 0.08)',
-    borderLeftColor: dashboardPalette.gold,
+    background: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(254, 188, 17, 0.38)',
+    fontWeight: 750,
   },
   userBlock: {
-    marginTop: 'auto',
-    padding: '16px 20px 0',
-    borderTop: `1px solid ${dashboardPalette.navyMid}`,
+    margin: 'auto 12px 0',
+    padding: '12px',
+    border: '1px solid rgba(255,255,255,0.16)',
+    borderRadius: '8px',
+    background: 'rgba(255,255,255,0.06)',
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
@@ -80,111 +115,130 @@ const shellStyles = {
   userAvatar: {
     width: '36px',
     height: '36px',
-    borderRadius: '999px',
+    borderRadius: '8px',
     background: dashboardPalette.gold,
-    color: dashboardPalette.navy,
+    color: dashboardPalette.ink,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '0.85rem',
-    fontWeight: 600,
+    fontSize: '0.84rem',
+    fontWeight: 800,
     flexShrink: 0,
   },
   userName: {
     margin: 0,
-    fontSize: '0.95rem',
-    fontWeight: 500,
+    fontSize: '0.94rem',
+    fontWeight: 750,
   },
   userMeta: {
     margin: '2px 0 0',
-    fontSize: '0.8rem',
-    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: '0.78rem',
+    color: 'rgba(255, 255, 255, 0.64)',
     wordBreak: 'break-word',
   },
   main: {
-    flex: '1 1 720px',
+    flex: '1 1 auto',
     minWidth: 0,
-    padding: '24px',
+    padding: '32px',
   },
 };
 
 const contentStyles = {
   pageContainer: {
-    maxWidth: '960px',
+    width: '100%',
+    maxWidth: '1080px',
     margin: '0 auto',
   },
   pageStack: {
     display: 'grid',
-    gap: '24px',
+    gap: '20px',
   },
   surfaceCard: {
     background: dashboardPalette.white,
     border: `1px solid ${dashboardPalette.border}`,
     borderRadius: '8px',
-    padding: '24px',
+    padding: '20px',
+    boxShadow: softShadow,
   },
   surfaceLabel: {
     margin: '0 0 6px',
-    fontSize: '0.85rem',
+    fontSize: '0.78rem',
+    fontWeight: 800,
+    letterSpacing: 0,
+    textTransform: 'none',
     color: dashboardPalette.muted,
   },
   mutedText: {
     margin: 0,
     color: dashboardPalette.muted,
-    fontSize: '0.92rem',
-    lineHeight: 1.5,
+    fontSize: '0.94rem',
+    lineHeight: 1.55,
   },
   headerRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: '16px',
-    marginBottom: '24px',
+    marginBottom: '20px',
     flexWrap: 'wrap',
+  },
+  eyebrow: {
+    margin: '0 0 6px',
+    color: dashboardPalette.muted,
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    textTransform: 'none',
+    letterSpacing: 0,
   },
   pageTitle: {
     margin: 0,
     fontSize: '1.75rem',
-    fontWeight: 600,
-    lineHeight: 1.2,
+    fontWeight: 800,
+    lineHeight: 1.18,
     color: dashboardPalette.navy,
+    letterSpacing: 0,
   },
   pageSubtitle: {
-    margin: '8px 0 0',
-    fontSize: '0.95rem',
+    margin: '10px 0 0',
+    fontSize: '1rem',
     color: dashboardPalette.muted,
+    lineHeight: 1.55,
+    maxWidth: '680px',
   },
   primaryButton: {
-    height: '40px',
-    padding: '0 14px',
+    minHeight: '42px',
+    padding: '0 16px',
     border: `1px solid ${dashboardPalette.navy}`,
     borderRadius: '8px',
     background: dashboardPalette.navy,
     color: dashboardPalette.white,
-    fontSize: '0.9rem',
-    fontWeight: 500,
+    fontSize: '0.92rem',
+    fontWeight: 750,
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '8px',
+    boxShadow: 'none',
   },
   secondaryButton: {
-    height: '40px',
-    padding: '0 14px',
+    minHeight: '42px',
+    padding: '0 16px',
     border: `1px solid ${dashboardPalette.border}`,
     borderRadius: '8px',
     background: dashboardPalette.white,
     color: dashboardPalette.text,
-    fontSize: '0.9rem',
-    fontWeight: 500,
+    fontSize: '0.92rem',
+    fontWeight: 750,
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '8px',
   },
   iconButton: {
-    width: '40px',
-    height: '40px',
+    width: '42px',
+    height: '42px',
     borderRadius: '8px',
     border: `1px solid ${dashboardPalette.border}`,
     background: dashboardPalette.white,
@@ -198,43 +252,51 @@ const contentStyles = {
     display: 'flex',
     gap: '12px',
     alignItems: 'center',
-    marginBottom: '24px',
+    marginBottom: '20px',
     flexWrap: 'wrap',
+    padding: '12px',
+    background: dashboardPalette.white,
+    border: `1px solid ${dashboardPalette.border}`,
+    borderRadius: '8px',
+    boxShadow: softShadow,
   },
   input: {
-    flex: '1 1 300px',
+    flex: '1 1 280px',
     minWidth: '220px',
-    height: '40px',
-    padding: '0 12px',
+    height: '42px',
+    padding: '0 14px',
     borderRadius: '8px',
     border: `1px solid ${dashboardPalette.border}`,
     background: dashboardPalette.white,
     color: dashboardPalette.text,
     fontSize: '0.95rem',
+    outline: 'none',
   },
   select: {
-    height: '40px',
+    height: '42px',
     minWidth: '168px',
-    padding: '0 12px',
+    padding: '0 34px 0 12px',
     borderRadius: '8px',
     border: `1px solid ${dashboardPalette.border}`,
     background: dashboardPalette.white,
     color: dashboardPalette.text,
     fontSize: '0.95rem',
+    outline: 'none',
   },
   notice: {
-    background: '#fff9e6',
-    border: `1px solid ${dashboardPalette.gold}`,
+    background: dashboardPalette.surfaceWarm,
+    border: `1px solid ${dashboardPalette.clay}`,
     borderRadius: '8px',
-    padding: '12px 16px',
+    padding: '14px 16px',
     marginBottom: '24px',
-    fontSize: '0.92rem',
+    fontSize: '0.94rem',
     color: dashboardPalette.text,
+    boxShadow: 'none',
   },
   statsRow: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: '16px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+    gap: '14px',
     marginBottom: '24px',
   },
   statCard: {
@@ -242,27 +304,50 @@ const contentStyles = {
     border: `1px solid ${dashboardPalette.border}`,
     borderRadius: '8px',
     padding: '16px',
+    boxShadow: softShadow,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  statAccent: {
+    position: 'absolute',
+    inset: '0 auto 0 0',
+    width: '4px',
+    background: dashboardPalette.gold,
   },
   statValue: {
     margin: 0,
-    fontSize: '1.5rem',
-    fontWeight: 600,
-    lineHeight: 1.2,
-    color: dashboardPalette.navy,
+    fontSize: '1.6rem',
+    fontWeight: 800,
+    lineHeight: 1,
+    color: dashboardPalette.ink,
   },
   statLabel: {
-    margin: '6px 0 0',
-    fontSize: '0.88rem',
+    margin: '8px 0 0',
+    fontSize: '0.84rem',
     color: dashboardPalette.muted,
+    fontWeight: 750,
   },
   section: {
-    marginBottom: '24px',
+    marginBottom: '28px',
+  },
+  sectionTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    margin: '0 0 14px',
+  },
+  sectionMarker: {
+    width: '4px',
+    height: '18px',
+    borderRadius: '4px',
+    background: dashboardPalette.gold,
+    boxShadow: 'none',
   },
   sectionTitle: {
-    margin: '0 0 16px',
+    margin: 0,
     fontSize: '1rem',
-    fontWeight: 600,
-    color: dashboardPalette.navy,
+    fontWeight: 850,
+    color: dashboardPalette.ink,
   },
   grid: {
     display: 'grid',
@@ -271,16 +356,17 @@ const contentStyles = {
   },
   emptyState: {
     background: dashboardPalette.white,
-    border: `1px solid ${dashboardPalette.border}`,
+    border: `1px dashed ${dashboardPalette.borderStrong}`,
     borderRadius: '8px',
-    padding: '32px',
+    padding: '34px',
     color: dashboardPalette.muted,
+    boxShadow: 'none',
   },
   emptyTitle: {
     margin: '0 0 8px',
-    fontSize: '1rem',
-    fontWeight: 600,
-    color: dashboardPalette.navy,
+    fontSize: '1.12rem',
+    fontWeight: 850,
+    color: dashboardPalette.ink,
   },
   errorBanner: {
     marginBottom: '24px',
@@ -288,11 +374,12 @@ const contentStyles = {
     border: `1px solid ${dashboardPalette.dangerBorder}`,
     borderRadius: '8px',
     color: dashboardPalette.dangerText,
-    padding: '12px 16px',
+    padding: '12px 14px',
     fontSize: '0.92rem',
     display: 'flex',
     gap: '12px',
     alignItems: 'center',
+    boxShadow: '0 8px 20px rgba(173,31,45,0.08)',
   },
   loadingState: {
     background: 'transparent',
@@ -313,14 +400,15 @@ const contentStyles = {
     top: 0,
     background: dashboardPalette.navy,
     color: dashboardPalette.white,
-    borderRight: `1px solid ${dashboardPalette.navyMid}`,
-    width: '248px',
+    borderRight: '1px solid rgba(255,255,255,0.10)',
+    width: '256px',
     height: '100vh',
-    padding: '24px 0',
+    padding: '18px 0',
     display: 'flex',
     flexDirection: 'column',
     flexShrink: 0,
     overflowY: 'auto',
+    boxShadow: 'none',
   },
   appNavInner: {
     display: 'flex',
@@ -332,61 +420,81 @@ const contentStyles = {
   appBrand: {
     color: dashboardPalette.white,
     textDecoration: 'none',
-    fontSize: '1rem',
-    fontWeight: 600,
-    letterSpacing: '0.01em',
-    padding: 0,
+    fontSize: '1.18rem',
+    fontWeight: 900,
+    letterSpacing: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  brandMark: {
+    width: '34px',
+    height: '34px',
+    borderRadius: '8px',
+    background: dashboardPalette.gold,
+    color: dashboardPalette.navy,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '0.98rem',
+    fontWeight: 900,
+    boxShadow: 'none',
   },
   appBrandRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '12px',
-    padding: '0 20px 20px',
-    borderBottom: `1px solid ${dashboardPalette.navyMid}`,
+    padding: '0 16px 18px',
+    borderBottom: '1px solid rgba(255,255,255,0.10)',
   },
   appCollapseButton: {
-    width: '32px',
-    height: '32px',
+    width: '34px',
+    height: '34px',
     borderRadius: '8px',
-    border: `1px solid ${dashboardPalette.navyMid}`,
-    background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.16)',
+    background: 'rgba(255,255,255,0.08)',
     color: dashboardPalette.white,
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    fontSize: '0.9rem',
-    fontWeight: 700,
   },
   appDocsLink: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.76)',
     textDecoration: 'none',
-    fontSize: '0.82rem',
-    padding: '10px 20px',
-    borderLeft: '3px solid transparent',
+    fontSize: '0.88rem',
+    minHeight: '40px',
+    padding: '0 12px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
   },
   appNavLinks: {
     marginTop: '16px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: '4px',
-    padding: '0 0 16px',
+    display: 'grid',
+    gap: '6px',
+    padding: '0 10px 16px',
   },
   appNavLink: {
-    color: 'rgba(255, 255, 255, 0.76)',
+    color: 'rgba(255, 255, 255, 0.74)',
     textDecoration: 'none',
-    fontSize: '0.92rem',
-    padding: '10px 20px',
-    borderLeft: '3px solid transparent',
+    fontSize: '0.94rem',
+    minHeight: '42px',
+    padding: '0 12px',
+    borderRadius: '8px',
+    border: '1px solid transparent',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
   },
   appNavLinkActive: {
     color: dashboardPalette.white,
-    background: 'rgba(255, 255, 255, 0.08)',
-    borderLeftColor: dashboardPalette.gold,
-    fontWeight: 600,
+    background: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(254, 188, 17, 0.38)',
+    fontWeight: 800,
   },
   appProfileLink: {
     color: 'rgba(255, 255, 255, 0.82)',
@@ -394,35 +502,38 @@ const contentStyles = {
     fontSize: '0.9rem',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    borderLeft: '3px solid transparent',
-    padding: '10px 20px',
+    gap: '10px',
+    border: '1px solid transparent',
+    borderRadius: '8px',
+    padding: '10px 12px',
   },
   appProfileText: {
-    fontWeight: 600,
+    fontWeight: 700,
   },
   appAvatar: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     color: dashboardPalette.white,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontWeight: 700,
+    fontWeight: 850,
     fontSize: '0.78rem',
     flexShrink: 0,
   },
   appMain: {
     flex: 1,
     minWidth: 0,
-    padding: '24px',
+    padding: '32px',
   },
   appFooter: {
-    marginTop: 'auto',
-    padding: '16px 20px 0',
-    borderTop: `1px solid ${dashboardPalette.navyMid}`,
+    margin: 'auto 10px 0',
+    padding: '12px',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: '8px',
+    background: 'rgba(255,255,255,0.06)',
     display: 'grid',
-    gap: '12px',
+    gap: '8px',
   },
   appUserSummary: {
     display: 'flex',
@@ -434,28 +545,21 @@ const contentStyles = {
   },
   appUserName: {
     margin: 0,
-    fontSize: '0.95rem',
-    fontWeight: 600,
+    fontSize: '0.92rem',
+    fontWeight: 800,
   },
 };
 
-export function RefreshIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 2v6h-6"></path>
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-      <path d="M3 22v-6h6"></path>
-      <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-    </svg>
-  );
+export function RefreshIcon(props) {
+  return <RefreshCw size={16} aria-hidden="true" {...props} />;
 }
 
 export function getUserDisplayName(user) {
   const fullName = user?.user_metadata?.full_name;
   if (typeof fullName === 'string' && fullName.trim()) return fullName.trim();
 
-  const firstName = user?.user_metadata?.first_name;
-  const lastName = user?.user_metadata?.last_name;
+  const firstName = user?.user_metadata?.first_name || user?.first_name;
+  const lastName = user?.user_metadata?.last_name || user?.last_name;
   if (firstName && lastName) {
     return `${firstName} ${lastName}`;
   }
@@ -488,11 +592,13 @@ export function CourseDashboardShell({ user, navLinks, children }) {
               <a
                 key={link.href}
                 href={link.href}
+                className="caliber-nav-link"
                 style={{
                   ...shellStyles.navLink,
                   ...(link.active ? shellStyles.navLinkActive : null),
                 }}
               >
+                <Home size={16} aria-hidden="true" />
                 {link.label}
               </a>
             ))}
@@ -513,10 +619,11 @@ export function CourseDashboardShell({ user, navLinks, children }) {
   );
 }
 
-export function CourseDashboardHeader({ title, subtitle, action }) {
+export function CourseDashboardHeader({ title, subtitle, action, eyebrow = 'Workspace' }) {
   return (
     <div style={contentStyles.headerRow}>
       <div>
+        {eyebrow ? <p style={contentStyles.eyebrow}>{eyebrow}</p> : null}
         <h1 style={contentStyles.pageTitle}>{title}</h1>
         {subtitle ? <p style={contentStyles.pageSubtitle}>{subtitle}</p> : null}
       </div>
@@ -525,17 +632,29 @@ export function CourseDashboardHeader({ title, subtitle, action }) {
   );
 }
 
-export function CourseDashboardPrimaryButton({ children, style, ...props }) {
+export function CourseDashboardPrimaryButton({ children, style, disabled, ...props }) {
   return (
-    <button type="button" style={{ ...contentStyles.primaryButton, ...style }} {...props}>
+    <button
+      type="button"
+      className="caliber-button"
+      disabled={disabled}
+      style={{ ...contentStyles.primaryButton, ...(disabled ? { opacity: 0.55, cursor: 'not-allowed' } : null), ...style }}
+      {...props}
+    >
       {children}
     </button>
   );
 }
 
-export function CourseDashboardSecondaryButton({ children, style, ...props }) {
+export function CourseDashboardSecondaryButton({ children, style, disabled, ...props }) {
   return (
-    <button type="button" style={{ ...contentStyles.secondaryButton, ...style }} {...props}>
+    <button
+      type="button"
+      className="caliber-button"
+      disabled={disabled}
+      style={{ ...contentStyles.secondaryButton, ...(disabled ? { opacity: 0.55, cursor: 'not-allowed' } : null), ...style }}
+      {...props}
+    >
       {children}
     </button>
   );
@@ -545,7 +664,8 @@ export function CourseDashboardBackButton({ children = 'Back', style, ...props }
   return (
     <button
       type="button"
-      style={{ ...contentStyles.secondaryButton, fontWeight: 600, ...style }}
+      className="caliber-button"
+      style={{ ...contentStyles.secondaryButton, fontWeight: 800, ...style }}
       {...props}
     >
       {children}
@@ -553,32 +673,38 @@ export function CourseDashboardBackButton({ children = 'Back', style, ...props }
   );
 }
 
-export function CourseDashboardIconButton({ children, style, ...props }) {
+export function CourseDashboardIconButton({ children, style, disabled, ...props }) {
   return (
-    <button type="button" style={{ ...contentStyles.iconButton, ...style }} {...props}>
+    <button
+      type="button"
+      className="caliber-icon-button"
+      disabled={disabled}
+      style={{ ...contentStyles.iconButton, ...(disabled ? { opacity: 0.55, cursor: 'not-allowed' } : null), ...style }}
+      {...props}
+    >
       {children}
     </button>
   );
 }
 
 export function CourseDashboardToolbar({ children }) {
-  return <div style={contentStyles.toolbar}>{children}</div>;
+  return <div className="caliber-toolbar" style={contentStyles.toolbar}>{children}</div>;
 }
 
 export function CourseDashboardInput({ style, ...props }) {
-  return <input style={{ ...contentStyles.input, ...style }} {...props} />;
+  return <input className="caliber-input" style={{ ...contentStyles.input, ...style }} {...props} />;
 }
 
 export function CourseDashboardSelect({ children, style, ...props }) {
   return (
-    <select style={{ ...contentStyles.select, ...style }} {...props}>
+    <select className="caliber-input" style={{ ...contentStyles.select, ...style }} {...props}>
       {children}
     </select>
   );
 }
 
-export function PageContainer({ children, maxWidth = '960px' }) {
-  return <div style={{ ...contentStyles.pageContainer, maxWidth }}>{children}</div>;
+export function PageContainer({ children, maxWidth = '1080px' }) {
+  return <div className="caliber-page-container" style={{ ...contentStyles.pageContainer, maxWidth }}>{children}</div>;
 }
 
 export function PageStack({ children }) {
@@ -586,7 +712,7 @@ export function PageStack({ children }) {
 }
 
 export function SurfaceCard({ children, style }) {
-  return <section style={{ ...contentStyles.surfaceCard, ...style }}>{children}</section>;
+  return <section className="caliber-surface-card" style={{ ...contentStyles.surfaceCard, ...style }}>{children}</section>;
 }
 
 export function SurfaceLabel({ children, style }) {
@@ -607,7 +733,8 @@ export function CourseDashboardStatGrid({ children }) {
 
 export function CourseDashboardStatCard({ value, label, valueColor }) {
   return (
-    <div style={contentStyles.statCard}>
+    <div className="caliber-stat-card" style={contentStyles.statCard}>
+      <span style={contentStyles.statAccent} aria-hidden="true" />
       <p style={{ ...contentStyles.statValue, ...(valueColor ? { color: valueColor } : null) }}>{value}</p>
       <p style={contentStyles.statLabel}>{label}</p>
     </div>
@@ -617,21 +744,24 @@ export function CourseDashboardStatCard({ value, label, valueColor }) {
 export function CourseDashboardSection({ title, children }) {
   return (
     <section style={contentStyles.section}>
-      <h2 style={contentStyles.sectionTitle}>{title}</h2>
+      <div style={contentStyles.sectionTitleRow}>
+        <span style={contentStyles.sectionMarker} aria-hidden="true" />
+        <h2 style={contentStyles.sectionTitle}>{title}</h2>
+      </div>
       {children}
     </section>
   );
 }
 
 export function CourseDashboardGrid({ children, style }) {
-  return <div style={{ ...contentStyles.grid, ...style }}>{children}</div>;
+  return <div className="caliber-dashboard-grid" style={{ ...contentStyles.grid, ...style }}>{children}</div>;
 }
 
 export function CourseDashboardEmptyState({ title, children }) {
   return (
     <div style={contentStyles.emptyState}>
       <h2 style={contentStyles.emptyTitle}>{title}</h2>
-      <p style={{ margin: 0 }}>{children}</p>
+      <p style={{ margin: 0, lineHeight: 1.55 }}>{children}</p>
     </div>
   );
 }
@@ -650,8 +780,9 @@ export function CourseDashboardErrorBanner({ children, onDismiss }) {
             border: 'none',
             color: 'inherit',
             cursor: 'pointer',
-            fontSize: '0.95rem',
+            fontSize: '1rem',
             padding: 0,
+            fontWeight: 800,
           }}
           aria-label="Dismiss message"
         >
@@ -665,46 +796,50 @@ export function CourseDashboardErrorBanner({ children, onDismiss }) {
 export function CourseDashboardLoadingState({ children = 'Loading...', style }) {
   return (
     <CourseDashboardSpinnerState
+      label={children}
       style={{ ...contentStyles.loadingState, ...style }}
       spinnerStyle={{ width: '24px', height: '24px' }}
     />
   );
 }
 
-export function CourseDashboardSpinnerState({ style, spinnerStyle }) {
+export function CourseDashboardSpinnerState({ style, spinnerStyle, label = 'Loading' }) {
   return (
     <div
       style={{
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
+        gap: '12px',
         padding: '24px 0',
+        color: dashboardPalette.muted,
         ...style,
       }}
     >
       <span
-        aria-label="Loading"
+        aria-label={label}
         role="status"
         style={{
           width: '24px',
           height: '24px',
           borderRadius: '50%',
-          border: `2px solid ${dashboardPalette.navyLight}`,
-          borderTopColor: dashboardPalette.navy,
+          border: `3px solid ${dashboardPalette.mint}`,
+          borderTopColor: dashboardPalette.teal,
           animation: 'caliber-spin 0.8s linear infinite',
           display: 'inline-block',
           ...spinnerStyle,
         }}
       />
+      {label && label !== 'Loading' ? <span style={{ fontSize: '0.92rem', fontWeight: 700 }}>{label}</span> : null}
     </div>
   );
 }
 
-function AppNavLink({ href, active, children }) {
+function AppNavLink({ href, active, children, icon: Icon }) {
   return (
     <a
       href={href}
-      className="sidebar-nav-link"
+      className="sidebar-nav-link caliber-nav-link"
       data-active={active ? 'true' : 'false'}
       style={{
         ...contentStyles.appNavLink,
@@ -713,13 +848,14 @@ function AppNavLink({ href, active, children }) {
         boxShadow: 'none',
       }}
     >
-      {children}
+      {Icon ? <Icon size={17} aria-hidden="true" /> : null}
+      <span>{children}</span>
     </a>
   );
 }
 
 export function AppChrome({ children }) {
-  return <div style={contentStyles.appFrame}>{children}</div>;
+  return <div className="caliber-app-frame" style={contentStyles.appFrame}>{children}</div>;
 }
 
 export function AppNavbar({
@@ -745,14 +881,15 @@ export function AppNavbar({
     page === 'upload-pdf' ||
     page === 'verify';
   const analyticsActive =
-    page === 'instructor/analytics' ||
-    page === 'analytics';
+    page === 'analytics' ||
+    page === 'instructor/analytics';
   const profileActive = page === 'profile';
   const homeHref = isInstructorOrAdmin ? '#courses' : '#student-courses';
-  const navWidth = isCollapsed ? '64px' : '248px';
+  const navWidth = isCollapsed ? '72px' : '256px';
+  const platformUrl = (import.meta.env.VITE_PORTAL_BASE_URL || window.location.origin || '').replace(/\/$/, '') || '/';
 
   return (
-    <aside style={{ ...contentStyles.appNav, width: navWidth }}>
+    <aside className="caliber-app-nav" style={{ ...contentStyles.appNav, width: navWidth }}>
       <div style={contentStyles.appNavInner}>
         <div
           style={{
@@ -761,19 +898,23 @@ export function AppNavbar({
               ? {
                   justifyContent: 'center',
                   gap: 0,
-                  padding: '0 0 20px',
+                  padding: '0 0 18px',
                 }
               : null),
           }}
         >
           {!isCollapsed ? (
             <a href={homeHref} onClick={onLogoClick} style={contentStyles.appBrand}>
+              <span style={contentStyles.brandMark}>
+                C
+              </span>
               Caliber
             </a>
           ) : null}
           <button
             type="button"
             onClick={() => setIsCollapsed((value) => !value)}
+            className="caliber-icon-button"
             style={{
               ...contentStyles.appCollapseButton,
               ...(isCollapsed ? { margin: '0 auto' } : null),
@@ -781,9 +922,7 @@ export function AppNavbar({
             aria-label={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
             title={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
           >
-            <span style={{ display: 'inline-block', transform: isCollapsed ? 'translateX(-2px)' : 'none' }}>
-              {isCollapsed ? '›' : '‹'}
-            </span>
+            {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </button>
         </div>
 
@@ -791,14 +930,15 @@ export function AppNavbar({
           <div style={contentStyles.appNavLinks}>
             {user ? (
               <>
-                {isInstructorOrAdmin ? <AppNavLink href="#courses" active={coursesActive}>Courses</AppNavLink> : null}
-                {isInstructorOrAdmin ? <AppNavLink href="#questions" active={questionBankActive}>Question Bank</AppNavLink> : null}
+                <AppNavLink href={platformUrl || '/'} active={false} icon={Home}>Platform</AppNavLink>
+                {isInstructorOrAdmin ? <AppNavLink href="#courses" active={coursesActive} icon={Home}>Courses</AppNavLink> : null}
+                {isInstructorOrAdmin ? <AppNavLink href="#questions" active={questionBankActive} icon={Database}>Question Bank</AppNavLink> : null}
                 {isInstructorOrAdmin ? (
-                  <AppNavLink href="#instructor/analytics" active={analyticsActive}>
+                  <AppNavLink href="#analytics" active={analyticsActive} icon={BarChart3}>
                     Analytics
                   </AppNavLink>
                 ) : null}
-                <AppNavLink href="#student-courses" active={studentViewActive}>
+                <AppNavLink href="#student-courses" active={studentViewActive} icon={GraduationCap}>
                   {isInstructorOrAdmin ? 'Student View' : 'Courses'}
                 </AppNavLink>
               </>
@@ -809,14 +949,13 @@ export function AppNavbar({
           <div style={contentStyles.appFooter}>
             <a
               href="#profile"
-              className="sidebar-nav-link"
+              className="sidebar-nav-link caliber-nav-link"
               data-active={profileActive ? 'true' : 'false'}
               style={{
                 ...contentStyles.appProfileLink,
                 ...(profileActive ? contentStyles.appNavLinkActive : null),
                 outline: 'none',
                 boxShadow: 'none',
-                margin: '0 -20px',
               }}
               title="View your profile"
             >
@@ -840,22 +979,24 @@ export function AppNavbar({
               href={`${apiBase}/docs`}
               target="_blank"
               rel="noopener noreferrer"
-              className="sidebar-nav-link"
+              className="sidebar-nav-link caliber-nav-link"
               data-active="false"
               style={contentStyles.appDocsLink}
               title="API Docs"
             >
+              <ExternalLink size={16} aria-hidden="true" />
               API Docs
             </a>
             <CourseDashboardSecondaryButton
               onClick={signOut}
               style={{
                 justifyContent: 'center',
-                borderColor: 'rgba(255, 255, 255, 0.22)',
-                background: 'transparent',
+                borderColor: 'rgba(255, 255, 255, 0.18)',
+                background: 'rgba(255,255,255,0.08)',
                 color: dashboardPalette.white,
               }}
             >
+              <LogOut size={16} aria-hidden="true" />
               Log out
             </CourseDashboardSecondaryButton>
           </div>
@@ -866,5 +1007,5 @@ export function AppNavbar({
 }
 
 export function AppMain({ children, style }) {
-  return <main style={{ ...contentStyles.appMain, ...style }}>{children}</main>;
+  return <main className="caliber-app-main" style={{ ...contentStyles.appMain, ...style }}>{children}</main>;
 }

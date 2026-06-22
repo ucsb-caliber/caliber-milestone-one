@@ -545,6 +545,67 @@ export async function generateQuestionVariant(questionId, count = 1) {
   }
 }
 
+export async function toggleQuestionLike(questionId) {
+  const headers = await getAuthHeaders();
+  const response = await apiFetch(`${API_BASE}/api/questions/${questionId}/like`, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update like');
+  }
+
+  return response.json();
+}
+
+export async function getQuestionComments(questionId) {
+  const headers = await getAuthHeaders();
+  const response = await apiFetch(`${API_BASE}/api/questions/${questionId}/comments`, {
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch comments');
+  }
+
+  return response.json();
+}
+
+export async function createQuestionComment(questionId, body) {
+  const headers = await getAuthHeaders();
+  headers['Content-Type'] = 'application/json';
+  const response = await apiFetch(`${API_BASE}/api/questions/${questionId}/comments`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ body }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to add comment');
+  }
+
+  return response.json();
+}
+
+export async function copyQuestionToMyBank(questionId) {
+  const headers = await getAuthHeaders();
+  const response = await apiFetch(`${API_BASE}/api/questions/${questionId}/copy`, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to add question');
+  }
+
+  return response.json();
+}
+
 /**
  * Fetch multiple questions by IDs in a single request (more efficient than individual calls)
  */
@@ -594,7 +655,7 @@ export async function createQuestion(questionData) {
     formData.append('answer_choices', questionData.answer_choices || '[]');
     formData.append('correct_answer', questionData.correct_answer || '');
     formData.append('draft_state', questionData.draft_state || (questionData.is_verified === false ? 'draft' : 'ready'));
-    formData.append('visibility', questionData.visibility || 'private');
+    formData.append('visibility', questionData.visibility || 'local');
     formData.append('origin', questionData.origin || 'manual');
     formData.append('school_scope', questionData.school_scope || questionData.user_school || questionData.school || '');
     if (questionData.course_scope) formData.append('course_scope', questionData.course_scope);

@@ -234,9 +234,7 @@ export default function StudentCoursesPage({ isInstructorView = false }) {
         <>
           {pinnedCourses.length > 0 ? (
             <CourseDashboardSection title="Pinned courses">
-              <CourseDashboardGrid
-                style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
-              >
+              <CourseDashboardGrid>
                 {pinnedCourses.map((course) => (
                   <CourseCard
                     key={course.id}
@@ -257,9 +255,7 @@ export default function StudentCoursesPage({ isInstructorView = false }) {
           ) : null}
 
           <CourseDashboardSection title={pinnedCourses.length > 0 ? 'All courses' : 'Your courses'}>
-            <CourseDashboardGrid
-              style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
-            >
+            <CourseDashboardGrid>
               {otherCourses.map((course) => (
                 <CourseCard
                   key={course.id}

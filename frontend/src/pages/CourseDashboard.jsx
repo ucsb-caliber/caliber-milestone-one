@@ -1,21 +1,142 @@
-import React, { useState, useEffect } from 'react';
-import { getCourse, getAllUsers, getUserInfo, deleteAssignment } from '../api';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { getAllUsers, getCourse, getUserInfo, deleteAssignment } from '../api';
 import { useAuth } from '../AuthContext';
 import { formatPacificDateTime, parseScheduleDate } from '../utils/datetime';
 import { getAssignmentQuestionCount } from '../utils/assignmentQuestions';
+import {
+  CourseDashboardErrorBanner,
+  CourseDashboardPrimaryButton,
+  CourseDashboardSecondaryButton,
+  CourseDashboardSpinnerState,
+  dashboardPalette,
+} from '../components/CourseDashboardUI';
 
-const DAY_MS = 1000 * 60 * 60 * 24;
-
-function formatAssignmentDate(dateStr) {
-  return formatPacificDateTime(dateStr, { kind: 'schedule' }) || 'Not set';
+function formatAssignmentDate(value) {
+  return formatPacificDateTime(value, { kind: 'schedule' }) || 'Not set';
 }
 
-function formatDateObject(dateObj) {
-  return formatPacificDateTime(dateObj, { kind: 'schedule' }) || 'Not set';
+function formatDateObject(value) {
+  return formatPacificDateTime(value, { kind: 'schedule' }) || 'Not set';
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+function getCourseIdFromHash() {
+  const match = window.location.hash.match(/#course\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function getRelevantDueDate(assignment) {
+  return parseScheduleDate(assignment.due_date_soft) || parseScheduleDate(assignment.due_date_hard) || null;
+}
+
+function getStatusMeta(item) {
+  if (item.isUnreleased) {
+    return { label: 'Unreleased', tone: dashboardPalette.muted, bg: dashboardPalette.subtle, border: dashboardPalette.border };
+  }
+  if (item.isClosed && item.assignment.grade_released) {
+    return { label: 'Released', tone: dashboardPalette.teal, bg: '#E7F4F2', border: '#B9DAD6' };
+  }
+  if (item.isClosed) {
+    return { label: 'Needs grading', tone: dashboardPalette.goldDark, bg: dashboardPalette.surfaceWarm, border: dashboardPalette.clay };
+  }
+  if (item.isLate) {
+    return { label: 'Late window', tone: dashboardPalette.coral, bg: '#FFF1EF', border: '#F3B5AD' };
+  }
+  return { label: 'Open', tone: dashboardPalette.teal, bg: '#E7F4F2', border: '#B9DAD6' };
+}
+
+function AssignmentRow({ item, canOpen, isInstructor, onOpen, onDelete }) {
+  const status = getStatusMeta(item);
+  const assignment = item.assignment;
+
+  return (
+    <div
+      className="caliber-assignment-row"
+      role={canOpen ? 'button' : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      onClick={canOpen ? onOpen : undefined}
+      onKeyDown={(event) => {
+        if (!canOpen) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(220px, 1.4fr) 116px minmax(150px, 0.8fr) minmax(150px, 0.8fr) 96px auto',
+        gap: '12px',
+        alignItems: 'center',
+        minHeight: '58px',
+        padding: '10px 12px',
+        borderTop: `1px solid ${dashboardPalette.border}`,
+        cursor: canOpen ? 'pointer' : 'default',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: dashboardPalette.ink, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {assignment.title || 'Untitled assignment'}
+        </div>
+        <div style={{ marginTop: 3, color: dashboardPalette.muted, fontSize: '0.8rem' }}>
+          {assignment.type || 'Assignment'}
+        </div>
+      </div>
+
+      <span
+        style={{
+          justifySelf: 'start',
+          minHeight: 24,
+          display: 'inline-flex',
+          alignItems: 'center',
+          borderRadius: 6,
+          padding: '0 8px',
+          border: `1px solid ${status.border}`,
+          background: status.bg,
+          color: status.tone,
+          fontSize: '0.76rem',
+          fontWeight: 750,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {status.label}
+      </span>
+
+      <div style={{ color: dashboardPalette.text, fontSize: '0.85rem' }}>{formatDateObject(item.releaseDate)}</div>
+      <div style={{ color: dashboardPalette.text, fontSize: '0.85rem' }}>{formatDateObject(item.softDueDate || item.dueDate)}</div>
+      <div style={{ color: dashboardPalette.text, fontSize: '0.85rem', fontWeight: 700 }}>
+        {getAssignmentQuestionCount(assignment)}
+      </div>
+
+      {isInstructor ? (
+        <button
+          type="button"
+          aria-label={`Delete ${assignment.title || 'assignment'}`}
+          title="Delete assignment"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          className="caliber-icon-button"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            border: `1px solid ${dashboardPalette.dangerBorder}`,
+            background: dashboardPalette.white,
+            color: dashboardPalette.dangerText,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <Trash2 size={16} aria-hidden="true" />
+        </button>
+      ) : (
+        <span aria-hidden="true" />
+      )}
+    </div>
+  );
 }
 
 export default function CourseDashboard() {
@@ -27,21 +148,11 @@ export default function CourseDashboard() {
   const [error, setError] = useState('');
   const [isInstructor, setIsInstructor] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-
-  // Delete assignment modal
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Get course ID from URL hash (e.g., #course/123)
-  const getCourseIdFromHash = () => {
-    const hash = window.location.hash;
-    const match = hash.match(/#course\/(\d+)/);
-    return match ? parseInt(match[1]) : null;
-  };
-
   const courseId = getCourseIdFromHash();
-  const backToCoursesHash = '#courses';
-  const canViewAssignments = isInstructor || isAdmin;
+  const canOpenAssignments = isInstructor || isAdmin;
 
   useEffect(() => {
     async function loadData() {
@@ -55,14 +166,13 @@ export default function CourseDashboard() {
         const [courseData, usersData, userInfo] = await Promise.all([
           getCourse(courseId),
           getAllUsers(),
-          getUserInfo()
+          getUserInfo(),
         ]);
 
         setCourse(courseData);
         setAllUsers(usersData.users || []);
         setIsInstructor(courseData.instructor_id === user?.id);
         setIsAdmin(Boolean(userInfo?.admin));
-
       } catch (err) {
         setError(err.message || 'Failed to load course');
       } finally {
@@ -71,37 +181,26 @@ export default function CourseDashboard() {
     }
 
     loadData();
-  }, [courseId, user]);
+  }, [courseId, user?.id]);
 
   useEffect(() => {
-    const timerId = window.setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
+    const timerId = window.setInterval(() => setCurrentTime(new Date()), 1000);
     return () => window.clearInterval(timerId);
   }, []);
 
-  const getUserDisplayName = (u) => {
-    if (u.first_name && u.last_name) {
-      return `${u.first_name} ${u.last_name}`;
-    }
-    return u.email || u.user_id;
+  const getUserDisplayName = (nextUser) => {
+    if (nextUser?.first_name && nextUser?.last_name) return `${nextUser.first_name} ${nextUser.last_name}`;
+    return nextUser?.email || nextUser?.user_id || 'Unknown';
   };
 
   const getInstructorName = () => {
-    if (!course?.instructor_id) return 'Unknown';
-    const instructor = allUsers.find((u) => u.user_id === course.instructor_id);
+    const instructor = allUsers.find((nextUser) => nextUser.user_id === course?.instructor_id);
     return instructor ? getUserDisplayName(instructor) : 'Unknown';
   };
 
   const getStudentInfo = (studentId) => {
-    const student = allUsers.find((u) => u.user_id === studentId);
+    const student = allUsers.find((nextUser) => nextUser.user_id === studentId);
     return student ? getUserDisplayName(student) : studentId;
-  };
-
-  const getInitials = (name) => {
-    if (!name || name === 'Unknown') return '?';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   const handleDeleteAssignment = async () => {
@@ -110,13 +209,13 @@ export default function CourseDashboard() {
     setDeleting(true);
     try {
       await deleteAssignment(deleteConfirmId);
-      setCourse((prev) => ({
-        ...prev,
-        assignments: prev.assignments.filter((a) => a.id !== deleteConfirmId)
+      setCourse((previous) => ({
+        ...previous,
+        assignments: (previous.assignments || []).filter((assignment) => assignment.id !== deleteConfirmId),
       }));
       setDeleteConfirmId(null);
     } catch (err) {
-      alert(`Failed to delete assignment: ${err.message || 'Unknown error'}`);
+      setError(err.message || 'Failed to delete assignment');
     } finally {
       setDeleting(false);
     }
@@ -124,103 +223,176 @@ export default function CourseDashboard() {
 
   const styles = {
     container: {
-      maxWidth: '1180px',
+      width: '100%',
+      maxWidth: 1240,
       margin: '0 auto',
-      padding: '2rem',
-      color: '#111827'
+      color: dashboardPalette.text,
     },
-    backLink: {
+    topLink: {
       display: 'inline-flex',
       alignItems: 'center',
-      gap: '0.5rem',
-      color: '#2563eb',
+      gap: 8,
+      color: dashboardPalette.navy,
       textDecoration: 'none',
-      fontSize: '0.875rem',
-      fontWeight: '600',
-      marginBottom: '1rem',
-      cursor: 'pointer'
+      fontSize: '0.88rem',
+      fontWeight: 750,
+      marginBottom: 16,
     },
-    section: {
-      background: '#ffffff',
-      borderRadius: '14px',
-      padding: '1.25rem',
-      marginBottom: '1.1rem',
-      border: '1px solid #e5e7eb',
-      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)'
-    },
-    sectionTitle: {
-      margin: 0,
-      fontSize: '1.05rem',
-      fontWeight: 700,
-      color: '#0f172a'
-    },
-    mutedText: {
-      margin: 0,
-      color: '#64748b',
-      fontSize: '0.9rem'
-    },
-    infoRow: {
+    header: {
       display: 'flex',
-      padding: '0.7rem 0',
-      borderBottom: '1px solid #f1f5f9',
-      gap: '1rem'
+      justifyContent: 'space-between',
+      gap: 16,
+      alignItems: 'flex-start',
+      marginBottom: 20,
+      flexWrap: 'wrap',
     },
-    infoLabel: {
-      minWidth: '150px',
-      fontWeight: 600,
-      color: '#334155'
+    title: {
+      margin: 0,
+      color: dashboardPalette.navy,
+      fontSize: '1.8rem',
+      lineHeight: 1.18,
+      fontWeight: 850,
     },
-    infoValue: {
-      color: '#475569',
-      flex: 1
+    subtitle: {
+      margin: '8px 0 0',
+      color: dashboardPalette.muted,
+      fontSize: '0.95rem',
     },
-    studentGrid: {
+    metricRow: {
+      display: 'flex',
+      gap: 8,
+      flexWrap: 'wrap',
+      marginTop: 12,
+    },
+    metric: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      minHeight: 30,
+      padding: '0 10px',
+      borderRadius: 6,
+      border: `1px solid ${dashboardPalette.border}`,
+      background: dashboardPalette.white,
+      color: dashboardPalette.text,
+      fontSize: '0.82rem',
+      fontWeight: 750,
+    },
+    layout: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
-      gap: '0.65rem'
+      gridTemplateColumns: 'minmax(0, 1fr) 320px',
+      gap: 20,
+      alignItems: 'start',
     },
-    studentCard: {
-      padding: '0.75rem 0.9rem',
-      background: '#f8fafc',
-      border: '1px solid #e2e8f0',
-      borderRadius: '10px',
+    panel: {
+      background: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: 8,
+      boxShadow: '0 1px 2px rgba(17,21,23,0.06)',
+    },
+    panelHeader: {
+      padding: '16px 18px',
+      borderBottom: `1px solid ${dashboardPalette.border}`,
       display: 'flex',
       alignItems: 'center',
-      gap: '0.65rem'
+      justifyContent: 'space-between',
+      gap: 12,
     },
-    studentAvatar: {
-      width: '36px',
-      height: '36px',
-      borderRadius: '999px',
-      background: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
-      color: 'white',
+    panelTitle: {
+      margin: 0,
+      color: dashboardPalette.ink,
+      fontSize: '1rem',
+      fontWeight: 800,
+    },
+    tableHeader: {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(220px, 1.4fr) 116px minmax(150px, 0.8fr) minmax(150px, 0.8fr) 96px auto',
+      gap: 12,
+      padding: '10px 12px',
+      color: dashboardPalette.muted,
+      fontSize: '0.75rem',
+      fontWeight: 800,
+      borderBottom: `1px solid ${dashboardPalette.border}`,
+    },
+    empty: {
+      padding: 28,
+      color: dashboardPalette.muted,
+      borderTop: `1px solid ${dashboardPalette.border}`,
+    },
+    groupTitle: {
+      margin: 0,
+      padding: '14px 12px 6px',
+      color: dashboardPalette.ink,
+      fontSize: '0.88rem',
+      fontWeight: 800,
+    },
+    sidePanel: {
+      background: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: 8,
+      boxShadow: '0 1px 2px rgba(17,21,23,0.06)',
+      overflow: 'hidden',
+    },
+    infoList: {
+      display: 'grid',
+      gap: 0,
+    },
+    infoRow: {
+      display: 'grid',
+      gridTemplateColumns: '112px minmax(0, 1fr)',
+      gap: 12,
+      padding: '11px 14px',
+      borderTop: `1px solid ${dashboardPalette.border}`,
+      fontSize: '0.87rem',
+    },
+    infoLabel: {
+      color: dashboardPalette.muted,
+      fontWeight: 750,
+    },
+    infoValue: {
+      color: dashboardPalette.text,
+      fontWeight: 650,
+      minWidth: 0,
+    },
+    roster: {
+      display: 'grid',
+      gap: 0,
+      maxHeight: 360,
+      overflowY: 'auto',
+    },
+    rosterRow: {
+      padding: '10px 14px',
+      borderTop: `1px solid ${dashboardPalette.border}`,
+      color: dashboardPalette.text,
+      fontSize: '0.86rem',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+    modalBackdrop: {
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(17, 21, 23, 0.46)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontWeight: 700,
-      fontSize: '0.78rem',
-      letterSpacing: '0.02em'
+      zIndex: 1000,
+      padding: 16,
     },
-    error: {
-      background: '#fef2f2',
-      color: '#dc2626',
-      padding: '0.75rem 1rem',
-      borderRadius: '8px',
-      marginBottom: '1rem'
+    modal: {
+      background: dashboardPalette.white,
+      border: `1px solid ${dashboardPalette.border}`,
+      borderRadius: 8,
+      padding: 20,
+      maxWidth: 420,
+      width: '100%',
+      boxShadow: '0 16px 36px rgba(17,21,23,0.22)',
     },
-    timelineCard: {
-      border: '1px solid #dbeafe',
-      background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
-      borderRadius: '12px',
-      padding: '1.05rem 1.15rem',
-      marginBottom: '0.95rem'
-    }
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <p style={{ textAlign: 'center', color: '#64748b' }}>Loading course...</p>
+        <a href="#courses" style={styles.topLink}><ArrowLeft size={16} /> Courses</a>
+        <CourseDashboardSpinnerState label="Loading course" />
       </div>
     );
   }
@@ -228,8 +400,8 @@ export default function CourseDashboard() {
   if (error) {
     return (
       <div style={styles.container}>
-        <a href={backToCoursesHash} style={styles.backLink}>← Back to Courses</a>
-        <div style={styles.error}>{error}</div>
+        <a href="#courses" style={styles.topLink}><ArrowLeft size={16} /> Courses</a>
+        <CourseDashboardErrorBanner>{error}</CourseDashboardErrorBanner>
       </div>
     );
   }
@@ -237,448 +409,202 @@ export default function CourseDashboard() {
   if (!course) {
     return (
       <div style={styles.container}>
-        <a href={backToCoursesHash} style={styles.backLink}>← Back to Courses</a>
-        <p>Course not found</p>
+        <a href="#courses" style={styles.topLink}><ArrowLeft size={16} /> Courses</a>
+        <div style={styles.panel}>
+          <div style={styles.empty}>Course not found.</div>
+        </div>
       </div>
     );
   }
 
   const now = currentTime;
   const allAssignments = course.assignments || [];
+  const timelineWithMeta = [...allAssignments]
+    .map((assignment) => {
+      const releaseDate = parseScheduleDate(assignment.release_date);
+      const softDueDate = parseScheduleDate(assignment.due_date_soft);
+      const hardDueDate = parseScheduleDate(assignment.due_date_hard);
+      const dueDate = softDueDate || hardDueDate || null;
+      const nowMs = now.getTime();
 
-  const getRelevantDueDate = (assignment) => {
-    const dueSoft = parseScheduleDate(assignment.due_date_soft);
-    const dueHard = parseScheduleDate(assignment.due_date_hard);
-    return dueSoft || dueHard || null;
-  };
+      const isClosed = Boolean(hardDueDate && nowMs > hardDueDate.getTime());
+      const isUnreleased = !releaseDate || releaseDate.getTime() > nowMs;
+      const isLate = Boolean(softDueDate && nowMs > softDueDate.getTime() && !isClosed);
+      const isOpen = !isUnreleased && !isClosed;
 
-  const getSortDueTime = (assignment) => {
-    const due = getRelevantDueDate(assignment);
-    if (due) return due.getTime();
-    return Number.POSITIVE_INFINITY;
-  };
+      return {
+        assignment,
+        releaseDate,
+        softDueDate,
+        hardDueDate,
+        dueDate,
+        isClosed,
+        isUnreleased,
+        isLate,
+        isOpen,
+      };
+    })
+    .sort((a, b) => {
+      const aDue = getRelevantDueDate(a.assignment);
+      const bDue = getRelevantDueDate(b.assignment);
+      return (aDue ? aDue.getTime() : Number.POSITIVE_INFINITY) - (bDue ? bDue.getTime() : Number.POSITIVE_INFINITY);
+    });
 
-  const unreleasedAssignments = allAssignments.filter((assignment) => {
-    if (!assignment.release_date) return true;
-    const releaseDate = parseScheduleDate(assignment.release_date);
-    return releaseDate ? releaseDate > now : true;
-  });
+  const openAssignments = timelineWithMeta.filter((item) => item.isOpen);
+  const needsGrading = timelineWithMeta.filter((item) => item.isClosed && !item.assignment.grade_released);
+  const released = timelineWithMeta.filter((item) => item.isClosed && item.assignment.grade_released);
+  const unreleased = timelineWithMeta.filter((item) => item.isUnreleased);
+  const assignmentGroups = [
+    { key: 'open', label: 'Open', items: openAssignments },
+    { key: 'needs-grading', label: 'Needs grading', items: needsGrading },
+    { key: 'released', label: 'Released', items: released },
+    { key: 'unreleased', label: 'Unreleased', items: unreleased },
+  ];
 
-  const sortByUpcomingDue = (assignments) => (
-    [...assignments].sort((a, b) => getSortDueTime(a) - getSortDueTime(b))
-  );
-
-  const timelineAssignments = sortByUpcomingDue(allAssignments);
-
-  const timelineWithMeta = timelineAssignments.map((assignment) => {
-    const releaseDate = parseScheduleDate(assignment.release_date);
-    const softDueDate = parseScheduleDate(assignment.due_date_soft);
-    const hardDueDate = parseScheduleDate(assignment.due_date_hard);
-    const dueDate = softDueDate || hardDueDate || null;
-
-    const dueMs = dueDate ? dueDate.getTime() : null;
-    const releaseMs = releaseDate ? releaseDate.getTime() : null;
-    const softDueMs = softDueDate ? softDueDate.getTime() : null;
-    const hardDueMs = hardDueDate ? hardDueDate.getTime() : null;
-    const nowMs = now.getTime();
-
-    const daysUntilDue = dueMs === null ? null : Math.ceil((dueMs - nowMs) / DAY_MS);
-
-    const isClosed = hardDueMs !== null && nowMs > hardDueMs;
-    const isUnreleased = releaseMs === null || nowMs < releaseMs;
-    const isLate = softDueMs !== null && nowMs > softDueMs && !isClosed;
-    const isInProgress = !isUnreleased && !isLate && !isClosed &&
-      (releaseMs === null || nowMs >= releaseMs) &&
-      (softDueMs === null || nowMs <= softDueMs);
-
-    let status = { label: 'No schedule', tone: '#64748b', bg: '#f1f5f9' };
-    if (isUnreleased) {
-      status = { label: 'Unreleased', tone: '#1e3a8a', bg: '#dbeafe' };
-    } else if (isInProgress) {
-      status = { label: 'In Progress', tone: '#0f766e', bg: '#ccfbf1' };
-    } else if (isLate || isClosed) {
-      status = { label: 'Late', tone: '#b91c1c', bg: '#fef2f2' };
-    } else if (daysUntilDue !== null) {
-      status = { label: 'Upcoming', tone: '#0f766e', bg: '#ecfeff' };
-    }
-
-    const timeRemainingPercent = releaseMs && softDueMs && softDueMs > releaseMs
-      ? clamp(((nowMs - releaseMs) / (softDueMs - releaseMs)) * 100, 0, 100)
-      : null;
-
-    const formatRemainingTime = () => {
-      if (isUnreleased) return 'Unreleased';
-      const targetMs = isLate ? (hardDueMs ?? dueMs) : dueMs;
-      if (targetMs === null) return 'N/A';
-      const diffMs = targetMs - nowMs;
-      if (diffMs < 0) {
-        const daysLate = Math.ceil(Math.abs(diffMs) / DAY_MS);
-        return `${daysLate}d late`;
-      }
-      if (isLate) {
-        const totalSeconds = Math.floor(diffMs / 1000);
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-      }
-      if (diffMs >= DAY_MS) {
-        return `${Math.ceil(diffMs / DAY_MS)}d`;
-      }
-      const totalSeconds = Math.floor(diffMs / 1000);
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    };
-
-    return {
-      assignment,
-      dueDate,
-      releaseDate,
-      softDueDate,
-      hardDueDate,
-      daysUntilDue,
-      status,
-      isLate,
-      isInProgress,
-      isClosed,
-      timeRemainingPercent,
-      remainingTimeLabel: formatRemainingTime(),
-      remainingTimePrefix: isLate ? 'Time Remaining (LATE):' : 'Time Remaining:'
-    };
-  });
-  const isAssignmentGraded = (assignment) => Boolean(assignment?.grade_released);
-  const inProgressCount = timelineWithMeta.filter((item) => item.isInProgress || item.isLate).length;
-  const unreleasedIdSet = new Set(unreleasedAssignments.map((assignment) => assignment.id));
-  const timelineInProgressOrLate = timelineWithMeta.filter((item) => (item.isInProgress || item.isLate) && !unreleasedIdSet.has(item.assignment.id));
-  const timelinePendingGrading = timelineWithMeta.filter((item) => item.isClosed && !isAssignmentGraded(item.assignment));
-  const timelineGraded = timelineWithMeta.filter((item) => item.isClosed && isAssignmentGraded(item.assignment));
-  const timelineUnreleased = timelineWithMeta.filter((item) => unreleasedIdSet.has(item.assignment.id));
-  const pendingGradingCount = timelinePendingGrading.length;
-  const gradedCount = timelineGraded.length;
+  const metrics = [
+    `${allAssignments.length} assignment${allAssignments.length === 1 ? '' : 's'}`,
+    `${openAssignments.length} open`,
+    `${needsGrading.length} needs grading`,
+    `${course.student_ids?.length || 0} student${(course.student_ids?.length || 0) === 1 ? '' : 's'}`,
+  ];
 
   return (
     <div style={styles.container}>
-      <a href={backToCoursesHash} style={styles.backLink}>← Back to Courses</a>
+      <a href="#courses" style={styles.topLink}>
+        <ArrowLeft size={16} aria-hidden="true" />
+        Courses
+      </a>
 
-      <div style={{
-        ...styles.section,
-        background: 'radial-gradient(circle at 8% 0%, #dbeafe 0%, #eff6ff 35%, #ffffff 100%)',
-        border: '1px solid #bfdbfe'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '2rem', lineHeight: 1.1, color: '#0f172a' }}>{course.course_name}</h1>
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.6rem' }}>
-            {isInstructor && (
-              <button
-                style={{
-                  padding: '0.6rem 0.95rem',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: '#2563eb',
-                  color: 'white',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-                onClick={() => window.location.hash = `#course/${courseId}/assignment/new`}
-              >
-                + New Assignment
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-          gap: '0.7rem',
-          marginTop: '1rem'
-        }}>
-          {[
-            { label: 'Total Assignments', value: allAssignments.length },
-            { label: 'In Progress', value: inProgressCount },
-            { label: 'Ungraded', value: pendingGradingCount },
-            { label: 'Graded', value: gradedCount }
-          ].map((metric) => (
-            <div key={metric.label} style={{
-              background: '#ffffff',
-              border: '1px solid #dbeafe',
-              borderRadius: '10px',
-              padding: '0.7rem 0.8rem'
-            }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>{metric.value}</div>
-              <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#475569', letterSpacing: '0.03em' }}>{metric.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={styles.section}>
-        <div style={{ marginBottom: '1.15rem' }}>
-          <h2 style={{ ...styles.sectionTitle, fontSize: '1.3rem', fontWeight: 800 }}>Assignment Timeline</h2>
-        </div>
-
-        {timelineWithMeta.length === 0 ? (
-          <div style={{
-            border: '2px dashed #cbd5e1',
-            borderRadius: '12px',
-            padding: '2.2rem 1rem',
-            textAlign: 'center',
-            background: '#f8fafc'
-          }}>
-            <h3 style={{ margin: '0 0 0.5rem 0' }}>No assignments yet</h3>
-            <p style={{ margin: 0, color: '#64748b' }}>
-              {isInstructor ? 'Create your first assignment to initialize the timeline.' : 'Assignments will appear here once your instructor adds them.'}
-            </p>
-          </div>
-        ) : (
-          <div>
-            {[
-              { key: 'in-progress', title: 'In Progress', emptyLabel: 'No In Progress assignments.', items: timelineInProgressOrLate },
-              { key: 'pending-grading', title: 'Ungraded', emptyLabel: 'No ungraded assignments.', items: timelinePendingGrading },
-              { key: 'graded', title: 'Graded', emptyLabel: 'No graded assignments.', items: timelineGraded },
-              { key: 'unreleased', title: 'Unreleased', emptyLabel: 'No Unreleased assignments.', items: timelineUnreleased }
-            ].map((section, sectionIndex) => (
-              <div key={section.key}>
-                <h3 style={{ margin: '0 0 0.65rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{section.title}</h3>
-                {section.items.length === 0 ? (
-                  <p style={styles.mutedText}>{section.emptyLabel}</p>
-                ) : (
-                  section.items.map((item) => (
-                    <div
-                      key={item.assignment.id}
-                      style={{
-                        ...styles.timelineCard,
-                        cursor: canViewAssignments ? 'pointer' : 'default',
-                        transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s'
-                      }}
-                      onClick={() => {
-                        if (canViewAssignments) {
-                          window.location.hash = `#course/${courseId}/assignment/${item.assignment.id}/view`;
-                        }
-                      }}
-                      onMouseEnter={(e) => {
-                        if (canViewAssignments) {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow = '0 8px 16px rgba(15, 23, 42, 0.12)';
-                          e.currentTarget.style.borderColor = '#bfdbfe';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                        e.currentTarget.style.borderColor = '#dbeafe';
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
-                            <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>{item.assignment.title}</h3>
-                            {!(item.isClosed && item.status.label === 'Late') && (
-                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: item.status.tone, background: item.status.bg, borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                {item.status.label}
-                              </span>
-                            )}
-                            {item.isClosed && (
-                              section.key === 'pending-grading' ? (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                  Ungraded
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                  Graded
-                                </span>
-                              )
-                            )}
-                            {item.assignment.grade_released && (
-                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#065f46', background: '#d1fae5', borderRadius: '999px', padding: '0.15rem 0.45rem' }}>
-                                Released
-                              </span>
-                            )}
-                            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#1d4ed8', background: '#dbeafe', borderRadius: '6px', padding: '0.15rem 0.4rem' }}>
-                              {item.assignment.type}
-                            </span>
-                          </div>
-                          <div style={{ marginTop: '0.7rem', fontSize: '0.82rem', color: '#475569', display: 'flex', gap: '1.15rem', rowGap: '0.45rem', flexWrap: 'wrap' }}>
-                            <span><strong>Release:</strong> {formatAssignmentDate(item.assignment.release_date)}</span>
-                            <span><strong>Due Date:</strong> {formatDateObject(item.softDueDate || item.dueDate)}</span>
-                            <span><strong>Late Due Date:</strong> {formatDateObject(item.hardDueDate)}</span>
-                            <span><strong>Questions:</strong> {getAssignmentQuestionCount(item.assignment)}</span>
-                          </div>
-                        </div>
-                        {isInstructor && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteConfirmId(item.assignment.id);
-                            }}
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              padding: 0,
-                              background: '#fee2e2',
-                              color: '#dc2626',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '0.875rem',
-                              fontWeight: 'bold',
-                              flexShrink: 0
-                            }}
-                            title="Delete assignment"
-                          >
-                            x
-                          </button>
-                        )}
-                      </div>
-
-                      <div style={{ marginTop: '0.95rem' }}>
-                        <div>
-                          <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: '1fr 1fr',
-                            alignItems: 'center',
-                            fontSize: '0.74rem',
-                            color: '#475569',
-                            marginBottom: '0.35rem',
-                            columnGap: '0.6rem'
-                          }}>
-                            <span style={{ textAlign: 'left' }}>{formatDateObject(item.releaseDate)}</span>
-                            <span style={{ textAlign: 'right' }}>{formatDateObject(item.softDueDate || item.dueDate)}</span>
-                          </div>
-                          <div style={{ height: '8px', borderRadius: '999px', background: '#dbeafe', overflow: 'hidden' }}>
-                            <div style={{
-                              height: '100%',
-                              width: `${item.timeRemainingPercent ?? 0}%`,
-                              background: '#2563eb'
-                            }} />
-                          </div>
-                          {section.key === 'in-progress' && (
-                            <div style={{ marginTop: '0.4rem', fontSize: '0.76rem', color: '#334155', fontWeight: 700 }}>
-                              {item.remainingTimePrefix} {item.remainingTimeLabel}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {sectionIndex < 3 && (
-                  <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '0.85rem 0 1rem 0' }} />
-                )}
-              </div>
+      <div style={styles.header}>
+        <div>
+          <h1 style={styles.title}>{course.course_name || 'Untitled course'}</h1>
+          <p style={styles.subtitle}>
+            {[course.course_code, course.school_name].filter(Boolean).join(' · ') || 'Course workspace'}
+          </p>
+          <div style={styles.metricRow}>
+            {metrics.map((metric) => (
+              <span key={metric} style={styles.metric}>{metric}</span>
             ))}
           </div>
-        )}
+        </div>
+        {isInstructor ? (
+          <CourseDashboardPrimaryButton onClick={() => { window.location.hash = `#course/${courseId}/assignment/new`; }}>
+            <Plus size={16} aria-hidden="true" />
+            New Assignment
+          </CourseDashboardPrimaryButton>
+        ) : null}
       </div>
 
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Course Information</h2>
-        <div style={{ marginTop: '0.5rem' }}>
-          <div style={styles.infoRow}>
-            <span style={styles.infoLabel}>Instructor</span>
-            <span style={styles.infoValue}>{getInstructorName()}</span>
+      <div style={styles.layout} className="caliber-course-workspace">
+        <section style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <h2 style={styles.panelTitle}>Assignments</h2>
+            <span style={{ color: dashboardPalette.muted, fontSize: '0.84rem', fontWeight: 700 }}>
+              {formatAssignmentDate(now)}
+            </span>
           </div>
-          <div style={styles.infoRow}>
-            <span style={styles.infoLabel}>School</span>
-            <span style={styles.infoValue}>{course.school_name || 'Not set'}</span>
-          </div>
-          <div style={{ ...styles.infoRow, borderBottom: 'none' }}>
-            <span style={styles.infoLabel}>Course Code</span>
-            <span style={styles.infoValue}>{course.course_code || 'Not set'}</span>
-          </div>
-        </div>
-      </div>
 
-      <div style={styles.section}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.7rem', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <h2 style={styles.sectionTitle}>Students ({course.student_ids?.length || 0})</h2>
-        </div>
-        <p style={{ ...styles.mutedText, marginBottom: '0.8rem' }}>
-          Enrollment changes are managed from the Platform home page.
-        </p>
+          <div className="caliber-assignment-table-header" style={styles.tableHeader}>
+            <span>Assignment</span>
+            <span>Status</span>
+            <span>Release</span>
+            <span>Due</span>
+            <span>Questions</span>
+            <span />
+          </div>
 
-        {course.student_ids?.length > 0 ? (
-          <div style={styles.studentGrid}>
-            {course.student_ids.map((studentId) => {
-              const name = getStudentInfo(studentId);
-              return (
-                <div key={studentId} style={styles.studentCard}>
-                  <div style={styles.studentAvatar}>{getInitials(name)}</div>
-                  <span style={{ fontSize: '0.875rem', color: '#334155' }}>{name}</span>
+          {timelineWithMeta.length === 0 ? (
+            <div style={styles.empty}>
+              {isInstructor ? 'Create your first assignment to start the course timeline.' : 'Assignments will appear here once they are added.'}
+            </div>
+          ) : (
+            assignmentGroups.map((group) => (
+              group.items.length > 0 ? (
+                <div key={group.key}>
+                  <h3 style={styles.groupTitle}>{group.label}</h3>
+                  {group.items.map((item) => (
+                    <AssignmentRow
+                      key={item.assignment.id}
+                      item={item}
+                      canOpen={canOpenAssignments}
+                      isInstructor={isInstructor}
+                      onOpen={() => { window.location.hash = `#course/${courseId}/assignment/${item.assignment.id}/view`; }}
+                      onDelete={() => setDeleteConfirmId(item.assignment.id)}
+                    />
+                  ))}
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p style={styles.mutedText}>No students enrolled yet.</p>
-        )}
+              ) : null
+            ))
+          )}
+        </section>
+
+        <aside style={{ display: 'grid', gap: 16 }}>
+          <section style={styles.sidePanel}>
+            <div style={styles.panelHeader}>
+              <h2 style={styles.panelTitle}>Course details</h2>
+            </div>
+            <div style={styles.infoList}>
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>Instructor</span>
+                <span style={styles.infoValue}>{getInstructorName()}</span>
+              </div>
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>School</span>
+                <span style={styles.infoValue}>{course.school_name || 'Not set'}</span>
+              </div>
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>Code</span>
+                <span style={styles.infoValue}>{course.course_code || 'Not set'}</span>
+              </div>
+            </div>
+          </section>
+
+          <section style={styles.sidePanel}>
+            <div style={styles.panelHeader}>
+              <h2 style={styles.panelTitle}>Roster</h2>
+              <span style={{ color: dashboardPalette.muted, fontSize: '0.84rem', fontWeight: 700 }}>
+                {course.student_ids?.length || 0}
+              </span>
+            </div>
+            {course.student_ids?.length > 0 ? (
+              <div style={styles.roster}>
+                {course.student_ids.map((studentId) => (
+                  <div key={studentId} style={styles.rosterRow}>{getStudentInfo(studentId)}</div>
+                ))}
+              </div>
+            ) : (
+              <div style={styles.empty}>No students enrolled yet.</div>
+            )}
+          </section>
+        </aside>
       </div>
 
-
-      {deleteConfirmId && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            maxWidth: '400px',
-            width: '90%',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-          }}>
-            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.25rem', fontWeight: 600, color: '#111827' }}>
-              Delete Assignment?
+      {deleteConfirmId ? (
+        <div style={styles.modalBackdrop}>
+          <div style={styles.modal}>
+            <h3 style={{ margin: '0 0 8px', color: dashboardPalette.ink, fontSize: '1.12rem', fontWeight: 800 }}>
+              Delete assignment?
             </h3>
-            <p style={{ margin: '0 0 1.5rem 0', color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.5 }}>
-              Are you sure you want to delete this assignment? This action cannot be undone.
+            <p style={{ margin: '0 0 18px', color: dashboardPalette.muted, fontSize: '0.9rem', lineHeight: 1.5 }}>
+              This will remove the assignment from the course. This action cannot be undone.
             </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                disabled={deleting}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: 500
-                }}
-              >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              <CourseDashboardSecondaryButton onClick={() => setDeleteConfirmId(null)} disabled={deleting}>
                 Cancel
-              </button>
+              </CourseDashboardSecondaryButton>
               <button
+                type="button"
                 onClick={handleDeleteAssignment}
                 disabled={deleting}
                 style={{
-                  padding: '0.5rem 1rem',
-                  background: deleting ? '#f87171' : '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
+                  minHeight: 42,
+                  padding: '0 16px',
+                  border: `1px solid ${dashboardPalette.dangerText}`,
+                  borderRadius: 8,
+                  background: deleting ? dashboardPalette.coral : dashboardPalette.dangerText,
+                  color: dashboardPalette.white,
                   cursor: deleting ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: 500
+                  fontWeight: 750,
                 }}
               >
                 {deleting ? 'Deleting...' : 'Delete'}
@@ -686,8 +612,7 @@ export default function CourseDashboard() {
             </div>
           </div>
         </div>
-      )}
-
+      ) : null}
     </div>
   );
 }

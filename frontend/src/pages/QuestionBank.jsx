@@ -14,6 +14,10 @@ import {
   dryRunQuestionImport,
   importQuestionFolder,
   exportQuestionFolder,
+  toggleQuestionLike,
+  getQuestionComments,
+  createQuestionComment,
+  copyQuestionToMyBank,
 } from '../api';
 import { useAuth } from '../AuthContext';
 import QuestionCard from '../components/QuestionCard';
@@ -116,13 +120,21 @@ export default function QuestionBank() {
   const [importSummary, setImportSummary] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
+  const [commentQuestion, setCommentQuestion] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentLoading, setCommentLoading] = useState(false);
 
   const itemsPerPage = 6;
 
   // Filtered questions
   const filteredMyQuestions = filterQuestionsBySearch(myQuestions, searchQuery, searchFilter);
+  const normalizedVisibility = (question) => {
+    const visibility = question.visibility || 'local';
+    return visibility === 'private' ? 'local' : visibility;
+  };
   const filteredAllQuestions = filterQuestionsBySearch(
-    visibilityFilter === 'all' ? allQuestions : allQuestions.filter(q => (q.visibility || 'private') === visibilityFilter),
+    visibilityFilter === 'all' ? allQuestions : allQuestions.filter(q => normalizedVisibility(q) === visibilityFilter),
     searchQuery,
     searchFilter
   );
@@ -186,7 +198,13 @@ export default function QuestionBank() {
       setImageUrls(urlMap);
 
       // Fetch user info for all questions
-      const uniqueUserIds = [...new Set([...verifiedMyQuestions, ...verifiedAllQuestions].map(q => q.user_id))];
+      const uniqueUserIds = [
+        ...new Set(
+          [...verifiedMyQuestions, ...verifiedAllQuestions]
+            .flatMap(q => [q.user_id, q.owner_user_id, q.original_author_user_id])
+            .filter(Boolean)
+        )
+      ];
       const userPromises = uniqueUserIds.map(async (userId) => {
         try {
           const userInfo = await getUserById(userId);
@@ -223,6 +241,87 @@ export default function QuestionBank() {
       await loadQuestions();
     } catch (err) {
       setError(err.message || 'Failed to delete question');
+    }
+  };
+
+  const replaceQuestionEverywhere = (updatedQuestion) => {
+    setMyQuestions(prev => prev.map(q => q.id === updatedQuestion.id ? updatedQuestion : q));
+    setAllQuestions(prev => prev.map(q => q.id === updatedQuestion.id ? updatedQuestion : q));
+    setStudentViewQuestion(prev => prev?.id === updatedQuestion.id ? updatedQuestion : prev);
+    setCommentQuestion(prev => prev?.id === updatedQuestion.id ? updatedQuestion : prev);
+  };
+
+  const handleLikeQuestion = async (question) => {
+    try {
+      const updatedQuestion = await toggleQuestionLike(question.id);
+      replaceQuestionEverywhere(updatedQuestion);
+    } catch (err) {
+      setError(err.message || 'Failed to update like');
+    }
+  };
+
+  const handleCopyQuestion = async (question) => {
+    try {
+      await copyQuestionToMyBank(question.id);
+      await loadQuestions();
+    } catch (err) {
+      setError(err.message || 'Failed to add question to your bank');
+    }
+  };
+
+  const handleOpenComments = async (question) => {
+    setCommentQuestion(question);
+    setCommentDraft('');
+    setCommentLoading(true);
+    setError('');
+    try {
+      const rows = await getQuestionComments(question.id);
+      setComments(rows || []);
+      const missingUserIds = [...new Set((rows || []).map(row => row.user_id).filter(id => id && !userInfoCache[id]))];
+      if (missingUserIds.length > 0) {
+        const loadedUsers = await Promise.all(missingUserIds.map(async (userId) => {
+          try {
+            return { userId, userInfo: await getUserById(userId) };
+          } catch {
+            return { userId, userInfo: null };
+          }
+        }));
+        setUserInfoCache(prev => {
+          const next = { ...prev };
+          loadedUsers.forEach(({ userId, userInfo }) => {
+            if (userInfo) next[userId] = userInfo;
+          });
+          return next;
+        });
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load comments');
+      setComments([]);
+    } finally {
+      setCommentLoading(false);
+    }
+  };
+
+  const handleSubmitComment = async () => {
+    if (!commentQuestion || !commentDraft.trim()) return;
+    setCommentLoading(true);
+    setError('');
+    try {
+      const comment = await createQuestionComment(commentQuestion.id, commentDraft.trim());
+      setComments(prev => [...prev, comment]);
+      const updateCounts = (list) => list.map(q => (
+        q.id === commentQuestion.id
+          ? { ...q, comments_count: (q.comments_count || 0) + 1, recent_comments: [...(q.recent_comments || []), comment].slice(-3) }
+          : q
+      ));
+      setMyQuestions(updateCounts);
+      setAllQuestions(updateCounts);
+      setCommentQuestion(prev => prev ? { ...prev, comments_count: (prev.comments_count || 0) + 1 } : prev);
+      setCommentDraft('');
+    } catch (err) {
+      setError(err.message || 'Failed to add comment');
+    } finally {
+      setCommentLoading(false);
     }
   };
 
@@ -310,22 +409,34 @@ export default function QuestionBank() {
         selectable={isTeacher}
         selectedQuestionIds={selectedQuestionIds}
         onToggleQuestion={toggleQuestionSelection}
+        onLike={handleLikeQuestion}
+        onOpenComments={handleOpenComments}
+        onCopy={handleCopyQuestion}
       />
     );
   };
 
   const renderQuestionCard = (question, showDeleteButton = true, showEditButton = false) => {
+    const currentUserId = user?.id || user?.user_id;
+    const isMine = currentUserId && question.user_id === currentUserId;
+    const isLocked = normalizedVisibility(question) === 'locked';
     return (
       <QuestionCard
         key={question.id}
         question={question}
-        userInfo={userInfoCache[question.user_id]}
+        userInfo={userInfoCache[question.original_author_user_id || question.owner_user_id || question.user_id] || userInfoCache[question.user_id]}
         imageUrl={imageUrls[question.id]}
-        showDeleteButton={showDeleteButton}
-        showEditButton={showEditButton}
-        showStudentViewButton={true}
+        showDeleteButton={showDeleteButton && isMine}
+        showEditButton={showEditButton && isMine}
+        showStudentViewButton={!isLocked}
+        showLikeButton={true}
+        showCommentsButton={true}
+        showCopyButton={!isMine && !isLocked}
         onDelete={(id) => setDeleteConfirm(id)}
         onStudentView={(q) => setStudentViewQuestion(q)}
+        onLike={handleLikeQuestion}
+        onOpenComments={handleOpenComments}
+        onCopy={handleCopyQuestion}
       />
     );
   };
@@ -513,9 +624,11 @@ export default function QuestionBank() {
           }}
         >
           <option value="all">All shared</option>
+          <option value="global">Global</option>
+          <option value="local">Local</option>
+          <option value="locked">Locked</option>
           <option value="course">Course</option>
           <option value="school">School</option>
-          <option value="global">Global</option>
         </select>
       </div>
 
@@ -740,6 +853,98 @@ export default function QuestionBank() {
                 }}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {commentQuestion && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1250,
+            padding: '1rem'
+          }}
+          onClick={() => setCommentQuestion(null)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #dbe5f1',
+              borderRadius: '8px',
+              width: 'min(680px, 100%)',
+              maxHeight: '82vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: '0 18px 50px rgba(15,23,42,0.22)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>{commentQuestion.title || 'Question comments'}</h3>
+                <p style={{ margin: '0.25rem 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+                  {commentQuestion.qid || `Question ${commentQuestion.id}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCommentQuestion(null)}
+                style={{ border: '1px solid #cbd5e1', borderRadius: '8px', background: '#fff', color: '#334155', padding: '0.45rem 0.7rem', cursor: 'pointer', fontWeight: 700 }}
+              >
+                Close
+              </button>
+            </div>
+            <div style={{ padding: '1rem', overflowY: 'auto', flex: 1, background: '#f8fafc' }}>
+              {commentLoading && <p style={{ color: '#64748b', margin: 0 }}>Loading comments...</p>}
+              {!commentLoading && comments.length === 0 && (
+                <p style={{ color: '#64748b', margin: 0 }}>No comments yet.</p>
+              )}
+              {!commentLoading && comments.map((comment) => {
+                const author = userInfoCache[comment.user_id];
+                const name = author
+                  ? `${author.first_name || ''} ${author.last_name || ''}`.trim() || author.email || 'Instructor'
+                  : 'Instructor';
+                return (
+                  <div key={comment.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.65rem' }}>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, marginBottom: '0.35rem' }}>
+                      {name}
+                    </div>
+                    <div style={{ whiteSpace: 'pre-wrap', color: '#0f172a', lineHeight: 1.45, fontSize: '0.92rem' }}>{comment.body}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: '1rem', borderTop: '1px solid #e2e8f0', background: '#ffffff' }}>
+              <textarea
+                value={commentDraft}
+                onChange={(event) => setCommentDraft(event.target.value)}
+                placeholder="Add a comment"
+                rows={3}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.75rem', resize: 'vertical', font: 'inherit', marginBottom: '0.65rem' }}
+              />
+              <button
+                type="button"
+                onClick={handleSubmitComment}
+                disabled={commentLoading || !commentDraft.trim()}
+                style={{
+                  padding: '0.55rem 0.9rem',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '8px',
+                  background: commentDraft.trim() ? '#eff6ff' : '#f8fafc',
+                  color: commentDraft.trim() ? '#1d4ed8' : '#94a3b8',
+                  cursor: commentDraft.trim() ? 'pointer' : 'not-allowed',
+                  fontWeight: 700
+                }}
+              >
+                Add Comment
               </button>
             </div>
           </div>

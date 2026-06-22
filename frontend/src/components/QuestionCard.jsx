@@ -24,7 +24,9 @@ const formatDraftState = (question) => {
 
 const formatVisibility = (question) => {
   if (question.is_assignment_snapshot) return 'snapshot';
-  return question.visibility || 'private';
+  const visibility = question.visibility || 'local';
+  if (visibility === 'private') return 'local';
+  return visibility;
 };
 
 const formatOrigin = (question) => {
@@ -138,7 +140,7 @@ const UserIcon = ({ userInfo, size = 40 }) => {
         flexShrink: 0
       }}
       title={getName()}
-      aria-label={`Question created by ${getName()}`}
+      aria-label={`Question author ${getName()}`}
       role="img"
     >
       {getInitials()}
@@ -173,11 +175,17 @@ export default function QuestionCard({
   showEditButton = false,
   showRemoveButton = false,
   showStudentViewButton = false,
+  showCopyButton = false,
+  showLikeButton = false,
+  showCommentsButton = false,
   actionLoading = false,
   onDelete,
   onEdit,
   onRemove,
   onStudentView,
+  onCopy,
+  onLike,
+  onOpenComments,
   compact = false,
   showUserIcon = true,
   questionNumber,
@@ -221,6 +229,7 @@ export default function QuestionCard({
   const tags = question.tags ? question.tags.split(',').map(t => t.trim()).filter(t => t) : [];
   const sourceLabel = formatSourceLabel(question);
   const sourceTitle = getSourceParts(question).join('\n');
+  const isLocked = (question.visibility || '').toLowerCase() === 'locked';
 
   const handleEdit = (e) => {
     if (e) e.stopPropagation();
@@ -673,13 +682,54 @@ export default function QuestionCard({
       })()}
 
       {/* Action buttons */}
-      {(showStudentViewButton || showDeleteButton || showEditButton || showRemoveButton) && (
+      {(showLikeButton || showCommentsButton || showCopyButton || showStudentViewButton || showDeleteButton || showEditButton || showRemoveButton) && (
         <div 
           onPointerDown={(e) => e.stopPropagation()}
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}
         >
-          <div>
-            {showStudentViewButton && (
+          <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {showLikeButton && onLike && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLike(question);
+                }}
+                disabled={actionLoading}
+                style={{
+                  padding: '0.375rem 0.65rem',
+                  background: question.liked_by_me ? '#fee2e2' : '#f8fafc',
+                  color: question.liked_by_me ? '#991b1b' : '#334155',
+                  border: question.liked_by_me ? '1px solid #fecaca' : '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: '700'
+                }}
+              >
+                Like {question.likes_count || 0}
+              </button>
+            )}
+            {showCommentsButton && onOpenComments && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenComments(question);
+                }}
+                style={{
+                  padding: '0.375rem 0.65rem',
+                  background: '#f8fafc',
+                  color: '#334155',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: '700'
+                }}
+              >
+                Comments {question.comments_count || 0}
+              </button>
+            )}
+            {showStudentViewButton && !isLocked && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -704,6 +754,28 @@ export default function QuestionCard({
             )}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            {showCopyButton && onCopy && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopy(question);
+                }}
+                disabled={actionLoading}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: '#16a34a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  opacity: actionLoading ? 0.6 : 1
+                }}
+              >
+                Add to Mine
+              </button>
+            )}
             {showEditButton && (
               <button
                 onClick={handleEdit}

@@ -8,6 +8,7 @@ COPY frontend ./frontend
 # Install frontend dependencies (including dev for build)
 WORKDIR /app/frontend
 RUN npm install
+RUN npm install -g http-server
 
 # Production build-time env for deployed path routing.
 # These values are injected by Vite at build time and should not rely on a
@@ -32,9 +33,14 @@ RUN npm run build
 
 # Go back to root
 WORKDIR /app
+RUN addgroup -S app && adduser -S -G app app && chown -R app:app /app
 
 # Expose port
 EXPOSE 8003
+USER app
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
+  CMD node -e "fetch('http://localhost:8003/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Serve the built frontend with caching disabled so auth/UI updates apply immediately.
-CMD ["sh", "-c", "npx -y http-server frontend/dist -p 8003 --gzip -c-1"]
+CMD ["http-server", "frontend/dist", "-p", "8003", "--gzip", "-c-1"]

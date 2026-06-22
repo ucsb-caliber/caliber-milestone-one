@@ -43,6 +43,18 @@ const actionButtonStyles = {
     color: dashboardPalette.dangerText,
     border: `1px solid ${dashboardPalette.dangerBorder}`,
   },
+  social: {
+    ...actionButtonBase,
+    background: dashboardPalette.white,
+    color: dashboardPalette.text,
+    border: `1px solid ${dashboardPalette.border}`,
+  },
+  copy: {
+    ...actionButtonBase,
+    background: '#ecfdf5',
+    color: '#166534',
+    border: '1px solid #bbf7d0',
+  },
 };
 
 const getQID = (question) => {
@@ -60,7 +72,9 @@ const formatDraftState = (question) => {
 
 const formatVisibility = (question) => {
   if (question.is_assignment_snapshot) return 'snapshot';
-  return question.visibility || 'private';
+  const visibility = question.visibility || 'local';
+  if (visibility === 'private') return 'local';
+  return visibility;
 };
 
 const formatOrigin = (question) => {
@@ -277,10 +291,16 @@ const TableRow = ({
   showRemoveButton,
   showVariantButton,
   showApproveButton,
+  showLikeButton,
+  showCommentsButton,
+  showCopyButton,
   onEdit,
   onRemove,
   onGenerateVariant,
   onApproveDraft,
+  onLike,
+  onOpenComments,
+  onCopy,
   actionLoading,
   variantLoading,
   hasActions,
@@ -289,6 +309,7 @@ const TableRow = ({
   const qid = getQID(question);
   const sourceLabel = formatSourceLabel(question);
   const sourceTitle = getSourceParts(question).join('\n');
+  const isLocked = (question.visibility || '').toLowerCase() === 'locked';
 
   const handleEdit = () => {
     if (onEdit) {
@@ -390,6 +411,13 @@ const TableRow = ({
               {sourceLabel}
             </div>
           )}
+          <div style={{ marginTop: '0.35rem', display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+            <MetaChip title="Likes">Likes {question.likes_count || 0}</MetaChip>
+            <MetaChip title="Comments">Comments {question.comments_count || 0}</MetaChip>
+            {question.copied_from_qid && (
+              <MetaChip title="Copied from" monospace>from {question.copied_from_qid}</MetaChip>
+            )}
+          </div>
         </td>
       )}
       <td style={{ padding: '0.75rem 1rem', color: dashboardPalette.text, fontSize: '0.875rem' }}>
@@ -457,6 +485,48 @@ const TableRow = ({
                 style={{ ...actionButtonStyles.approve, opacity: actionLoading ? 0.6 : 1, cursor: actionLoading ? 'not-allowed' : 'pointer' }}
               >
                 Approve
+              </button>
+            )}
+            {showLikeButton && onLike && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLike(question);
+                }}
+                disabled={actionLoading}
+                style={{
+                  ...actionButtonStyles.social,
+                  background: question.liked_by_me ? '#fee2e2' : actionButtonStyles.social.background,
+                  color: question.liked_by_me ? '#991b1b' : actionButtonStyles.social.color,
+                  border: question.liked_by_me ? '1px solid #fecaca' : actionButtonStyles.social.border,
+                  opacity: actionLoading ? 0.6 : 1,
+                  cursor: actionLoading ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Like {question.likes_count || 0}
+              </button>
+            )}
+            {showCommentsButton && onOpenComments && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenComments(question);
+                }}
+                style={actionButtonStyles.social}
+              >
+                Comments {question.comments_count || 0}
+              </button>
+            )}
+            {showCopyButton && onCopy && !isLocked && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopy(question);
+                }}
+                disabled={actionLoading}
+                style={{ ...actionButtonStyles.copy, opacity: actionLoading ? 0.6 : 1, cursor: actionLoading ? 'not-allowed' : 'pointer' }}
+              >
+                Add to Mine
               </button>
             )}
             {showRemoveButton && onRemove && (
@@ -552,6 +622,9 @@ export default function QuestionTable({
   onRemove,
   onGenerateVariant,
   onApproveDraft,
+  onLike,
+  onOpenComments,
+  onCopy,
   actionLoading = false,
   variantLoadingId = null,
   isDraggable = false,
@@ -564,6 +637,7 @@ export default function QuestionTable({
   const [previewQuestion, setPreviewQuestion] = useState(null);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const [previewMode, setPreviewMode] = useState('details');
+  const previewIsLocked = (previewQuestion?.visibility || '').toLowerCase() === 'locked';
   useBodyScrollLock(Boolean(previewQuestion));
 
   const handlePreview = async (question) => {
@@ -599,12 +673,14 @@ export default function QuestionTable({
   }
 
   // Check if any question can be deleted (for showing Actions column)
-  const hasDeletableQuestions = showActions && user &&
-    questions.some(q => q.user_id === user.id);
+  const currentUserId = user?.id || user?.user_id;
+  const hasDeletableQuestions = showActions && currentUserId &&
+    questions.some(q => q.user_id === currentUserId);
 
   const hasVariantActions = showActions && showVariantButton;
   const hasApproveActions = showActions && showApproveButton;
-  const hasActions = showEditButton || showRemoveButton || hasVariantActions || hasApproveActions || hasDeletableQuestions;
+  const hasSocialActions = showActions && (onLike || onOpenComments || onCopy);
+  const hasActions = showEditButton || showRemoveButton || hasVariantActions || hasApproveActions || hasSocialActions || hasDeletableQuestions;
   const hasQID = !!showQID;
   const hasCourseType = !!showCourseType;
   const hasBloomsTaxonomy = !!showBloomsTaxonomy;
@@ -672,7 +748,7 @@ export default function QuestionTable({
                 color: dashboardPalette.muted,
                 fontSize: '0.75rem'
               }}>
-                Creator
+                Author
               </th>
               {hasQID && (
                 <th style={{
@@ -760,8 +836,9 @@ export default function QuestionTable({
           </thead>
           <tbody>
             {questions.map((question, index) => {
-              const canDelete = showActions && user && question.user_id === user.id;
-              const userInfo = userInfoCache[question.user_id];
+              const canDelete = showActions && currentUserId && question.user_id === currentUserId;
+              const isMine = currentUserId && (question.user_id === currentUserId);
+              const userInfo = userInfoCache[question.original_author_user_id || question.owner_user_id || question.user_id] || userInfoCache[question.user_id];
               return (
                 <TableRow
                   key={question.id}
@@ -778,10 +855,16 @@ export default function QuestionTable({
                   showRemoveButton={showRemoveButton}
                   showVariantButton={hasVariantActions}
                   showApproveButton={hasApproveActions}
+                  showLikeButton={Boolean(showActions && onLike)}
+                  showCommentsButton={Boolean(showActions && onOpenComments)}
+                  showCopyButton={Boolean(showActions && onCopy && !isMine)}
                   onEdit={onEdit}
                   onRemove={onRemove}
                   onGenerateVariant={onGenerateVariant}
                   onApproveDraft={onApproveDraft}
+                  onLike={onLike}
+                  onOpenComments={onOpenComments}
+                  onCopy={onCopy}
                   actionLoading={actionLoading}
                   variantLoading={variantLoadingId === question.id}
                   hasActions={hasActions}
@@ -842,22 +925,24 @@ export default function QuestionTable({
                 >
                   Question Card
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewMode('student')}
-                  style={{
-                    padding: '0.4rem 0.65rem',
-                    border: `1px solid ${previewMode === 'student' ? dashboardPalette.border : 'transparent'}`,
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    fontSize: '0.82rem',
-                    background: previewMode === 'student' ? dashboardPalette.white : 'transparent',
-                    color: previewMode === 'student' ? dashboardPalette.text : dashboardPalette.muted
-                  }}
-                >
-                  Student View
-                </button>
+                {!previewIsLocked && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('student')}
+                    style={{
+                      padding: '0.4rem 0.65rem',
+                      border: `1px solid ${previewMode === 'student' ? dashboardPalette.border : 'transparent'}`,
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '0.82rem',
+                      background: previewMode === 'student' ? dashboardPalette.white : 'transparent',
+                      color: previewMode === 'student' ? dashboardPalette.text : dashboardPalette.muted
+                    }}
+                  >
+                    Student View
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -879,7 +964,7 @@ export default function QuestionTable({
             {previewMode === 'details' ? (
               <QuestionCard
                 question={previewQuestion}
-                userInfo={userInfoCache[previewQuestion.user_id]}
+                userInfo={userInfoCache[previewQuestion.original_author_user_id || previewQuestion.owner_user_id || previewQuestion.user_id] || userInfoCache[previewQuestion.user_id]}
                 imageUrl={previewImageUrl}
                 showDeleteButton={false}
                 showEditButton={false}
