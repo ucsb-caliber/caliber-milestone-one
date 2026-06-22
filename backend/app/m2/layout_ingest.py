@@ -18,7 +18,12 @@ import matplotlib.pyplot as plt
 import torch
 import requests
 from pytesseract import Output
-
+from coderegex import *
+import subprocess
+import ollama
+from mdutils.mdutils import MdUtils
+from clang_format import clang_format
+import opendataloader_pdf
 
 
 _TORCH_LOAD_ORIG = torch.load
@@ -50,6 +55,8 @@ DEBUG = True
 DEBUG_DRAW_LAYOUT = False   # <-- IMPORTANT: avoids Pillow10 layoutparser crash
 M2_TESSERACT_TIMEOUT_SEC = max(5, int(os.getenv("M2_TESSERACT_TIMEOUT_SEC", "45")))
 
+OLLAMA_PROMPT = """Restore proper Python indentation to this code. 
+Output only the corrected code, nothing else."""
 
 # ===================== QUESTION DETECTION =====================
 
@@ -62,6 +69,9 @@ QUESTION_START_PATTERNS = [
 
 QUESTION_START_RE = re.compile("|".join(QUESTION_START_PATTERNS), re.IGNORECASE)
 NUMBERED_ITEM_SPLIT_RE = re.compile(r"(?=\n?\s*\d+\s*[\.\)])")
+
+PYTHON_PATTERNS = [re.compile(p, re.MULTILINE) for p in CODE_PATTERNS_PYTHON]
+BRACE_PATTERNS = [re.compile(p, re.MULTILINE) for p in CODE_PATTERNS_BRACE_LANG]
 
 
 # ===================== DATA STRUCTURES =====================
@@ -169,224 +179,93 @@ def load_questions_db(db_path: Path) -> Dict[str, Any]:
         except Exception:
             pass
         return {"schema_version": "1.0", "ingestions": []}
+    
+
+def format_brace_code(code: str) -> str:
+    result = subprocess.run(
+        ["clang-format", "--style=Google"],
+        input=code.encode("utf-8"),        
+        capture_output=True,              
+    )
+    return result.stdout.decode("utf-8")
 
 
-def is_question_start(block: Block) -> bool:
-    return bool(QUESTION_START_RE.match(block.text.strip()))
+def part_to_block(part: dict) -> Block:
+    return Block(
+        page=part.get('page number', 0),
+        bbox=tuple(part.get('bounding box', (0, 0, 0, 0))),
+        text=part.get('content', ''),
+        btype=part.get('type', ''),
+    )
 
 
-# -------------------- Debug drawing wrapper --------------------
-
-def safe_draw_layout_debug(page_img: Image.Image, layout: lp.Layout, save_path: str):
-    """
-    layoutparser's draw_box uses Pillow FreeTypeFont.getsize(), removed in Pillow 10+.
-    If you really want debug visuals, either:
-      - pin Pillow<10, or
-      - patch layoutparser, or
-      - keep this disabled (default).
-    This wrapper prevents your pipeline from crashing.
-    """
-    try:
-        lp.draw_box(page_img, layout, box_width=3, show_element_type=True).save(save_path)
-    except Exception as e:
-        print(f"[warn] draw_box failed (Pillow/layoutparser compat): {e}")
+def code_type(part: dict) -> str:
+    text = part.get('content', "")
+    if is_python(text):
+        return 'python'
+    elif is_brace(text):
+        return 'brace'
+    else:
+        return part['type']
 
 
-# ===================== OCR + PARSING =====================
+# ===================== REGEX =====================
 
-def get_text_within_box(ocr_data: Dict, bbox: Tuple[int, int, int, int], conf_thresh: int = 50) -> str:
-    x1, y1, x2, y2 = bbox
-    words = []
-
-    for i in range(len(ocr_data["text"])):
-        try:
-            conf = float(ocr_data["conf"][i])
-        except Exception:
-            conf = -1
-        if conf < conf_thresh:
-            continue
-
-        cx = ocr_data["left"][i] + ocr_data["width"][i] / 2
-        cy = ocr_data["top"][i] + ocr_data["height"][i] / 2
-
-        if x1 <= cx <= x2 and y1 <= cy <= y2:
-            w = ocr_data["text"][i]
-            if w:
-                words.append(w)
-
-    return " ".join(words).strip()
+def is_python(text: str) -> bool:
+    return any(pattern.search(text) for pattern in PYTHON_PATTERNS)
 
 
-def parse_page(
-    layout: lp.Layout,
-    page_img: Image.Image,
-    page_num: int,
-    *,
-    ocr_timeout_sec: int = M2_TESSERACT_TIMEOUT_SEC,
-) -> List[Block]:
-    try:
-        ocr_data = pytesseract.image_to_data(
-            page_img,
-            output_type=Output.DICT,
-            config="--oem 3 --psm 6 -l eng",
-            timeout=ocr_timeout_sec,
-        )
-    except RuntimeError as exc:
-        # pytesseract raises RuntimeError on OCR timeout.
-        print(f"[warn] OCR timeout on page {page_num} after {ocr_timeout_sec}s: {exc}")
-        return []
-    except Exception as exc:
-        print(f"[warn] OCR failed on page {page_num}: {exc!r}")
-        return []
-
-    page_blocks: List[Block] = []
-    for b in layout:
-        x1, y1, x2, y2 = map(int, b.block.coordinates)
-        btype = str(b.type)
-        text = get_text_within_box(ocr_data, (x1, y1, x2, y2))
-        if not text and btype.lower() != "figure":
-            continue
-        page_blocks.append(Block(page=page_num, bbox=(x1, y1, x2, y2), text=text, btype=btype))
-
-    return page_blocks
+def is_brace(text: str) -> bool:
+    return any(pattern.search(text) for pattern in BRACE_PATTERNS)
 
 
-# ===================== LAYOUT FORMATTING =====================
-
-def keep_largest_blocks(layout: lp.Layout, threshold: int = 0.9) -> lp.Layout:
-    sorted_layout = sorted(layout, key=lambda x: x.block.area, reverse=True)
-
-    keep = []
-    while sorted_layout:
-        large_block = sorted_layout.pop(0)
-        keep.append(large_block)
-
-        remaining = []
-        for small_block in sorted_layout:
-            x1 = max(large_block.block.x_1, small_block.block.x_1)
-            y1 = max(large_block.block.y_1, small_block.block.y_1)
-            x2 = min(large_block.block.x_2, small_block.block.x_2)
-            y2 = min(large_block.block.y_2, small_block.block.y_2)
-
-            inter_area = max(0, x2 - x1) * max(0, y2 - y1)
-            small_area = small_block.block.area
-            coverage = inter_area / small_area if small_area > 0 else 0
-
-            if coverage < threshold:
-                remaining.append(small_block)
-
-        sorted_layout = remaining
-
-    return lp.Layout(keep)
+def is_question_start(text) -> bool:
+    return bool(QUESTION_START_RE.match(text.strip()))
 
 
-def sort_layout_reading_order(layout: lp.Layout, y_tol: int) -> lp.Layout:
-    layout = sorted(layout, key=lambda b: (int(b.block.coordinates[1]), int(b.block.coordinates[0])))
-    rows: List[List[lp.TextBlock]] = []
-
-    for b in layout:
-        placed = False
-        for row in rows:
-            if abs(b.block.coordinates[1] - row[0].block.coordinates[1]) <= y_tol:
-                row.append(b)
-                placed = True
-                break
-        if not placed:
-            rows.append([b])
-
-    ordered: List[lp.TextBlock] = []
-    for row in rows:
-        ordered.extend(sorted(row, key=lambda b: b.block.coordinates[0]))
-
-    return lp.Layout(ordered)
+def is_numbered_start(text, number) -> bool:
+    return bool(re.match(rf'^{number}\. ', text.strip()))
 
 
 # ===================== MAIN PARSER =====================
 
 def parse_pdf_to_questions(
-    pages: List[Image.Image],
-    model: Any,
+    data_dict: Dict,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
 ) -> List[Question]:
-    last_page = len(pages)
-    start = max(1, START_PAGE)
-    end = END_PAGE or last_page
-    end = min(end, last_page)
-    total_pages = max(0, end - start + 1)
+    items = []
+    for kid in data_dict['kids']:
+        kid['type'] = code_type(kid)
+        if kid['type'] == 'header' or kid['type'] == 'footer':
+            items.extend(kid['kids'])
+        elif kid['type'] == 'list':
+            items.extend(kid['list items'])
+        else:
+            items.append(kid)
 
-    all_questions: List[Question] = []
-    current_question: Optional[Question] = None
+    qstarts: List[Question] = []
+    nstarts: List[Question] = []
 
-    if progress_callback:
-        progress_callback(0, max(1, total_pages), "Parsing PDF pages")
+    for part in items:
+        text = part.get('content', "")
+        block = part_to_block(part)
 
-    for offset, page_idx in enumerate(range(start - 1, end), start=1):
-        if should_cancel and should_cancel():
-            print(
-                f"[m2] cancellation requested before page {offset}/{total_pages}; "
-                f"returning partial parse with {len(all_questions)} questions"
-            )
-            break
+        if is_question_start(text):
+            q = Question(start_page=block.page)
+            q.add_block(block)
+            qstarts.append(q)
+        elif qstarts:
+            qstarts[-1].add_block(block)
 
-        page_num = page_idx + 1
-        page_img = pages[page_idx]
-        page_start = time.time()
+        if is_numbered_start(text, len(nstarts)+1):
+            q = Question(start_page=block.page)
+            q.add_block(block)
+            nstarts.append(q)
+        elif nstarts:
+            nstarts[-1].add_block(block)
 
-        if progress_callback:
-            progress_callback(offset - 1, max(1, total_pages), f"Parsing page {offset}/{total_pages}")
-
-        try:
-            layout = model.detect(page_img)
-            layout = keep_largest_blocks(layout, threshold=0.9)
-            layout = sort_layout_reading_order(layout, Y_TOL)
-        except Exception as exc:
-            print(f"[warn] Layout detection failed on page {page_num}: {exc!r}")
-            if progress_callback:
-                progress_callback(offset, max(1, total_pages), f"Skipped page {offset}/{total_pages}")
-            continue
-
-        if DEBUG and DEBUG_DRAW_LAYOUT:
-            Path("pages").mkdir(exist_ok=True)
-            save_path = os.path.join("pages", f"debug_page_{page_num}.png")
-            safe_draw_layout_debug(page_img, layout, save_path)
-
-        page_blocks = parse_page(
-            layout,
-            page_img,
-            page_num,
-            ocr_timeout_sec=M2_TESSERACT_TIMEOUT_SEC,
-        )
-
-        for block in page_blocks:
-            if is_question_start(block):
-                if current_question is not None:
-                    all_questions.append(current_question)
-                current_question = Question(start_page=block.page)
-                current_question.add_block(block)
-            else:
-                if current_question is not None:
-                    current_question.add_block(block)
-
-        elapsed = time.time() - page_start
-        print(
-            f"[m2] page {offset}/{total_pages} (pdf page {page_num}) "
-            f"blocks={len(page_blocks)} elapsed={elapsed:.1f}s"
-        )
-        if progress_callback:
-            progress_callback(offset, max(1, total_pages), f"Parsed page {offset}/{total_pages}")
-
-        if should_cancel and should_cancel():
-            print(
-                f"[m2] cancellation requested after page {offset}/{total_pages}; "
-                f"returning partial parse with {len(all_questions)} questions"
-            )
-            break
-
-    if current_question is not None:
-        all_questions.append(current_question)
-
-    return all_questions
+    return max(qstarts, nstarts, key=len)
 
 
 # ===================== CROPPING / DISPLAY =====================
@@ -431,6 +310,73 @@ def crop_and_output_questions(pages: List[Image.Image], questions: List[Question
                 plt.show()
 
 
+def generate_md(questions: List[Question], output_folder: str):
+    for i, question in enumerate(questions):
+        title_block = question.blocks[0]
+        body_blocks = question.blocks[1:]
+
+        mdFile = MdUtils(file_name=f'{output_folder}/Q{i+1}')
+        mdFile.new_header(level=1, title=title_block.text)
+
+        body = []
+
+        def last_btype(body):
+            if not body:
+                return None
+            last = body[-1]
+            return last['btype'] if isinstance(last, dict) else last.btype
+
+        def append_to_codeblock(body, block):
+            if "code" in (last_btype(body) or ""):
+                body[-1]['segments'].append(block)
+            else:
+                body.append({'btype': f"{block.btype} code", 'segments': [block]})
+
+        def append_to_list(body, block):
+            if last_btype(body) == 'list':
+                body[-1]['list items'].append(block)
+            else:
+                body.append({'btype': 'list', 'list items': [block]})
+
+        def append_block(body, block):
+            if block.btype in ('python', 'brace'):
+                append_to_codeblock(body, block)
+            elif block.btype == 'list item':
+                append_to_list(body, block)
+            else:
+                body.append(block)
+
+        for block in body_blocks:
+            append_block(body, block)
+
+        for part in body:
+            if isinstance(part, Block):
+                if part.btype in ('image', 'table'):
+                    continue
+                try:
+                    mdFile.new_paragraph(part.text)
+                except:
+                    print(part)
+            elif part['btype'] == 'list':
+                list_items = [b.text for b in part['list items']]
+                mdFile.new_list(list_items)
+            elif part['btype'] == 'python code':
+                code = "\n".join([seg.text for seg in part['segments']])
+                response = ollama.chat(
+                    model="llama3.1",
+                    messages=[{"role": "user", "content": OLLAMA_PROMPT + f"\n{code}"}]
+                )
+                formatted = response['message']['content']
+                mdFile.new_paragraph(formatted)
+            elif part['btype'] == 'brace code':
+                code = "\n".join([seg.text for seg in part['segments']])
+                formatted = format_brace_code(code)
+                formatted = re.sub(r'\b(public|private|protected)\s*\n(\s*)', r'\2\1 ', formatted)
+                mdFile.new_paragraph('```\n' + formatted + '\n```')
+
+        mdFile.create_md_file()
+
+
 # ===================== DB APPEND =====================
 
 def append_ingestion_to_db(
@@ -467,112 +413,13 @@ def append_ingestion_to_db(
     atomic_write_json(db_path, db)
 
 
-# ===================== MODEL DOWNLOAD + LOADING =====================
-
-def _download_file(url: str, dest: Path, *, min_bytes: int, forbid_html: bool = True, timeout: int = 60) -> Path:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-
-    if dest.exists() and dest.stat().st_size >= min_bytes:
-        if forbid_html:
-            with dest.open("rb") as f:
-                head = f.read(1)
-            if head != b"<":
-                return dest
-            dest.unlink(missing_ok=True)
-        else:
-            return dest
-
-    tmp = dest.with_suffix(dest.suffix + f".tmp.{uuid.uuid4().hex}")
-
-    with requests.get(url, stream=True, timeout=timeout, allow_redirects=True) as r:
-        r.raise_for_status()
-        with tmp.open("wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
-
-    size = tmp.stat().st_size
-    if size < min_bytes:
-        head = tmp.read_bytes()[:200]
-        tmp.unlink(missing_ok=True)
-        raise RuntimeError(f"Download too small ({size} bytes) from {url}. Head={head!r}")
-
-    if forbid_html:
-        head1 = tmp.read_bytes()[:1]
-        if head1 == b"<":
-            head200 = tmp.read_bytes()[:200]
-            tmp.unlink(missing_ok=True)
-            raise RuntimeError(f"Downloaded HTML instead of model file from {url}. Head={head200!r}")
-
-    tmp.replace(dest)
-    return dest
-
-
-def load_layout_model():
-    """
-    We’ll keep Detectron2 attempt, but your pipeline is already working with EfficientDet.
-    Also: Detectron2 config.yml can legitimately be ~5KB, so min_bytes lowered.
-    """
-    print("Loading model...")
-
-    label_map = {0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
-
-    cache_root = Path.home() / ".cache" / "caliber_layout_models"
-    cache_root.mkdir(parents=True, exist_ok=True)
-
-    # --- Detectron2 PubLayNet via HF (optional) ---
-    det_cfg_url = "https://huggingface.co/nlpconnect/PubLayNet-faster_rcnn_R_50_FPN_3x/resolve/main/config.yml"
-    det_wts_url = "https://huggingface.co/nlpconnect/PubLayNet-faster_rcnn_R_50_FPN_3x/resolve/main/model_final.pth"
-    det_cfg_path = cache_root / "publaynet_fasterrcnn" / "config.yml"
-    det_wts_path = cache_root / "publaynet_fasterrcnn" / "model_final.pth"
-
-    try:
-        _download_file(det_cfg_url, det_cfg_path, min_bytes=2_000, forbid_html=True)
-        _download_file(det_wts_url, det_wts_path, min_bytes=50_000_000, forbid_html=True)
-
-        model = lp.Detectron2LayoutModel(
-            config_path=str(det_cfg_path),
-            model_path=str(det_wts_path),
-            label_map=label_map,
-            extra_config=[
-                "MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.2,
-                "MODEL.ROI_HEADS.NMS_THRESH_TEST", 0.1,
-            ],
-        )
-        print("Done! (Detectron2 PubLayNet via HF)")
-        return model
-    except Exception as e:
-        print(f"[warn] Detectron2 (HF) failed: {e}")
-
-    # --- EfficientDet PubLayNet via HF (your run succeeds here) ---
-    eff_url = "https://huggingface.co/layoutparser/efficientdet/resolve/main/PubLayNet/tf_efficientdet_d1/publaynet-tf_efficientdet_d1.pth.tar"
-    eff_path = cache_root / "publaynet_effdet" / "publaynet-tf_efficientdet_d1.pth.tar"
-
-    _download_file(eff_url, eff_path, min_bytes=50_000_000, forbid_html=True)
-
-    if hasattr(lp, "EfficientDetLayoutModel"):
-        model = lp.EfficientDetLayoutModel(
-            "tf_efficientdet_d1",
-            model_path=str(eff_path),
-            label_map=label_map
-        )
-    else:
-        model = lp.models.effdet.layoutmodel.EfficientDetLayoutModel(
-            "tf_efficientdet_d1",
-            model_path=str(eff_path),
-            label_map=label_map
-        )
-
-    print("Done! (EfficientDet PubLayNet via HF)")
-    return model
-
-
 # ===================== ENTRY POINT =====================
 
 def main():
     pdf_path = Path(PDF_PATH)
     assert pdf_path.exists(), f"PDF not found: {pdf_path.resolve()}"
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+    file_name = Path(PDF_PATH).stem
 
     user_exam_id = input("Enter exam id: ").strip()
     exam_id = normalize_exam_id(user_exam_id)
@@ -587,12 +434,22 @@ def main():
         os.makedirs('pages', exist_ok=True)
         with open("Output.txt", "w") as _:
             pass
+    
+    os.makedirs('temp/', exist_ok=True)
+    opendataloader_pdf.convert(
+        input_path=pdf_path,
+        output_dir="temp/",
+        format="json",    
+        keep_line_breaks = True,
+        include_header_footer = False,
+        image_dir = "crops",
+        pages = "{START_PAGE}-{END_PAGE}"
+    )
+    with open(f'temp/{file_name}.json', 'r', encoding='utf-8') as file:
+        data_dict = json.load(file)
 
-    model = load_layout_model()
-
+    questions = parse_pdf_to_questions(data_dict)
     pages = convert_from_path(str(pdf_path))
-
-    questions = parse_pdf_to_questions(pages, model)
 
     for i, q in enumerate(questions, 1):
         if DEBUG:
@@ -627,6 +484,8 @@ def main():
         ingestion_id=ingestion_id,
         questions=questions,
     )
+
+    shutil.rmtree('temp/')
 
     print(f"Appended ingestion to: {db_path}")
     print(f"Crops saved under: {crops_dir}")
