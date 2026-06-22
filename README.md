@@ -69,11 +69,9 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
   - Deleted when assignment is deleted
 
 ### Question Pipeline
-- PDF upload starts background parsing
-- Milestone 2 parser files are vendored into `backend/app/m2/` and executed from Milestone 1 backend
-- Upload processing runs the copied M2 layout pipeline first (layout detection + OCR extraction)
-- Fallback parser performs question segmentation from PDF text, with OCR fallback for scanned PDFs
-- Question bank supports verification/editing and assignment inclusion
+- PDF upload starts background parsing.
+- **Parser:** `opendataloader-pdf` (Apache-2.0, Java + Python wrapper) emits structured JSON + Markdown with bounding boxes and reading order; `backend/app/odl_pipeline.py` segments questions over its JSON output.
+- Question bank supports verification/editing and assignment inclusion.
 
 ## Architecture Snapshot
 
@@ -95,7 +93,7 @@ Caliber is a fullstack teaching platform prototype for creating coursework from 
 
 ### Backend Setup
 
-Use Python 3.10 or 3.11 for the Milestone 2 parser dependencies (`torch==2.1.2`, `effdet`).
+Use Python 3.10 or 3.11 (required by `opendataloader-pdf` and the rest of the backend stack).
 
 ```bash
 cd backend
@@ -105,14 +103,20 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Install system dependencies required by the copied Milestone 2 parser:
-- macOS: `brew install poppler tesseract`
-- Ubuntu/Debian: `sudo apt-get install -y poppler-utils tesseract-ocr`
+Install system dependencies:
+
+- **Java 11+** (required by `opendataloader-pdf`):
+  - macOS: `brew install --cask temurin`
+  - Ubuntu/Debian: `sudo apt-get install -y openjdk-17-jre`
+  - Verify: `java -version`
 
 Notes:
-- The first PDF upload may take longer because model files are downloaded and cached.
-- The `torch` / `effdet` stack is required to run the copied `backend/app/m2/layout_ingest.py`.
-
+- `opendataloader-pdf` spawns a JVM per PDF; expect ~1-2 s of cold-start overhead on the first call.
+- For scanned PDFs, optionally run the hybrid backend in another terminal and set `ODL_HYBRID_ENABLED=true`:
+  ```bash
+  pip install "opendataloader-pdf[hybrid]"
+  opendataloader-pdf-hybrid --port 5002 --force-ocr --ocr-lang eng
+  ```
 Then install Ollama, which runs a local LLM to clean PDF extraction output:
 ```bash
 brew install ollama
@@ -143,8 +147,8 @@ Edit your `backend/.env` file and replace placeholders:
 - `OIDC_ISSUER` and/or `OIDC_JWKS_URL` for your Keycloak realm
 - `OIDC_AUDIENCE` if your tokens enforce audience checks
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` so `/api/upload-pdf` can store files in `question-pdfs`
-- Optional: `M2_TESSERACT_TIMEOUT_SEC` to cap per-page OCR time (default `45`)
-- Optional: `M2_RENDER_DPI` to control PDF rasterization cost (default `170`)
+- Optional: `ODL_HYBRID_ENABLED` / `ODL_HYBRID_URL` if running the `opendataloader-pdf-hybrid` sidecar
+- Optional: `ODL_TIMEOUT_SEC` to cap per-PDF parse time (default `120`)
 - Optional: configure `LLM_CLEANUP_*` and `ROSTER_*` values only if you plan to use those integrations locally
 - Optional: leave `CODING_RUNNER_URL` blank for localhost dev, or set it to `http://coding-runner:8010` when using the Docker runner service on a server
 
@@ -245,6 +249,5 @@ Then open `http://localhost:8003` (or through your reverse proxy path).
 ## Notes
 
 - Run migrations whenever pulling schema/model changes.
-- OCR fallback requires a local `tesseract` binary in `PATH`.
-- Milestone 2 parser code is copied into `backend/app/m2/` and called by `POST /api/upload-pdf`.
+- PDF parsing uses `opendataloader-pdf` (`backend/app/odl_pipeline.py`); requires `java -version` 11+.
 - Local LLM markdown cleanup is optional and uses Ollama (no API key).
