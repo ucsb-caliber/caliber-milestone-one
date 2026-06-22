@@ -23,7 +23,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.563.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
@@ -35,7 +35,7 @@
   "devDependencies": {
     "@types/node": "^25.2.1",
     "@types/react": "^18.2.43",
-    "@types/react-dom": "^18.2.17",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.2.1",
     "vite": "^7.3.1"
   }
